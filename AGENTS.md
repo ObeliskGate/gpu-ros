@@ -8,13 +8,101 @@ The upstream source is `isaac_ros_object_detection` (v4.4.0) which contains dete
 
 ## Long-term Goals
 
-1. **Phase 1 (current)**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using standard ROS2 `isaac_ros_tensor_list_interfaces` messages. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2×2 matrix of inference backend × transport):
+0. **Phase 0 (current)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
+1. **Phase 1**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using standard ROS2 `isaac_ros_tensor_list_interfaces` messages. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2×2 matrix of inference backend × transport):
    - (A) TensorRT + NITROS (baseline)
    - (B) TensorRT + standard ROS2 interfaces (isolate NITROS overhead)
    - (C) ONNX Runtime + NITROS (isolate inference backend overhead)
    - (D) ONNX Runtime + standard ROS2 interfaces (target)
 2. **Phase 2**: Port the pipeline to AMD GPU using ONNX Runtime ROCm EP or MIGraphX EP.
 3. **Phase 3**: Extend to RT-DETR and Grounding DINO pipelines.
+
+## Phase 0: Reproduce NVIDIA Official Benchmarks
+
+### Goal
+
+Run the official `isaac_ros_benchmark` test suite for the three object detection graphs that have published results, and confirm our hardware produces numbers in the same ballpark as NVIDIA's published data.
+
+### NVIDIA Published Baseline (release-4.4)
+
+| Graph | Input | x86_64 + RTX 5090 | AGX Thor T5000 |
+|-------|-------|-------------------|----------------|
+| DetectNet (PeopleNet) | 544p | 227 fps / 18ms @ 30Hz | 143 fps / 18ms |
+| RT-DETR (SyntheticaDETR) | 720p | 444 fps / 11ms @ 30Hz | 188 fps / 12ms |
+| Grounding DINO | 544p | 130 fps / 15ms @ 30Hz | 23.4 fps / 50ms |
+
+Source: https://nvidia-isaac-ros.github.io/performance/index.html
+
+Benchmark scripts & result JSONs: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/tree/release-4.4
+
+### Required Packages
+
+```
+isaac_ros_benchmark          # benchmark framework + NitrosPlaybackNode
+ros2_benchmark               # core benchmark infrastructure
+isaac_ros_object_detection   # detectnet, rtdetr, grounding_dino
+isaac_ros_dnn_inference      # dnn_image_encoder, tensor_rt, triton
+isaac_ros_image_pipeline     # image_proc (resize, pad, format convert)
+isaac_ros_nitros             # NITROS transport
+isaac_ros_tensor_proc        # ImageToTensor, InterleavedToPlanar, Reshape
+```
+
+### Required Models & Datasets
+
+| Benchmark | Model | Dataset |
+|-----------|-------|---------|
+| DetectNet | `peoplenet/resnet34_peoplenet.onnx` + INT8 calib (NGC: `nvidia/tao/peoplenet`) | `r2b_dataset/r2b_hallway` |
+| RT-DETR | `sdetr/sdetr_grasp.onnx` (FP16 TRT engine) | `r2b_dataset/r2b_robotarm` |
+| Grounding DINO | (see benchmark script) | (see benchmark script) |
+
+### Environment Setup
+
+```bash
+# 1. Set up Isaac ROS dev environment (Docker-based)
+#    Follow: https://nvidia-isaac-ros.github.io/getting_started/compute/index.html
+
+# 2. Clone isaac_ros_benchmark
+cd ${ISAAC_ROS_WS}/src
+git clone -b release-4.4 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark.git
+
+# 3. Download r2b datasets
+#    Follow: https://nvidia-isaac-ros.github.io/concepts/benchmarking/index.html
+
+# 4. Download models from NGC
+#    PeopleNet: https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet
+#    SyntheticaDETR: bundled with isaac_ros_rtdetr or NGC
+
+# 5. Build workspace
+cd ${ISAAC_ROS_WS}
+colcon build --packages-up-to isaac_ros_benchmark
+source install/setup.bash
+```
+
+### Running Benchmarks
+
+```bash
+# RT-DETR benchmark
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_rtdetr_benchmark/scripts/isaac_ros_rtdetr_graph.py
+
+# DetectNet benchmark
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_detectnet_benchmark/scripts/isaac_ros_detectnet_graph.py
+
+# Grounding DINO benchmark
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_grounding_dino_benchmark/scripts/isaac_ros_grounding_dino_graph.py
+```
+
+### Success Criteria
+
+- All three benchmarks run to completion without errors
+- Measured FPS is within ±15% of NVIDIA's published numbers (accounting for GPU hardware differences)
+- Results JSON files are saved for future comparison against our ported pipeline
+
+### Notes
+
+- NVIDIA does **not** publish YOLOv8 benchmark results — no official baseline exists for that pipeline
+- The benchmark framework uses `NitrosPlaybackNode` to feed data and auto-tunes publisher rate to find peak throughput
+- TRT engine files are generated on first run via `trtexec`; first run will be slow
+- Our hardware GPU model will differ from NVIDIA's test rigs; document the delta
 
 ## Architecture
 
