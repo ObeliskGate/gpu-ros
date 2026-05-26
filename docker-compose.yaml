@@ -1,0 +1,20 @@
+services:
+  dev:
+    build: .
+    network_mode: host
+    stdin_open: true
+    tty: true
+    env_file:
+      - .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    volumes:
+      - .:/workspaces/isaac_ros-dev/src/amd_ros_object_detection
+      - assets:/workspaces/isaac_ros-dev/assets
+    working_dir: /workspaces/isaac_ros-dev
+
+volumes:
+  assets:
