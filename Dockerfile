@@ -26,5 +26,6 @@ RUN wget -q -O /tmp/ort.tgz \
     mkdir -p /opt/onnxruntime && \
     tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && \
     rm /tmp/ort.tgz && \
+    ln -s /opt/onnxruntime/lib /opt/onnxruntime/lib64 && \
     echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf && \
     ldconfig
