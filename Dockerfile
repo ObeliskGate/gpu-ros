@@ -17,3 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-detectnet-benchmark \
     ros-jazzy-isaac-ros-grounding-dino-benchmark \
     && rm -rf /var/lib/apt/lists/*
+
+# 4. ONNX Runtime GPU (prebuilt tarball — apt libonnxruntime-dev is CPU-only)
+# Pinned to 1.20.1 (CUDA 12 compatible). Set -DONNXRUNTIME_ROOT=/opt/onnxruntime in colcon.
+ARG ORT_VERSION=1.20.1
+RUN wget -q -O /tmp/ort.tgz \
+      "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" && \
+    mkdir -p /opt/onnxruntime && \
+    tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && \
+    rm /tmp/ort.tgz && \
+    echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf && \
+    ldconfig
