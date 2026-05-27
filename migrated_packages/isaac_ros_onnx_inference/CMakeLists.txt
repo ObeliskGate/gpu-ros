@@ -12,45 +12,17 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
-# Accept -DONNXRUNTIME_ROOT=<path> or fall back to /opt/onnxruntime.
-# The prebuilt tarball layout is:
-#   <root>/include/onnxruntime/core/session/onnxruntime_cxx_api.h
-#   <root>/lib/libonnxruntime.so
-if(NOT DEFINED ONNXRUNTIME_ROOT)
-  set(ONNXRUNTIME_ROOT "/opt/onnxruntime")
-endif()
+# The Isaac ROS base image ships ORT at /opt/onnxruntime with a pkg-config file.
+# We use pkg-config so no manual path hints are needed.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ONNXRUNTIME REQUIRED libonnxruntime)
 
-find_package(onnxruntime QUIET HINTS "${ONNXRUNTIME_ROOT}/lib/cmake/onnxruntime")
-
-if(NOT onnxruntime_FOUND)
-  find_path(ONNXRUNTIME_INCLUDE_DIR
-    NAMES onnxruntime_cxx_api.h
-    HINTS
-      "${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session"
-      "${ONNXRUNTIME_ROOT}/include/onnxruntime"
-      /usr/include/onnxruntime
-    NO_DEFAULT_PATH
-  )
-  find_library(ONNXRUNTIME_LIB
-    NAMES onnxruntime
-    HINTS "${ONNXRUNTIME_ROOT}/lib" /usr/lib
-    NO_DEFAULT_PATH
-  )
-  if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIB)
-    message(STATUS "Found ONNX Runtime (manual): ${ONNXRUNTIME_LIB}")
-    add_library(onnxruntime::onnxruntime SHARED IMPORTED)
-    set_target_properties(onnxruntime::onnxruntime PROPERTIES
-      IMPORTED_LOCATION "${ONNXRUNTIME_LIB}"
-      INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
-    )
-  else()
-    message(FATAL_ERROR
-      "ONNX Runtime not found.\n"
-      "  include: ${ONNXRUNTIME_INCLUDE_DIR}\n"
-      "  lib:     ${ONNXRUNTIME_LIB}\n"
-      "Install libonnxruntime-dev or pass -DONNXRUNTIME_ROOT=<path>")
-  endif()
-endif()
+add_library(onnxruntime::onnxruntime INTERFACE IMPORTED)
+set_target_properties(onnxruntime::onnxruntime PROPERTIES
+  INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIRS}"
+  INTERFACE_LINK_LIBRARIES "${ONNXRUNTIME_LINK_LIBRARIES}"
+  INTERFACE_LINK_OPTIONS "${ONNXRUNTIME_LDFLAGS_OTHER}"
+)
 
 # ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────
 option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" ON)
