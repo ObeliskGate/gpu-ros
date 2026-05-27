@@ -12,23 +12,29 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
-# Search order:
-#   1. cmake package (installed via apt libonnxruntime-dev or prebuilt tarball)
-#   2. manual hint via -DONNXRUNTIME_ROOT=/opt/onnxruntime
-find_package(onnxruntime QUIET)
+# Accept -DONNXRUNTIME_ROOT=<path> or fall back to /opt/onnxruntime.
+# The prebuilt tarball layout is:
+#   <root>/include/onnxruntime/core/session/onnxruntime_cxx_api.h
+#   <root>/lib/libonnxruntime.so
+if(NOT DEFINED ONNXRUNTIME_ROOT)
+  set(ONNXRUNTIME_ROOT "/opt/onnxruntime")
+endif()
+
+find_package(onnxruntime QUIET HINTS "${ONNXRUNTIME_ROOT}/lib/cmake/onnxruntime")
+
 if(NOT onnxruntime_FOUND)
-  # Fallback: locate headers + library manually
-  find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
+  find_path(ONNXRUNTIME_INCLUDE_DIR
+    NAMES onnxruntime_cxx_api.h
     HINTS
-      ${ONNXRUNTIME_ROOT}/include/onnxruntime
-      /opt/onnxruntime/include/onnxruntime
+      "${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session"
+      "${ONNXRUNTIME_ROOT}/include/onnxruntime"
       /usr/include/onnxruntime
+    NO_DEFAULT_PATH
   )
-  find_library(ONNXRUNTIME_LIB onnxruntime
-    HINTS
-      ${ONNXRUNTIME_ROOT}/lib
-      /opt/onnxruntime/lib
-      /usr/lib
+  find_library(ONNXRUNTIME_LIB
+    NAMES onnxruntime
+    HINTS "${ONNXRUNTIME_ROOT}/lib" /usr/lib
+    NO_DEFAULT_PATH
   )
   if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIB)
     message(STATUS "Found ONNX Runtime (manual): ${ONNXRUNTIME_LIB}")
@@ -39,7 +45,10 @@ if(NOT onnxruntime_FOUND)
     )
   else()
     message(FATAL_ERROR
-      "ONNX Runtime not found. Install libonnxruntime-dev or set -DONNXRUNTIME_ROOT=<path>")
+      "ONNX Runtime not found.\n"
+      "  include: ${ONNXRUNTIME_INCLUDE_DIR}\n"
+      "  lib:     ${ONNXRUNTIME_LIB}\n"
+      "Install libonnxruntime-dev or pass -DONNXRUNTIME_ROOT=<path>")
   endif()
 endif()
 
