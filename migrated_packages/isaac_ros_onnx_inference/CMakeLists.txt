@@ -12,16 +12,11 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
-# The Isaac ROS base image ships ORT at /opt/onnxruntime with a pkg-config file.
-# We use pkg-config so no manual path hints are needed.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ONNXRUNTIME REQUIRED libonnxruntime)
-
-add_library(onnxruntime::onnxruntime INTERFACE IMPORTED)
+# Pre-installed in the Isaac ROS base image at /opt/onnxruntime.
+add_library(onnxruntime::onnxruntime SHARED IMPORTED)
 set_target_properties(onnxruntime::onnxruntime PROPERTIES
-  INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIRS}"
-  INTERFACE_LINK_LIBRARIES "${ONNXRUNTIME_LINK_LIBRARIES}"
-  INTERFACE_LINK_OPTIONS "${ONNXRUNTIME_LDFLAGS_OTHER}"
+  IMPORTED_LOCATION "/opt/onnxruntime/lib/libonnxruntime.so"
+  INTERFACE_INCLUDE_DIRECTORIES "/opt/onnxruntime/include"
 )
 
 # ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────

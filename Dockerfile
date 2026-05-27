@@ -17,6 +17,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-detectnet-benchmark \
     ros-jazzy-isaac-ros-grounding-dino-benchmark \
     && rm -rf /var/lib/apt/lists/*
-# NOTE: ONNX Runtime 1.20.1 is pre-installed in the Isaac ROS base image at
-# /opt/onnxruntime — no additional installation needed.
-ENV PKG_CONFIG_PATH="/opt/onnxruntime/lib/pkgconfig:${PKG_CONFIG_PATH}"
+# NOTE: ONNX Runtime 1.20.1 is pre-installed in the Isaac ROS base image at /opt/onnxruntime.
