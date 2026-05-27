@@ -14,4 +14,6 @@ ENV PATH="/opt/ngc-cli:${PATH}"
 # 3. Benchmark packages (this is the layer you'll iterate on; keep it last)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-rtdetr-benchmark \
+    ros-jazzy-isaac-ros-detectnet-benchmark \
+    ros-jazzy-isaac-ros-grounding-dino-benchmark \
     && rm -rf /var/lib/apt/lists/*
