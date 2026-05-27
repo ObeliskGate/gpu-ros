@@ -19,9 +19,21 @@ The upstream source is `isaac_ros_object_detection` (v4.4.0) which contains dete
 
 ## Phase 0: Reproduce NVIDIA Official Benchmarks
 
+### Status
+
+**Completed for the two graphs in scope of Phase 1 migration.** Baseline reproduced on NVIDIA A100-SXM4-40GB (Jetstream2):
+
+| Graph | Ours (A100) | NVIDIA published (RTX 5090) | Status |
+|-------|-------------|------------------------------|--------|
+| RT-DETR | 251.03 fps / 13.18 ms @ 30Hz | 444 fps / 11 ms @ 30Hz | ✅ Reproduced |
+| Grounding DINO | 70.59 fps / 26.77 ms @ 30Hz | 130 fps / 15 ms @ 30Hz | ✅ Reproduced |
+| DetectNet | — | 227 fps / 18 ms @ 30Hz | ⏭️ Skipped (deferred from Phase 1, see Subpackage Status) |
+
+Result JSONs are saved locally (not committed; archived as `rt-detr-baseline.json` / `grounding-dino-baseline.json`).
+
 ### Goal
 
-Run the official `isaac_ros_benchmark` test suite for the three object detection graphs that have published results, and confirm our hardware produces numbers in the same ballpark as NVIDIA's published data.
+Run the official `isaac_ros_benchmark` test suite for the object detection graphs in Phase 1 migration scope and confirm our hardware produces numbers in the same ballpark as NVIDIA's published data.
 
 ### NVIDIA Published Baseline (release-4.4)
 
@@ -35,48 +47,31 @@ Source: https://nvidia-isaac-ros.github.io/performance/index.html
 
 Benchmark scripts & result JSONs: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/tree/release-4.4
 
-### Required Packages
+### Required Debian Packages (provided by Isaac ROS apt repo)
 
 ```
-isaac_ros_benchmark          # benchmark framework + NitrosPlaybackNode
-ros2_benchmark               # core benchmark infrastructure
-isaac_ros_object_detection   # detectnet, rtdetr, grounding_dino
-isaac_ros_dnn_inference      # dnn_image_encoder, tensor_rt, triton
-isaac_ros_image_pipeline     # image_proc (resize, pad, format convert)
-isaac_ros_nitros             # NITROS transport
-isaac_ros_tensor_proc        # ImageToTensor, InterleavedToPlanar, Reshape
+ros-jazzy-isaac-ros-rtdetr-benchmark           # RT-DETR benchmark + isaac_ros_rtdetr graph deps
+ros-jazzy-isaac-ros-grounding-dino-benchmark   # Grounding DINO benchmark + isaac_ros_grounding_dino graph deps
+ros-jazzy-isaac-ros-detectnet-benchmark        # DetectNet (uses Triton, not TensorRT) — install only if running DetectNet
 ```
+
+Each `*-benchmark` package transitively pulls in the corresponding graph implementation
+(`isaac_ros_rtdetr` etc.), the inference backend (`isaac_ros_tensor_rt` for RT-DETR/GDino,
+`isaac_ros_triton` for DetectNet), preprocessing nodes (`isaac_ros_dnn_image_encoder`,
+`isaac_ros_image_proc`, `isaac_ros_tensor_proc`), the `isaac_ros_benchmark` framework with
+`NitrosPlaybackNode`, and the underlying NITROS / GXF runtime.
 
 ### Required Models & Datasets
 
-| Benchmark | Model | Dataset |
-|-----------|-------|---------|
-| DetectNet | `peoplenet/resnet34_peoplenet.onnx` + INT8 calib (NGC: `nvidia/tao/peoplenet`) | `r2b_dataset/r2b_hallway` |
-| RT-DETR | `sdetr/sdetr_grasp.onnx` (FP16 TRT engine) | `r2b_dataset/r2b_robotarm` |
-| Grounding DINO | (see benchmark script) | (see benchmark script) |
+| Benchmark | Model (NGC) | Dataset (NGC) |
+|-----------|-------------|---------------|
+| RT-DETR | `nvidia/isaac/synthetica_detr:1.0.0_onnx` → `models/sdetr/sdetr_grasp.onnx` (FP16 TRT engine generated on first run) | `nvidia/isaac/r2bdataset2024:1` → `datasets/r2b_dataset/r2b_robotarm` |
+| Grounding DINO | `nvidia/tao/grounding_dino:grounding_dino_swin_tiny_commercial_deployable_v1.0` → rename to `models/grounding_dino/grounding_dino_model.onnx` | (reuses `r2b_robotarm`) |
+| DetectNet | `nvidia/tao/peoplenet` (`deployable_quantized_onnx_v2.6.3`): `resnet34_peoplenet.onnx` + `resnet34_peoplenet_int8.txt` + `config.pbtxt` + `labels.txt` | `nvidia/isaac/r2bdataset2023:2` → `datasets/r2b_dataset/r2b_hallway` |
 
-### Environment Setup
+### Reproduction Procedure
 
-```bash
-# 1. Set up Isaac ROS dev environment (Docker-based)
-#    Follow: https://nvidia-isaac-ros.github.io/getting_started/compute/index.html
-
-# 2. Clone isaac_ros_benchmark
-cd ${ISAAC_ROS_WS}/src
-git clone -b release-4.4 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark.git
-
-# 3. Download r2b datasets
-#    Follow: https://nvidia-isaac-ros.github.io/concepts/benchmarking/index.html
-
-# 4. Download models from NGC
-#    PeopleNet: https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tao/models/peoplenet
-#    SyntheticaDETR: bundled with isaac_ros_rtdetr or NGC
-
-# 5. Build workspace
-cd ${ISAAC_ROS_WS}
-colcon build --packages-up-to isaac_ros_benchmark
-source install/setup.bash
-```
+See [`docs/run-benchmark.md`](docs/run-benchmark.md) for the actual commands and gotchas.
 
 ### Running Benchmarks
 
