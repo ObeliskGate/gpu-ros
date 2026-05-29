@@ -1,0 +1,8 @@
+# Treat test image/binary assets as binary so Git never applies text/EOL
+# normalization that would corrupt them. These are committed directly (not LFS).
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.bmp   binary
+*.onnx  binary
+*.plan  binary

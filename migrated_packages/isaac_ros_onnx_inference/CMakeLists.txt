@@ -12,12 +12,12 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
-# Installed via tarball at /opt/onnxruntime. We hardcode paths and deliberately
-# skip find_package(onnxruntime) to avoid the tarball's broken cmake files
-# (lib/lib64 mismatch, wrong INTERFACE_INCLUDE_DIRECTORIES — upstream bug).
+# Use the CUDA-13-matched ORT 1.23.1 that ships with Triton in the base image.
+# Headers are unpacked to /opt/onnxruntime/include (CUDA-version-independent);
+# the shared library is Triton's, so the CUDA EP links the right cuBLAS/cuDNN.
 add_library(onnxruntime::onnxruntime SHARED IMPORTED)
 set_target_properties(onnxruntime::onnxruntime PROPERTIES
-  IMPORTED_LOCATION "/opt/onnxruntime/lib/libonnxruntime.so"
+  IMPORTED_LOCATION "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so"
   INTERFACE_INCLUDE_DIRECTORIES "/opt/onnxruntime/include"
 )
 

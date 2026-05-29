@@ -1,3 +1,6 @@
 .env
 
 inner_docs/
+
+.ccls-cache/
+.ccls

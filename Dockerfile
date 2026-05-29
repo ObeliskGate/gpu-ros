@@ -18,14 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-grounding-dino-benchmark \
     ros-jazzy-isaac-ros-test \
     && rm -rf /var/lib/apt/lists/*
-# 4. ONNX Runtime GPU — full tarball for headers + lib.
-# cmake uses hardcoded paths and does NOT use the tarball's cmake files
-# (which have a known lib/lib64 mismatch bug).
-ARG ORT_VERSION=1.20.1
+# 4. ONNX Runtime — reuse the CUDA-13-matched build that ships with Triton
+# (/opt/tritonserver/backends/onnxruntime, ORT 1.23.1). We only fetch matching
+# headers (header API is CUDA-version-independent); the .so comes from Triton.
+ARG ORT_VERSION=1.23.1
 RUN wget -q -O /tmp/ort.tgz \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" && \
     mkdir -p /opt/onnxruntime && \
-    tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 && \
+    tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 --wildcards "*/include/*" && \
     rm /tmp/ort.tgz && \
-    echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf && \
+    echo "/opt/tritonserver/backends/onnxruntime" > /etc/ld.so.conf.d/onnxruntime.conf && \
     ldconfig
