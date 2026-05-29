@@ -12,7 +12,9 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
-# Pre-installed in the Isaac ROS base image at /opt/onnxruntime.
+# Installed via tarball at /opt/onnxruntime. We hardcode paths and deliberately
+# skip find_package(onnxruntime) to avoid the tarball's broken cmake files
+# (lib/lib64 mismatch, wrong INTERFACE_INCLUDE_DIRECTORIES — upstream bug).
 add_library(onnxruntime::onnxruntime SHARED IMPORTED)
 set_target_properties(onnxruntime::onnxruntime PROPERTIES
   IMPORTED_LOCATION "/opt/onnxruntime/lib/libonnxruntime.so"
@@ -48,4 +50,4 @@ if(BUILD_TESTING)
   target_link_libraries(test_onnx_inference_core onnx_inference_core)
 endif()
 
-ament_auto_package(INSTALL_TO_SHARE launch)
+ament_auto_package(INSTALL_TO_SHARE launch USE_SCOPED_HEADER_INSTALL_DIR)
