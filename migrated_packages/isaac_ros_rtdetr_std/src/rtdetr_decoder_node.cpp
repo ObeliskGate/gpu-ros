@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaac_ros_rtdetr/rtdetr_decoder_node.hpp"
+#include "isaac_ros_rtdetr_std/rtdetr_decoder_node.hpp"
 
 #include <cstring>
 #include <string>
@@ -24,7 +24,7 @@ namespace nvidia
 {
 namespace isaac_ros
 {
-namespace rtdetr
+namespace rtdetr_std
 {
 
 namespace
@@ -101,8 +101,8 @@ void RtDetrDecoderNode::InputCallback(const TensorList::SharedPtr msg)
   pub_->publish(detections);
 }
 
-}  // namespace rtdetr
+}  // namespace rtdetr_std
 }  // namespace isaac_ros
 }  // namespace nvidia
 
-RCLCPP_COMPONENTS_REGISTER_NODE(nvidia::isaac_ros::rtdetr::RtDetrDecoderNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode)

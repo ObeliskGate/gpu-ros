@@ -133,8 +133,8 @@ def generate_test_description():
     # std-ROS2 preprocessor (subscribes via NITROS auto-compat to the chain above).
     rtdetr_preprocessor_node = ComposableNode(
         name='rtdetr_preprocessor',
-        package='isaac_ros_rtdetr',
-        plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
+        package='isaac_ros_rtdetr_std',
+        plugin='nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode',
         namespace=ns,
         parameters=[{'image_width': 640, 'image_height': 480, 'use_max_dim_for_orig_size': False}],
         remappings=[('encoded_tensor', 'reshaped_tensor')]
@@ -158,8 +158,8 @@ def generate_test_description():
 
     rtdetr_decoder_node = ComposableNode(
         name='rtdetr_decoder',
-        package='isaac_ros_rtdetr',
-        plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
+        package='isaac_ros_rtdetr_std',
+        plugin='nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode',
         namespace=ns
     )
 

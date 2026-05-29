@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(isaac_ros_rtdetr LANGUAGES CXX)
+project(isaac_ros_rtdetr_std LANGUAGES CXX)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,12 +14,12 @@ ament_auto_find_build_dependencies()
 # RtDetrPreprocessorNode
 ament_auto_add_library(rtdetr_preprocessor_node SHARED src/rtdetr_preprocessor_node.cpp)
 rclcpp_components_register_nodes(rtdetr_preprocessor_node
-  "nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode")
+  "nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode")
 
 # RtDetrDecoderNode
 ament_auto_add_library(rtdetr_decoder_node SHARED src/rtdetr_decoder_node.cpp)
 rclcpp_components_register_nodes(rtdetr_decoder_node
-  "nvidia::isaac_ros::rtdetr::RtDetrDecoderNode")
+  "nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode")
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

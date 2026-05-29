@@ -5,5 +5,5 @@
 
 Actual snapshot paths:
 - `migrated_packages/isaac_ros_onnx_inference/test/test_cases/single_detection/color_000000.jpg`
-- `migrated_packages/isaac_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`
+- `migrated_packages/isaac_ros_rtdetr_std/test/test_cases/single_detection/color_000000.jpg`
 ## ROS, CUDA, HIP, and external assets

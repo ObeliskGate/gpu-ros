@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>isaac_ros_rtdetr</name>
+  <name>isaac_ros_rtdetr_std</name>
   <version>0.1.0</version>
   <description>RT-DETR preprocessor and decoder nodes using standard ROS2 TensorList (vendor-neutral, no NITROS)</description>
 
