@@ -28,3 +28,6 @@ RUN wget -q -O /tmp/ort.tgz \
     rm /tmp/ort.tgz && \
     echo "/opt/tritonserver/backends/onnxruntime" > /etc/ld.so.conf.d/onnxruntime.conf && \
     ldconfig
+
+# 5. Python deps for model preparation (FP16 conversion).
+RUN pip install --no-cache-dir --break-system-packages onnxconverter-common

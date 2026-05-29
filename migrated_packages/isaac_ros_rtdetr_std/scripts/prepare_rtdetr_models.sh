@@ -28,8 +28,6 @@ fi
 if [[ -f "${FP16_ONNX}" ]]; then
   echo "[skip] FP16 ONNX already exists: ${FP16_ONNX}"
 else
-  python3 -c "import onnxconverter_common" 2>/dev/null || \
-    pip install --quiet --break-system-packages onnxconverter-common
   echo "[run] Converting to FP16 ONNX..."
   python3 "${SCRIPT_DIR}/convert_rtdetr_fp16.py" --input "${FP32_ONNX}" --output "${FP16_ONNX}"
 fi
