@@ -30,13 +30,26 @@ ament_auto_add_library(onnx_inference_core SHARED
 )
 target_link_libraries(onnx_inference_core onnxruntime::onnxruntime)
 
-# ── ROS2 node (std transport) ─────────────────────────────────────────────────
-ament_auto_add_library(onnx_inference_node SHARED
+# ── ROS2 node + transport IO ──────────────────────────────────────────────────
+set(node_sources
   src/onnx_inference_node.cpp
+  src/std_tensor_list_io.cpp
+  src/tensor_list_io_factory.cpp
 )
+if(BUILD_NITROS_TRANSPORT)
+  list(APPEND node_sources src/nitros_tensor_list_io.cpp)
+endif()
+
+ament_auto_add_library(onnx_inference_node SHARED ${node_sources})
 target_link_libraries(onnx_inference_node onnx_inference_core)
 rclcpp_components_register_nodes(onnx_inference_node
   "nvidia::isaac_ros::onnx_inference::OnnxInferenceNode")
+
+if(BUILD_NITROS_TRANSPORT)
+  find_package(CUDAToolkit REQUIRED)
+  target_compile_definitions(onnx_inference_node PRIVATE BUILD_NITROS_TRANSPORT)
+  target_link_libraries(onnx_inference_node CUDA::cudart)
+endif()
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 if(BUILD_TESTING)
@@ -48,6 +61,9 @@ if(BUILD_TESTING)
     test/test_onnx_inference_core.cpp
   )
   target_link_libraries(test_onnx_inference_core onnx_inference_core)
+
+  find_package(launch_testing_ament_cmake REQUIRED)
+  add_launch_test(test/isaac_ros_onnx_rtdetr_pol_test.py TIMEOUT "600")
 endif()
 
 ament_auto_package(INSTALL_TO_SHARE launch USE_SCOPED_HEADER_INSTALL_DIR)

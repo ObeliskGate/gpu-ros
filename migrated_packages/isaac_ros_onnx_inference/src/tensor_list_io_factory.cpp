@@ -12,33 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
-#define ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
+#include <stdexcept>
+#include <string>
 
-#include <memory>
-#include <vector>
-
-#include "rclcpp/rclcpp.hpp"
-
-#include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
 #include "isaac_ros_onnx_inference/tensor_list_io.hpp"
 
 namespace nvidia::isaac_ros::onnx_inference
 {
 
-class OnnxInferenceNode : public rclcpp::Node
+std::unique_ptr<ITensorListIO> CreateStdTensorListIO(rclcpp::Node * node);
+#ifdef BUILD_NITROS_TRANSPORT
+std::unique_ptr<ITensorListIO> CreateNitrosTensorListIO(rclcpp::Node * node);
+#endif
+
+std::unique_ptr<ITensorListIO> CreateTensorListIO(
+  rclcpp::Node * node, const std::string & transport)
 {
-public:
-  explicit OnnxInferenceNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
-
-private:
-  void OnTensors(
-    const std::vector<HostTensor> & inputs, const std_msgs::msg::Header & header);
-
-  std::unique_ptr<OnnxInferenceCore> core_;
-  std::unique_ptr<ITensorListIO> io_;
-};
+  if (transport == "std") {
+    return CreateStdTensorListIO(node);
+  }
+  if (transport == "nitros") {
+#ifdef BUILD_NITROS_TRANSPORT
+    return CreateNitrosTensorListIO(node);
+#else
+    throw std::runtime_error(
+            "transport=nitros requested but built without BUILD_NITROS_TRANSPORT.");
+#endif
+  }
+  throw std::invalid_argument("Unknown transport: " + transport);
+}
 
 }  // namespace nvidia::isaac_ros::onnx_inference
-
-#endif  // ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
