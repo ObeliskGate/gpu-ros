@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>isaac_ros_rtdetr</name>
+  <version>0.1.0</version>
+  <description>RT-DETR preprocessor and decoder nodes using standard ROS2 TensorList (vendor-neutral, no NITROS)</description>
+
+  <maintainer email="maintainer@example.com">Maintainer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>vision_msgs</depend>
+  <depend>isaac_ros_tensor_list_interfaces</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>isaac_ros_test</test_depend>
+  <test_depend>isaac_ros_onnx_inference</test_depend>
+  <test_depend>isaac_ros_image_proc</test_depend>
+  <test_depend>isaac_ros_tensor_proc</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
