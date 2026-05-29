@@ -54,11 +54,23 @@ def generate_launch_description():
             'input_height': input_image_height,
             'output_width': MODEL_INPUT_SIZE,
             'output_height': MODEL_INPUT_SIZE,
-            'keep_aspect_ratio': False,
+            'keep_aspect_ratio': True,
             'encoding_desired': 'rgb8',
-            'disable_padding': False
+            'disable_padding': True
         }],
         remappings=[('image', 'image_rect'), ('camera_info', 'camera_info_rect')],
+    )
+
+    pad_node = ComposableNode(
+        name='pad_node',
+        package='isaac_ros_image_proc',
+        plugin='nvidia::isaac_ros::image_proc::PadNode',
+        parameters=[{
+            'output_image_width': MODEL_INPUT_SIZE,
+            'output_image_height': MODEL_INPUT_SIZE,
+            'padding_type': 'BOTTOM_RIGHT'
+        }],
+        remappings=[('image', 'resize/image')]
     )
 
     image_format_node = ComposableNode(
@@ -70,14 +82,14 @@ def generate_launch_description():
             'image_width': MODEL_INPUT_SIZE,
             'image_height': MODEL_INPUT_SIZE
         }],
-        remappings=[('image_raw', 'resize/image'), ('image', 'image_rgb')]
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
     )
 
     image_to_tensor_node = ComposableNode(
         name='image_to_tensor_node',
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
-        parameters=[{'scale': True, 'tensor_name': 'image'}],
+        parameters=[{'scale': False, 'tensor_name': 'image'}],
         remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
     )
 
@@ -111,7 +123,7 @@ def generate_launch_description():
         parameters=[{
             'image_width': input_image_width,
             'image_height': input_image_height,
-            'use_max_dim_for_orig_size': False,
+            # Match baseline: default use_max_dim_for_orig_size=true ([640,640]).
         }],
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )
@@ -146,7 +158,7 @@ def generate_launch_description():
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[
-            resize_node, image_format_node,
+            resize_node, pad_node, image_format_node,
             image_to_tensor_node, interleave_to_planar_node, reshape_node,
             rtdetr_preprocessor_node, onnx_node, rtdetr_decoder_node
         ],
