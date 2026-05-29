@@ -29,4 +29,10 @@ if(BUILD_TESTING)
   add_launch_test(test/isaac_ros_std_rtdetr_pol_test.py TIMEOUT "600")
 endif()
 
+install(PROGRAMS
+  scripts/prepare_rtdetr_models.sh
+  scripts/convert_rtdetr_fp16.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_auto_package()
