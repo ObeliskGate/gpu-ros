@@ -24,6 +24,7 @@
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
+#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
 
@@ -36,7 +37,7 @@ namespace
 namespace nitros = nvidia::isaac_ros::nitros;
 using nitros::PrimitiveType;
 
-constexpr const char * kFormat = nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
+const std::string kFormat = nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
 
 ONNXTensorElementDataType GxfPrimitiveToOnnx(PrimitiveType pt)
 {
