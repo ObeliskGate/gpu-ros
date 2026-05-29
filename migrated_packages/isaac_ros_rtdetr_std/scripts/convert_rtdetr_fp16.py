@@ -13,49 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Convert the RT-DETR ONNX model to FP16 and sanity-check it.
+"""Convert the RT-DETR ONNX model to FP16.
 
 keep_io_types=True preserves the original input/output dtypes (notably the
 int64 orig_target_sizes input and labels output), so only the internal float32
 weights/activations become float16.
+
+Note: numerical validation of the converted model is intentionally not done
+here. The end-to-end POL tests and the A-vs-D detection comparison (Task 9)
+exercise the real CUDA inference path and verify output correctness; running a
+separate Python onnxruntime check here would add a redundant dependency.
 """
 
 import argparse
 import sys
 
-import numpy as np
 import onnx
 from onnxconverter_common import float16
-import onnxruntime as ort
-
-
-def convert(src_path: str, dst_path: str) -> None:
-    model = onnx.load(src_path)
-    model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
-    onnx.save(model_fp16, dst_path)
-    print(f'Wrote FP16 model: {dst_path}')
-
-
-def sanity_check(model_path: str) -> None:
-    """Run one zero-input inference and assert outputs are finite."""
-    sess = ort.InferenceSession(
-        model_path, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-
-    feeds = {}
-    for inp in sess.get_inputs():
-        # Replace dynamic dims with 1; RT-DETR uses [B,3,640,640] + [B,2].
-        shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
-        if 'int64' in inp.type:
-            feeds[inp.name] = np.full(shape, 640, dtype=np.int64)
-        else:
-            feeds[inp.name] = np.zeros(shape, dtype=np.float32)
-
-    outputs = sess.run(None, feeds)
-    for meta, arr in zip(sess.get_outputs(), outputs):
-        if np.issubdtype(arr.dtype, np.floating) and not np.all(np.isfinite(arr)):
-            raise RuntimeError(f'Output {meta.name} contains NaN/Inf after FP16 conversion')
-        print(f'  output {meta.name}: shape={arr.shape} dtype={arr.dtype}')
-    print('Sanity check passed.')
 
 
 def main() -> int:
@@ -64,8 +38,10 @@ def main() -> int:
     parser.add_argument('--output', required=True, help='Path to write FP16 ONNX model')
     args = parser.parse_args()
 
-    convert(args.input, args.output)
-    sanity_check(args.output)
+    model = onnx.load(args.input)
+    model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
+    onnx.save(model_fp16, args.output)
+    print(f'Wrote FP16 model: {args.output}')
     return 0
 
 
