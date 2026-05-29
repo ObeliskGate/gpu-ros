@@ -1,11 +1,25 @@
-// Copyright 2026 - Apache-2.0
-// Task 1: compile-time smoke test for OnnxInferenceCore.
-// Task 2 will add session-load and inference tests.
+// Copyright 2026 Maintainer
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <gtest/gtest.h>
+
 #include <stdexcept>
+
 #include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
 
 using nvidia::isaac_ros::onnx_inference::ExecutionProvider;
+using nvidia::isaac_ros::onnx_inference::OnnxInferenceCore;
 using nvidia::isaac_ros::onnx_inference::ParseExecutionProvider;
 
 TEST(OnnxInferenceCoreTest, ParseEpCuda)
@@ -21,14 +35,10 @@ TEST(OnnxInferenceCoreTest, ParseEpCpu)
 TEST(OnnxInferenceCoreTest, ParseEpRocmThrows)
 {
   // ROCm EP is not built in Phase 1; requesting it must throw, not silently degrade.
-  EXPECT_THROW(
-    {
-      nvidia::isaac_ros::onnx_inference::OnnxInferenceCore::Config cfg;
-      cfg.model_file_path = "/dev/null";  // won't be opened; EP check happens first
-      cfg.ep = ExecutionProvider::kRocm;
-      nvidia::isaac_ros::onnx_inference::OnnxInferenceCore core(cfg);
-    },
-    std::runtime_error);
+  OnnxInferenceCore::Config cfg;
+  cfg.model_file_path = "/dev/null";  // EP check happens before the model is opened
+  cfg.ep = ExecutionProvider::kRocm;
+  EXPECT_THROW(OnnxInferenceCore core(cfg), std::runtime_error);
 }
 
 TEST(OnnxInferenceCoreTest, ParseEpUnknownThrows)
