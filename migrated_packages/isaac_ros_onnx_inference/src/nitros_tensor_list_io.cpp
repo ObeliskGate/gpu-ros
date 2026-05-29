@@ -37,7 +37,12 @@ namespace
 namespace nitros = nvidia::isaac_ros::nitros;
 using nitros::PrimitiveType;
 
-const std::string kFormat = nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
+const std::string & Format()
+{
+  static const std::string format =
+    nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
+  return format;
+}
 
 ONNXTensorElementDataType GxfPrimitiveToOnnx(PrimitiveType pt)
 {
@@ -75,7 +80,7 @@ public:
   {
     cudaStreamCreate(&stream_);
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-      node_, "tensor_output", kFormat);
+      node_, "tensor_output", Format());
   }
 
   ~NitrosTensorListIO() override
@@ -87,7 +92,7 @@ public:
   {
     callback_ = std::move(callback);
     sub_ = std::make_shared<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
-      node_, "tensor_input", kFormat,
+      node_, "tensor_input", Format(),
       std::bind(&NitrosTensorListIO::OnView, this, std::placeholders::_1));
   }
 
