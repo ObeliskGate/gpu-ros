@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-rtdetr-benchmark \
     ros-jazzy-isaac-ros-detectnet-benchmark \
     ros-jazzy-isaac-ros-grounding-dino-benchmark \
+    ros-jazzy-isaac-ros-test \
     && rm -rf /var/lib/apt/lists/*
 # 4. ONNX Runtime GPU — full tarball for headers + lib.
 # cmake uses hardcoded paths and does NOT use the tarball's cmake files
