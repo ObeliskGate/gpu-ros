@@ -32,6 +32,7 @@ endif()
 install(PROGRAMS
   scripts/prepare_rtdetr_models.sh
   scripts/convert_rtdetr_fp16.py
+  scripts/compare_detections.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
