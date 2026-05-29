@@ -16,8 +16,6 @@
 #define ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
 
 #include <memory>
-#include <string>
-#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
@@ -39,11 +37,6 @@ private:
 
   rclcpp::Subscription<isaac_ros_tensor_list_interfaces::msg::TensorList>::SharedPtr sub_;
   rclcpp::Publisher<isaac_ros_tensor_list_interfaces::msg::TensorList>::SharedPtr pub_;
-
-  std::vector<std::string> input_tensor_names_;
-  std::vector<std::string> input_binding_names_;
-  std::vector<std::string> output_tensor_names_;
-  std::vector<std::string> output_binding_names_;
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference
