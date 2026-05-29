@@ -27,7 +27,6 @@ import sys
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from scipy.optimize import linear_sum_assignment
 from vision_msgs.msg import Detection2DArray
 
 
@@ -56,19 +55,30 @@ def stamp_key(msg):
 
 
 def match_frame(dets_a, dets_b):
-    """Return (matched_ious, matched_score_deltas) for one paired frame."""
+    """Greedy IoU matching for one paired frame.
+
+    Returns (matched_ious, matched_score_deltas). Greedy (highest-IoU-first) is
+    sufficient here because A and D run the same model on the same input, so
+    boxes nearly coincide and greedy matches the optimal assignment.
+    """
     if not dets_a or not dets_b:
         return [], []
-    cost = np.zeros((len(dets_a), len(dets_b)))
+
+    pairs = []
     for i, da in enumerate(dets_a):
         for j, db in enumerate(dets_b):
-            cost[i, j] = -iou(to_xyxy(da), to_xyxy(db))
-    row, col = linear_sum_assignment(cost)
+            pairs.append((iou(to_xyxy(da), to_xyxy(db)), i, j))
+    pairs.sort(reverse=True)
+
+    used_a, used_b = set(), set()
     ious, score_deltas = [], []
-    for i, j in zip(row, col):
-        pair_iou = -cost[i, j]
+    for pair_iou, i, j in pairs:
         if pair_iou <= 0:
+            break
+        if i in used_a or j in used_b:
             continue
+        used_a.add(i)
+        used_b.add(j)
         ious.append(pair_iou)
         sa = dets_a[i].results[0].hypothesis.score if dets_a[i].results else 0.0
         sb = dets_b[j].results[0].hypothesis.score if dets_b[j].results else 0.0
