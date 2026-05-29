@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include <onnxruntime_cxx_api.h>  // NOLINT(build/include_subdir)
+#include "onnxruntime_cxx_api.h"  // NOLINT
 
 namespace nvidia::isaac_ros::onnx_inference
 {
