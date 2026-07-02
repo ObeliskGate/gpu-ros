@@ -14,16 +14,17 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config C benchmark: ONNX Runtime (CUDA EP) + NITROS transport.
+"""Config A_fp32 benchmark: TensorRT FP32 + NITROS.
 
-Isolates the inference-backend cost under NITROS transport: upstream NITROS
-RtDetrPreprocessor/Decoder, with only the inference node swapped from TensorRT
-to OnnxInferenceNode(transport=nitros). Shares framework + preprocessing with
-the other configs (see rtdetr_common).
+This is the precision-aligned counterpart to config C/D, which currently run
+ORT against the FP32 ONNX model. Config A remains the Phase 0 / NVIDIA-style
+TRT FP16 baseline; this script exists only for the fair FP32 2x2 matrix.
 """
 
 import os
 import sys
+
+from isaac_ros_benchmark import TRTConverter
 
 sys.path.append(os.path.dirname(__file__))
 import rtdetr_common as common  # noqa: E402
@@ -35,7 +36,7 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 
 
 def launch_setup(container_prefix, container_sigterm_timeout):
-    ns = TestIsaacROSRtDetrConfigC.generate_namespace()
+    ns = TestIsaacROSRtDetrConfigAFp32.generate_namespace()
 
     preprocessor_node = ComposableNode(
         name='RtdetrPreprocessor',
@@ -46,19 +47,20 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )
 
-    onnx_node = ComposableNode(
-        name='OnnxInference',
+    tensor_rt_node = ComposableNode(
+        name='TensorRt',
         namespace=ns,
-        package='isaac_ros_onnx_inference',
-        plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
+        package='isaac_ros_tensor_rt',
+        plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
         parameters=[{
-            'model_file_path': os.path.join(
-                TestIsaacROSRtDetrConfigC.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'nitros',
-        }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]
+            'engine_file_path': common.TRT_FP32_ENGINE_FILE_PATH,
+            'input_tensor_names': ['images', 'orig_target_sizes'],
+            'input_binding_names': ['images', 'orig_target_sizes'],
+            'output_binding_names': ['labels', 'boxes', 'scores'],
+            'output_tensor_names': ['labels', 'boxes', 'scores'],
+            'verbose': False,
+            'force_engine_update': False
+        }]
     )
 
     decoder_node = ComposableNode(
@@ -79,7 +81,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            preprocessor_node, onnx_node, decoder_node,
+            preprocessor_node, tensor_rt_node, decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -88,14 +90,23 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 
 def generate_test_description():
-    return TestIsaacROSRtDetrConfigC.generate_test_description_with_nsys(launch_setup)
+    model_path = os.path.join(
+        TestIsaacROSRtDetrConfigAFp32.get_assets_root_path(), 'models',
+        common.MODEL_FILE_NAME)
+    if not os.path.isfile(common.TRT_FP32_ENGINE_FILE_PATH):
+        TRTConverter()([
+            f'--onnx={model_path}',
+            f'--saveEngine={common.TRT_FP32_ENGINE_FILE_PATH}',
+            '--skipInference',
+        ])
+    return TestIsaacROSRtDetrConfigAFp32.generate_test_description_with_nsys(launch_setup)
 
 
-class TestIsaacROSRtDetrConfigC(ROS2BenchmarkTest):
-    """Config C: ONNX Runtime + NITROS transport."""
+class TestIsaacROSRtDetrConfigAFp32(ROS2BenchmarkTest):
+    """Config A_fp32: TensorRT FP32 + NITROS."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='Isaac ROS RT-DETR (C: ORT + NITROS)',
+        benchmark_name='Isaac ROS RT-DETR (A_fp32: TRT FP32 + NITROS)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

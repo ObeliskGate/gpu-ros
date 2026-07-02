@@ -14,16 +14,16 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config C benchmark: ONNX Runtime (CUDA EP) + NITROS transport.
+"""Config B_fp32 benchmark: TensorRT FP32 + standard ROS2 transport.
 
-Isolates the inference-backend cost under NITROS transport: upstream NITROS
-RtDetrPreprocessor/Decoder, with only the inference node swapped from TensorRT
-to OnnxInferenceNode(transport=nitros). Shares framework + preprocessing with
-the other configs (see rtdetr_common).
+This pairs with A_fp32/C/D for a precision-aligned FP32 2x2 matrix. Config B
+remains the NVIDIA-style TRT FP16 transport-isolation run.
 """
 
 import os
 import sys
+
+from isaac_ros_benchmark import TRTConverter
 
 sys.path.append(os.path.dirname(__file__))
 import rtdetr_common as common  # noqa: E402
@@ -35,37 +35,51 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 
 
 def launch_setup(container_prefix, container_sigterm_timeout):
-    ns = TestIsaacROSRtDetrConfigC.generate_namespace()
+    ns = TestIsaacROSRtDetrConfigBFp32.generate_namespace()
 
     preprocessor_node = ComposableNode(
         name='RtdetrPreprocessor',
         namespace=ns,
-        package='isaac_ros_rtdetr',
-        plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
-        parameters=[{'image_size': common.NETWORK_RESOLUTION['width']}],
+        package='isaac_ros_rtdetr_std',
+        plugin='nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode',
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )
 
-    onnx_node = ComposableNode(
-        name='OnnxInference',
+    bridge_node = ComposableNode(
+        name='TensorListBridge',
         namespace=ns,
         package='isaac_ros_onnx_inference',
-        plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
+        plugin='nvidia::isaac_ros::onnx_inference::TensorListBridgeNode',
         parameters=[{
-            'model_file_path': os.path.join(
-                TestIsaacROSRtDetrConfigC.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'nitros',
+            'input_transport': 'std',
+            'enable_timing': True,
+            'timing_log_every': 500,
         }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'bridged_tensor')]
+    )
+
+    tensor_rt_node = ComposableNode(
+        name='TensorRt',
+        namespace=ns,
+        package='isaac_ros_tensor_rt',
+        plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
+        parameters=[{
+            'engine_file_path': common.TRT_FP32_ENGINE_FILE_PATH,
+            'input_tensor_names': ['images', 'orig_target_sizes'],
+            'input_binding_names': ['images', 'orig_target_sizes'],
+            'output_binding_names': ['labels', 'boxes', 'scores'],
+            'output_tensor_names': ['labels', 'boxes', 'scores'],
+            'verbose': False,
+            'force_engine_update': False
+        }],
+        remappings=[('tensor_pub', 'bridged_tensor')]
     )
 
     decoder_node = ComposableNode(
         name='RtdetrDecoder',
         namespace=ns,
-        package='isaac_ros_rtdetr',
-        plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
+        package='isaac_ros_rtdetr_std',
+        plugin='nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode',
     )
 
     container = ComposableNodeContainer(
@@ -79,7 +93,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            preprocessor_node, onnx_node, decoder_node,
+            preprocessor_node, bridge_node, tensor_rt_node, decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -88,14 +102,23 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 
 def generate_test_description():
-    return TestIsaacROSRtDetrConfigC.generate_test_description_with_nsys(launch_setup)
+    model_path = os.path.join(
+        TestIsaacROSRtDetrConfigBFp32.get_assets_root_path(), 'models',
+        common.MODEL_FILE_NAME)
+    if not os.path.isfile(common.TRT_FP32_ENGINE_FILE_PATH):
+        TRTConverter()([
+            f'--onnx={model_path}',
+            f'--saveEngine={common.TRT_FP32_ENGINE_FILE_PATH}',
+            '--skipInference',
+        ])
+    return TestIsaacROSRtDetrConfigBFp32.generate_test_description_with_nsys(launch_setup)
 
 
-class TestIsaacROSRtDetrConfigC(ROS2BenchmarkTest):
-    """Config C: ONNX Runtime + NITROS transport."""
+class TestIsaacROSRtDetrConfigBFp32(ROS2BenchmarkTest):
+    """Config B_fp32: TensorRT FP32 + standard ROS2 transport."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='Isaac ROS RT-DETR (C: ORT + NITROS)',
+        benchmark_name='Isaac ROS RT-DETR (B_fp32: TRT FP32 + std ROS2)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

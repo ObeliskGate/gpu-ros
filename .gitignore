@@ -4,3 +4,6 @@ inner_docs/
 
 .ccls-cache/
 .ccls
+
+__pycache__/
+*.pyc

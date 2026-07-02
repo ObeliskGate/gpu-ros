@@ -31,7 +31,11 @@ NETWORK_SIZE = 640  # RT-DETR architecture requires square network resolution
 NETWORK_RESOLUTION = Resolution(NETWORK_SIZE, NETWORK_SIZE)
 ROSBAG_PATH = 'datasets/r2bdataset2024_v1/r2b_robotarm'
 MODEL_FILE_NAME = 'synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx'
-ENGINE_FILE_PATH = '/tmp/sdetr_grasp_fp16.plan'
+TRT_FP16_ENGINE_FILE_PATH = '/tmp/sdetr_grasp.plan'
+TRT_FP32_ENGINE_FILE_PATH = '/tmp/sdetr_grasp_fp32.plan'
+
+# Backward-compatible alias for the Phase 0 / NVIDIA-style TensorRT FP16 path.
+ENGINE_FILE_PATH = TRT_FP16_ENGINE_FILE_PATH
 
 
 def make_preprocessing_nodes(namespace):

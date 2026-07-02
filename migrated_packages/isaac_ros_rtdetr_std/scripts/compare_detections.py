@@ -57,12 +57,15 @@ def stamp_key(msg):
 def match_frame(dets_a, dets_b):
     """Greedy IoU matching for one paired frame.
 
-    Returns (matched_ious, matched_score_deltas). Greedy (highest-IoU-first) is
-    sufficient here because A and D run the same model on the same input, so
-    boxes nearly coincide and greedy matches the optimal assignment.
+    Returns (matched_ious, matched_score_deltas, unmatched_count). Greedy
+    (highest-IoU-first) is sufficient here because the compared pipelines run
+    the same model on the same input, so boxes nearly coincide and greedy
+    matches the optimal assignment.
     """
+    if not dets_a and not dets_b:
+        return [], [], 0
     if not dets_a or not dets_b:
-        return [], []
+        return [], [], max(len(dets_a), len(dets_b))
 
     pairs = []
     for i, da in enumerate(dets_a):
@@ -83,7 +86,8 @@ def match_frame(dets_a, dets_b):
         sa = dets_a[i].results[0].hypothesis.score if dets_a[i].results else 0.0
         sb = dets_b[j].results[0].hypothesis.score if dets_b[j].results else 0.0
         score_deltas.append(abs(sa - sb))
-    return ious, score_deltas
+    unmatched_count = (len(dets_a) - len(used_a)) + (len(dets_b) - len(used_b))
+    return ious, score_deltas, unmatched_count
 
 
 class DetectionComparator(Node):
@@ -94,6 +98,7 @@ class DetectionComparator(Node):
         self.buf_b = {}
         self.frame_ious = []      # mean IoU per paired frame
         self.frame_deltas = []    # mean score delta per paired frame
+        self.frame_passes = []
         self.create_subscription(
             Detection2DArray, topic_a, lambda m: self._on(m, self.buf_a, self.buf_b), 10)
         self.create_subscription(
@@ -103,27 +108,44 @@ class DetectionComparator(Node):
         key = stamp_key(msg)
         if key in other_buf:
             other = other_buf.pop(key)
-            ious, deltas = match_frame(list(msg.detections), list(other.detections))
-            if ious:
-                self.frame_ious.append(float(np.mean(ious)))
-                self.frame_deltas.append(float(np.mean(deltas)))
+            ious, deltas, unmatched_count = match_frame(
+                list(msg.detections), list(other.detections))
+            if not ious and unmatched_count == 0:
+                self.frame_ious.append(1.0)
+                self.frame_deltas.append(0.0)
+                self.frame_passes.append(True)
+            elif not ious:
+                self.frame_ious.append(0.0)
+                self.frame_deltas.append(float('inf'))
+                self.frame_passes.append(False)
+            else:
+                mean_iou = float(np.mean(ious))
+                mean_delta = float(np.mean(deltas))
+                self.frame_ious.append(mean_iou)
+                self.frame_deltas.append(mean_delta)
+                self.frame_passes.append(
+                    unmatched_count == 0 and mean_iou >= 0.95 and mean_delta <= 0.05)
         else:
             own_buf[key] = msg
 
     def report(self):
         if not self.frame_ious:
-            print('No paired frames with matched detections — cannot compare.')
+            print('No paired frames received — cannot compare.')
             return False
         ious = np.array(self.frame_ious)
         deltas = np.array(self.frame_deltas)
-        frame_pass = np.mean((ious >= 0.95) & (deltas <= 0.05))
+        finite_deltas = deltas[np.isfinite(deltas)]
+        delta_mean = finite_deltas.mean() if finite_deltas.size else float('inf')
+        delta_median = np.median(finite_deltas) if finite_deltas.size else float('inf')
+        delta_p95 = np.percentile(finite_deltas, 95) if finite_deltas.size else float('inf')
+        frame_pass = np.mean(np.array(self.frame_passes, dtype=bool))
         print(f'Paired frames: {len(ious)}')
         print(f'IoU   mean={ious.mean():.4f} median={np.median(ious):.4f} '
               f'p95={np.percentile(ious, 95):.4f}')
-        print(f'Score mean={deltas.mean():.4f} median={np.median(deltas):.4f} '
-              f'p95={np.percentile(deltas, 95):.4f}')
+        print(f'Score mean={delta_mean:.4f} median={delta_median:.4f} '
+              f'p95={delta_p95:.4f}')
         print(f'Frames passing per-frame threshold: {frame_pass * 100:.1f}%')
-        ok = ious.mean() >= 0.95 and deltas.mean() <= 0.05 and frame_pass >= 0.90
+        ok = ious.mean() >= 0.95 and delta_mean <= 0.05 and frame_pass >= 0.90
         print('PASS' if ok else 'FAIL')
         return ok
 

@@ -43,6 +43,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
+        parameters=[{'image_size': common.NETWORK_RESOLUTION['width']}],
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )
 

@@ -19,7 +19,10 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
+#include <chrono>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -62,6 +65,8 @@ public:
   {
     const std::string input_transport =
       declare_parameter<std::string>("input_transport", "std");
+    enable_timing_ = declare_parameter<bool>("enable_timing", true);
+    timing_log_every_ = declare_parameter<int>("timing_log_every", 500);
 
     cudaStreamCreate(&stream_);
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
@@ -84,6 +89,8 @@ private:
   void Forward(
     const std::vector<HostTensor> & tensors, const std_msgs::msg::Header & header)
   {
+    const auto start = std::chrono::steady_clock::now();
+
     nitros::NitrosTensorListBuilder builder;
     builder.WithHeader(header);
     for (const auto & ht : tensors) {
@@ -102,9 +109,45 @@ private:
     }
     cudaStreamSynchronize(stream_);
     pub_->publish(builder.Build());
+
+    if (enable_timing_) {
+      const auto end = std::chrono::steady_clock::now();
+      const auto elapsed_us =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+      RecordTiming(static_cast<double>(elapsed_us) / 1000.0);
+    }
+  }
+
+  void RecordTiming(double elapsed_ms)
+  {
+    timings_ms_.push_back(elapsed_ms);
+    if (timing_log_every_ <= 0 ||
+      static_cast<int>(timings_ms_.size()) < timing_log_every_)
+    {
+      return;
+    }
+
+    std::vector<double> sorted = timings_ms_;
+    std::sort(sorted.begin(), sorted.end());
+    const double sum = std::accumulate(sorted.begin(), sorted.end(), 0.0);
+    const double mean = sum / static_cast<double>(sorted.size());
+    const double p95 = sorted.at(
+      std::min(
+        sorted.size() - 1,
+        static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1))));
+    const double max = sorted.back();
+
+    RCLCPP_INFO(
+      get_logger(),
+      "TensorListBridge timing over %zu frames: mean=%.3f ms p95=%.3f ms max=%.3f ms",
+      sorted.size(), mean, p95, max);
+    timings_ms_.clear();
   }
 
   cudaStream_t stream_;
+  bool enable_timing_{true};
+  int timing_log_every_{500};
+  std::vector<double> timings_ms_;
   std::unique_ptr<ITensorListIO> input_io_;
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> pub_;
 };
