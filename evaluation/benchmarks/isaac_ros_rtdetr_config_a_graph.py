@@ -16,10 +16,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Config A benchmark: TensorRT + NITROS (baseline of the 2x2 matrix).
 
-Equivalent to upstream isaac_ros_rtdetr_graph.py, but reuses the same FP16 ONNX
-source as configs B/C/D so all four are strictly same-source (A vs B then
-isolates only NITROS transport). Shares framework + preprocessing via
-rtdetr_common.
+Equivalent to upstream isaac_ros_rtdetr_graph.py. TensorRT builds an FP16 engine
+from the same FP32 ONNX source used by the ORT configs so all four matrix
+entries stay same-source. Shares framework + preprocessing via rtdetr_common.
 """
 
 import os

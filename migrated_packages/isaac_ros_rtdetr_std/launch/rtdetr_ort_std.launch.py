@@ -35,7 +35,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'model_file_path',
             default_value='',
-            description='Absolute path to the FP16 ONNX file'),
+            description='Absolute path to the RT-DETR ONNX file'),
         DeclareLaunchArgument(
             'input_image_width',
             default_value='640',
