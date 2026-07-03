@@ -191,6 +191,30 @@ def test_unpaired_frames_count_against_overall_frame_pass_rate():
     assert not summary['pass']
 
 
+def test_unpaired_frames_can_be_ignored_for_benchmark_sweeps():
+    comparison = compare.compare_frame(
+        frame(0, 1, [make_detection(10, 10, 4, 4)]),
+        frame(0, 1, [make_detection(10, 10, 4, 4)]),
+        thresholds(),
+    )
+
+    summary = compare.summarize(
+        [comparison],
+        reference_frame_count=2,
+        candidate_frame_count=1,
+        unpaired_reference_frames=1,
+        unpaired_candidate_frames=0,
+        thresholds=thresholds(),
+        ignore_unpaired_frames=True,
+    )
+
+    assert summary['total_evaluated_frames'] == 1
+    assert summary['paired_frame_pass_rate'] == 1.0
+    assert summary['frame_pass_rate'] == 1.0
+    assert summary['ignore_unpaired_frames']
+    assert summary['pass']
+
+
 def test_worst_frame_details_prioritizes_failures():
     passing = compare.FrameComparison(
         reference_index=0,
@@ -271,8 +295,6 @@ def test_cli_compares_detection_bags(tmp_path):
             str(SCRIPT_PATH),
             '--reference-bag', str(reference_bag),
             '--candidate-bag', str(candidate_bag),
-            '--reference-topic', topic,
-            '--candidate-topic', topic,
             '--match-policy', 'index',
             '--storage-id', 'sqlite3',
             '--min-paired-frames', '1',

@@ -204,7 +204,7 @@ def read_detection_frames(
     frames: List[DetectionFrame] = []
     while reader.has_next():
         topic_name, data, bag_time_ns = reader.read_next()
-        if not topic_matches(topic_name, topic):
+        if not topic_matches(topic_name, normalized_topic):
             continue
         msg = deserialize_message(data, Detection2DArray)
         frames.append(
@@ -392,11 +392,12 @@ def summarize(
     unpaired_reference_frames: int,
     unpaired_candidate_frames: int,
     thresholds: Thresholds,
+    ignore_unpaired_frames: bool = False,
 ) -> Dict[str, Any]:
     total_evaluated_frames = (
         len(comparisons) +
-        unpaired_reference_frames +
-        unpaired_candidate_frames
+        (0 if ignore_unpaired_frames else unpaired_reference_frames) +
+        (0 if ignore_unpaired_frames else unpaired_candidate_frames)
     )
     if not comparisons:
         return {
@@ -406,6 +407,7 @@ def summarize(
             'candidate_frames': candidate_frame_count,
             'unpaired_reference_frames': unpaired_reference_frames,
             'unpaired_candidate_frames': unpaired_candidate_frames,
+            'ignore_unpaired_frames': ignore_unpaired_frames,
             'frame_pass_rate': 0.0,
             'paired_frame_pass_rate': 0.0,
             'pass': False,
@@ -442,6 +444,7 @@ def summarize(
         'candidate_frames': candidate_frame_count,
         'unpaired_reference_frames': unpaired_reference_frames,
         'unpaired_candidate_frames': unpaired_candidate_frames,
+        'ignore_unpaired_frames': ignore_unpaired_frames,
         'mean_iou': finite_or_none(mean_iou),
         'min_iou': finite_or_none(float(np.min(ious))),
         'p05_iou': finite_or_none(percentile(ious, 5)),
@@ -470,6 +473,8 @@ def print_summary(summary: Dict[str, Any], thresholds: Thresholds) -> None:
     print(f"Candidate frames: {summary['candidate_frames']}")
     print(f"Unpaired frames: reference={summary['unpaired_reference_frames']} "
           f"candidate={summary['unpaired_candidate_frames']}")
+    if summary.get('ignore_unpaired_frames', False):
+        print('Unpaired frames are ignored for overall pass/fail.')
     if summary['paired_frames'] > 0:
         print(f"IoU   mean={summary['mean_iou']:.4f} min={summary['min_iou']:.4f} "
               f"p05={summary['p05_iou']:.4f} median={summary['median_iou']:.4f}")
@@ -530,6 +535,11 @@ def parse_args() -> argparse.Namespace:
                         help='Keep only the top K detections by score. 0 keeps all detections.')
     parser.add_argument('--max-frame-details', type=int, default=20,
                         help='Maximum number of worst frame comparisons to write to JSON.')
+    parser.add_argument(
+        '--ignore-unpaired-frames',
+        action='store_true',
+        help='Do not count unpaired frames against the overall frame pass rate.',
+    )
     return parser.parse_args()
 
 
@@ -562,6 +572,7 @@ def main() -> int:
             unpaired_reference,
             unpaired_candidate,
             thresholds,
+            ignore_unpaired_frames=args.ignore_unpaired_frames,
         )
         report = {
             'status': 'PASS' if summary['pass'] else 'FAIL',
@@ -571,6 +582,7 @@ def main() -> int:
                 'reference_topic': args.reference_topic,
                 'candidate_topic': args.candidate_topic,
                 'match_policy': args.match_policy,
+                'ignore_unpaired_frames': args.ignore_unpaired_frames,
             },
             'filters': {
                 'min_score': detection_filters.min_score,
@@ -599,6 +611,7 @@ def main() -> int:
                 'reference_topic': args.reference_topic,
                 'candidate_topic': args.candidate_topic,
                 'match_policy': args.match_policy,
+                'ignore_unpaired_frames': args.ignore_unpaired_frames,
             },
         }
         print(f'ERROR: {exc}', file=sys.stderr)

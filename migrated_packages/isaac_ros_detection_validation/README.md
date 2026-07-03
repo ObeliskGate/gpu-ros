@@ -38,7 +38,13 @@ Useful options:
 - `--max-detections-per-frame 100`: keep only the top-scoring detections per frame.
 - `--min-frame-pass-rate 0.7`: require this fraction of all evaluated frames to pass.
 - `--max-frame-details 20`: write the worst per-frame comparisons into the JSON report.
+- `--ignore-unpaired-frames`: ignore message-count differences and judge only paired frames.
 
 Unpaired frames count against the overall frame pass rate. This means missing
 messages on either side are treated as validation failures, even if all paired
 frames look good.
+
+For peak-throughput benchmark sweeps, different graph configurations may emit
+different numbers of frames before the benchmark stops. Use
+`--ignore-unpaired-frames` for that case. Leave it off for strict cross-machine
+validation where both runs should cover the same input frames.
