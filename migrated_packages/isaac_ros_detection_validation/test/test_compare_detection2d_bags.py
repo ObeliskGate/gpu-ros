@@ -60,9 +60,32 @@ def thresholds():
     )
 
 
+def detection_filters(min_score=0.0, max_detections_per_frame=0):
+    return compare.DetectionFilters(
+        min_score=min_score,
+        max_detections_per_frame=max_detections_per_frame,
+    )
+
+
 def test_iou_identical_boxes_is_one():
     box = (0.0, 0.0, 10.0, 10.0)
     assert compare.iou(box, box) == 1.0
+
+
+def test_filter_detections_applies_score_and_top_k():
+    detections = [
+        make_detection(0, 0, 1, 1, score=0.30),
+        make_detection(0, 0, 1, 1, score=0.95),
+        make_detection(0, 0, 1, 1, score=0.80),
+    ]
+
+    filtered = compare.filter_detections(
+        detections,
+        detection_filters(min_score=0.50, max_detections_per_frame=1),
+    )
+
+    assert len(filtered) == 1
+    assert compare.detection_score(filtered[0]) == 0.95
 
 
 def test_empty_frames_pass():
@@ -118,6 +141,55 @@ def test_pair_frames_by_stamp():
     assert unpaired_candidate == 1
 
 
+def test_unpaired_frames_count_against_overall_frame_pass_rate():
+    comparison = compare.compare_frame(
+        frame(0, 1, [make_detection(10, 10, 4, 4)]),
+        frame(0, 1, [make_detection(10, 10, 4, 4)]),
+        thresholds(),
+    )
+
+    summary = compare.summarize(
+        [comparison],
+        reference_frame_count=2,
+        candidate_frame_count=1,
+        unpaired_reference_frames=1,
+        unpaired_candidate_frames=0,
+        thresholds=thresholds(),
+    )
+
+    assert summary['paired_frame_pass_rate'] == 1.0
+    assert summary['frame_pass_rate'] == 0.5
+    assert not summary['pass']
+
+
+def test_worst_frame_details_prioritizes_failures():
+    passing = compare.FrameComparison(
+        reference_index=0,
+        candidate_index=0,
+        mean_iou=1.0,
+        mean_score_delta=0.0,
+        class_match_rate=1.0,
+        matched_count=1,
+        unmatched_count=0,
+        passed=True,
+    )
+    failing = compare.FrameComparison(
+        reference_index=1,
+        candidate_index=1,
+        mean_iou=0.0,
+        mean_score_delta=float('inf'),
+        class_match_rate=0.0,
+        matched_count=0,
+        unmatched_count=1,
+        passed=False,
+    )
+
+    details = compare.worst_frame_details([passing, failing], limit=1)
+
+    assert details[0]['reference_index'] == 1
+    assert details[0]['mean_score_delta'] is None
+
+
 def write_detection_bag(path, topic, messages):
     writer = rosbag2_py.SequentialWriter()
     writer.open(
@@ -128,10 +200,19 @@ def write_detection_bag(path, topic, messages):
         ),
     )
 
-    topic_metadata = rosbag2_py.TopicMetadata()
-    topic_metadata.name = topic
-    topic_metadata.type = compare.DETECTION2D_ARRAY_TYPE
-    topic_metadata.serialization_format = 'cdr'
+    try:
+        topic_metadata = rosbag2_py.TopicMetadata(
+            id=0,
+            name=topic,
+            type=compare.DETECTION2D_ARRAY_TYPE,
+            serialization_format='cdr',
+            offered_qos_profiles=[],
+        )
+    except TypeError:
+        topic_metadata = rosbag2_py.TopicMetadata()
+        topic_metadata.name = topic
+        topic_metadata.type = compare.DETECTION2D_ARRAY_TYPE
+        topic_metadata.serialization_format = 'cdr'
     writer.create_topic(topic_metadata)
 
     for index, msg in enumerate(messages):
@@ -177,3 +258,6 @@ def test_cli_compares_detection_bags(tmp_path):
     report = json.loads(output_json.read_text(encoding='utf-8'))
     assert report['status'] == 'PASS'
     assert report['summary']['paired_frames'] == 1
+    assert report['summary']['total_evaluated_frames'] == 1
+    assert report['filters']['min_score'] == 0.0
+    assert len(report['worst_frames']) == 1

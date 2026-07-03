@@ -66,6 +66,12 @@ class Thresholds:
     min_class_match_rate: float
 
 
+@dataclass(frozen=True)
+class DetectionFilters:
+    min_score: float
+    max_detections_per_frame: int
+
+
 def normalize_topic(topic: str) -> str:
     return '/' + topic.strip('/')
 
@@ -99,6 +105,22 @@ def detection_class_id(det: Detection2D) -> str:
     return str(det.results[0].hypothesis.class_id) if det.results else ''
 
 
+def filter_detections(
+    detections: Sequence[Detection2D],
+    detection_filters: DetectionFilters,
+) -> List[Detection2D]:
+    filtered = [
+        detection
+        for detection in detections
+        if detection_score(detection) >= detection_filters.min_score
+    ]
+    if detection_filters.max_detections_per_frame > 0:
+        return sorted(filtered, key=detection_score, reverse=True)[
+            :detection_filters.max_detections_per_frame
+        ]
+    return filtered
+
+
 def to_xyxy(det: Detection2D) -> Tuple[float, float, float, float]:
     cx = float(det.bbox.center.position.x)
     cy = float(det.bbox.center.position.y)
@@ -121,7 +143,12 @@ def iou(
     return intersection / union if union > 0.0 else 0.0
 
 
-def read_detection_frames(bag_path: str, topic: str, storage_id: str = '') -> List[DetectionFrame]:
+def read_detection_frames(
+    bag_path: str,
+    topic: str,
+    detection_filters: DetectionFilters,
+    storage_id: str = '',
+) -> List[DetectionFrame]:
     reader = rosbag2_py.SequentialReader()
     reader.open(
         rosbag2_py.StorageOptions(
@@ -159,7 +186,7 @@ def read_detection_frames(bag_path: str, topic: str, storage_id: str = '') -> Li
                 index=len(frames),
                 stamp_ns=stamp_key(msg),
                 bag_time_ns=int(bag_time_ns),
-                detections=list(msg.detections),
+                detections=filter_detections(msg.detections, detection_filters),
             )
         )
     return frames
@@ -294,6 +321,44 @@ def percentile(values: Sequence[float], pct: float) -> float:
     return float(np.percentile(np.array(values), pct)) if values else float('nan')
 
 
+def comparison_to_dict(comparison: FrameComparison) -> Dict[str, Any]:
+    return {
+        'reference_index': comparison.reference_index,
+        'candidate_index': comparison.candidate_index,
+        'mean_iou': finite_or_none(comparison.mean_iou),
+        'mean_score_delta': finite_or_none(comparison.mean_score_delta),
+        'class_match_rate': finite_or_none(comparison.class_match_rate),
+        'matched_count': comparison.matched_count,
+        'unmatched_count': comparison.unmatched_count,
+        'pass': comparison.passed,
+    }
+
+
+def worst_frame_details(
+    comparisons: Sequence[FrameComparison],
+    limit: int,
+) -> List[Dict[str, Any]]:
+    if limit <= 0:
+        return []
+
+    def sort_key(comparison: FrameComparison) -> Tuple[bool, int, float, float, float]:
+        score_delta = comparison.mean_score_delta
+        if not math.isfinite(score_delta):
+            score_delta = float('inf')
+        return (
+            comparison.passed,
+            -comparison.unmatched_count,
+            comparison.mean_iou,
+            comparison.class_match_rate,
+            -score_delta,
+        )
+
+    return [
+        comparison_to_dict(comparison)
+        for comparison in sorted(comparisons, key=sort_key)[:limit]
+    ]
+
+
 def summarize(
     comparisons: Sequence[FrameComparison],
     reference_frame_count: int,
@@ -302,20 +367,33 @@ def summarize(
     unpaired_candidate_frames: int,
     thresholds: Thresholds,
 ) -> Dict[str, Any]:
+    total_evaluated_frames = (
+        len(comparisons) +
+        unpaired_reference_frames +
+        unpaired_candidate_frames
+    )
     if not comparisons:
         return {
             'paired_frames': 0,
+            'total_evaluated_frames': total_evaluated_frames,
             'reference_frames': reference_frame_count,
             'candidate_frames': candidate_frame_count,
             'unpaired_reference_frames': unpaired_reference_frames,
             'unpaired_candidate_frames': unpaired_candidate_frames,
+            'frame_pass_rate': 0.0,
+            'paired_frame_pass_rate': 0.0,
             'pass': False,
         }
 
     ious = [c.mean_iou for c in comparisons]
     finite_deltas = [c.mean_score_delta for c in comparisons if math.isfinite(c.mean_score_delta)]
     class_rates = [c.class_match_rate for c in comparisons]
-    frame_pass_rate = float(np.mean([c.passed for c in comparisons]))
+    paired_passed_count = int(sum(c.passed for c in comparisons))
+    paired_frame_pass_rate = paired_passed_count / len(comparisons)
+    frame_pass_rate = (
+        paired_passed_count / total_evaluated_frames
+        if total_evaluated_frames > 0 else 0.0
+    )
     unmatched_total = int(sum(c.unmatched_count for c in comparisons))
     unmatched_frames = int(sum(c.unmatched_count > 0 for c in comparisons))
 
@@ -333,19 +411,26 @@ def summarize(
 
     return {
         'paired_frames': len(comparisons),
+        'total_evaluated_frames': total_evaluated_frames,
         'reference_frames': reference_frame_count,
         'candidate_frames': candidate_frame_count,
         'unpaired_reference_frames': unpaired_reference_frames,
         'unpaired_candidate_frames': unpaired_candidate_frames,
         'mean_iou': finite_or_none(mean_iou),
+        'min_iou': finite_or_none(float(np.min(ious))),
+        'p05_iou': finite_or_none(percentile(ious, 5)),
         'median_iou': finite_or_none(float(np.median(ious))),
         'p95_iou': finite_or_none(percentile(ious, 95)),
         'mean_score_delta': finite_or_none(mean_score_delta),
         'median_score_delta': finite_or_none(
             float(np.median(finite_deltas)) if finite_deltas else float('inf')),
         'p95_score_delta': finite_or_none(percentile(finite_deltas, 95)),
+        'max_score_delta': finite_or_none(
+            float(np.max(finite_deltas)) if finite_deltas else float('inf')),
         'mean_class_match_rate': finite_or_none(mean_class_match_rate),
+        'min_class_match_rate': finite_or_none(float(np.min(class_rates))),
         'frame_pass_rate': frame_pass_rate,
+        'paired_frame_pass_rate': paired_frame_pass_rate,
         'unmatched_detections': unmatched_total,
         'unmatched_frames': unmatched_frames,
         'pass': passed,
@@ -354,24 +439,30 @@ def summarize(
 
 def print_summary(summary: Dict[str, Any], thresholds: Thresholds) -> None:
     print(f"Paired frames: {summary['paired_frames']}")
+    print(f"Total evaluated frames: {summary['total_evaluated_frames']}")
     print(f"Reference frames: {summary['reference_frames']}")
     print(f"Candidate frames: {summary['candidate_frames']}")
     print(f"Unpaired frames: reference={summary['unpaired_reference_frames']} "
           f"candidate={summary['unpaired_candidate_frames']}")
     if summary['paired_frames'] > 0:
-        print(f"IoU   mean={summary['mean_iou']:.4f} "
-              f"median={summary['median_iou']:.4f} p95={summary['p95_iou']:.4f}")
+        print(f"IoU   mean={summary['mean_iou']:.4f} min={summary['min_iou']:.4f} "
+              f"p05={summary['p05_iou']:.4f} median={summary['median_iou']:.4f}")
         score_mean = summary['mean_score_delta']
         score_median = summary['median_score_delta']
         score_p95 = summary['p95_score_delta']
+        score_max = summary['max_score_delta']
         print('Score '
               f'mean={format_optional_float(score_mean)} '
               f'median={format_optional_float(score_median)} '
-              f'p95={format_optional_float(score_p95)}')
-        print(f"Class match rate: {summary['mean_class_match_rate']:.4f}")
+              f'p95={format_optional_float(score_p95)} '
+              f'max={format_optional_float(score_max)}')
+        print(f"Class match rate: mean={summary['mean_class_match_rate']:.4f} "
+              f"min={summary['min_class_match_rate']:.4f}")
         print(f"Unmatched detections: total={summary['unmatched_detections']} "
               f"frames={summary['unmatched_frames']}/{summary['paired_frames']}")
-        print(f"Frames passing per-frame threshold: {summary['frame_pass_rate'] * 100:.1f}%")
+        print('Frames passing per-frame threshold: '
+              f"paired={summary['paired_frame_pass_rate'] * 100:.1f}% "
+              f"overall={summary['frame_pass_rate'] * 100:.1f}%")
     print('Thresholds: '
           f'min_paired_frames={thresholds.min_paired_frames}, '
           f'min_mean_iou={thresholds.min_mean_iou:.4f}, '
@@ -405,11 +496,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--min-frame-pass-rate', type=float, default=0.70)
     parser.add_argument('--min-paired-frames', type=int, default=20)
     parser.add_argument('--min-class-match-rate', type=float, default=1.0)
+    parser.add_argument('--min-score', type=float, default=0.0,
+                        help='Drop detections below this confidence score before comparing.')
+    parser.add_argument('--max-detections-per-frame', type=int, default=0,
+                        help='Keep only the top K detections by score. 0 keeps all detections.')
+    parser.add_argument('--max-frame-details', type=int, default=20,
+                        help='Maximum number of worst frame comparisons to write to JSON.')
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    detection_filters = DetectionFilters(
+        min_score=args.min_score,
+        max_detections_per_frame=args.max_detections_per_frame,
+    )
     thresholds = Thresholds(
         min_mean_iou=args.min_mean_iou,
         max_mean_score_delta=args.max_mean_score_delta,
@@ -420,9 +521,9 @@ def main() -> int:
 
     try:
         reference_frames = read_detection_frames(
-            args.reference_bag, args.reference_topic, args.storage_id)
+            args.reference_bag, args.reference_topic, detection_filters, args.storage_id)
         candidate_frames = read_detection_frames(
-            args.candidate_bag, args.candidate_topic, args.storage_id)
+            args.candidate_bag, args.candidate_topic, detection_filters, args.storage_id)
         pairs, unpaired_reference, unpaired_candidate = pair_frames(
             reference_frames, candidate_frames, args.match_policy)
         comparisons = [compare_frame(ref, cand, thresholds) for ref, cand in pairs]
@@ -443,6 +544,10 @@ def main() -> int:
                 'candidate_topic': args.candidate_topic,
                 'match_policy': args.match_policy,
             },
+            'filters': {
+                'min_score': detection_filters.min_score,
+                'max_detections_per_frame': detection_filters.max_detections_per_frame,
+            },
             'thresholds': {
                 'min_mean_iou': thresholds.min_mean_iou,
                 'max_mean_score_delta': thresholds.max_mean_score_delta,
@@ -451,6 +556,7 @@ def main() -> int:
                 'min_class_match_rate': thresholds.min_class_match_rate,
             },
             'summary': summary,
+            'worst_frames': worst_frame_details(comparisons, args.max_frame_details),
         }
         print_summary(summary, thresholds)
         write_report(args.output_json, report)
