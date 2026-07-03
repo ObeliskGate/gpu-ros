@@ -20,11 +20,13 @@ Compare after copying both bags to the same machine:
 ros2 run isaac_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag ./nv_output_bag \
   --candidate-bag ./amd_output_bag \
-  --reference-topic /detections_output \
-  --candidate-topic /detections_output \
   --match-policy index \
   --output-json /tmp/detection_nv_vs_amd.json
 ```
+
+By default the script uses the only `Detection2DArray` topic in each bag. If a
+bag has more than one detection topic, pass `--reference-topic` and
+`--candidate-topic` explicitly.
 
 Use `--match-policy stamp` when both outputs preserve the same input header
 timestamps. Use `--match-policy index` when comparing bags recorded on different

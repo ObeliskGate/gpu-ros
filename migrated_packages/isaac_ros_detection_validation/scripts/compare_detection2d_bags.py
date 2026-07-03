@@ -93,6 +93,36 @@ def resolve_storage_id(bag_path: str, storage_id: str) -> str:
     return ''
 
 
+def resolve_detection_topic(
+    topic_types: Dict[str, str],
+    requested_topic: str,
+    bag_path: str,
+) -> str:
+    if requested_topic and requested_topic != 'auto':
+        normalized_topic = normalize_topic(requested_topic)
+        if normalized_topic not in topic_types:
+            available = ', '.join(sorted(topic_types))
+            raise RuntimeError(
+                f"Topic '{requested_topic}' not found in bag '{bag_path}'. "
+                f"Available topics: {available}")
+        return normalized_topic
+
+    detection_topics = sorted(
+        topic for topic, topic_type in topic_types.items()
+        if topic_type == DETECTION2D_ARRAY_TYPE
+    )
+    if len(detection_topics) == 1:
+        return detection_topics[0]
+    if not detection_topics:
+        available = ', '.join(sorted(topic_types))
+        raise RuntimeError(
+            f"No '{DETECTION2D_ARRAY_TYPE}' topic found in bag '{bag_path}'. "
+            f"Available topics: {available}")
+    raise RuntimeError(
+        f"Multiple '{DETECTION2D_ARRAY_TYPE}' topics found in bag '{bag_path}': "
+        f"{', '.join(detection_topics)}. Specify the topic explicitly.")
+
+
 def stamp_key(msg: Detection2DArray) -> int:
     return int(msg.header.stamp.sec) * 1_000_000_000 + int(msg.header.stamp.nanosec)
 
@@ -165,14 +195,10 @@ def read_detection_frames(
         normalize_topic(t.name): t.type
         for t in reader.get_all_topics_and_types()
     }
-    normalized_topic = normalize_topic(topic)
-    if normalized_topic not in topic_types:
-        available = ', '.join(sorted(topic_types))
-        raise RuntimeError(
-            f"Topic '{topic}' not found in bag '{bag_path}'. Available topics: {available}")
+    normalized_topic = resolve_detection_topic(topic_types, topic, bag_path)
     if topic_types[normalized_topic] != DETECTION2D_ARRAY_TYPE:
         raise RuntimeError(
-            f"Topic '{topic}' has type '{topic_types[normalized_topic]}', "
+            f"Topic '{normalized_topic}' has type '{topic_types[normalized_topic]}', "
             f"expected '{DETECTION2D_ARRAY_TYPE}'.")
 
     frames: List[DetectionFrame] = []
@@ -485,8 +511,10 @@ def parse_args() -> argparse.Namespace:
         description='Compare two vision_msgs/msg/Detection2DArray output bags.')
     parser.add_argument('--reference-bag', required=True)
     parser.add_argument('--candidate-bag', required=True)
-    parser.add_argument('--reference-topic', required=True)
-    parser.add_argument('--candidate-topic', required=True)
+    parser.add_argument('--reference-topic', default='auto',
+                        help="Detection2DArray topic or 'auto' to use the only one in the bag.")
+    parser.add_argument('--candidate-topic', default='auto',
+                        help="Detection2DArray topic or 'auto' to use the only one in the bag.")
     parser.add_argument('--output-json', required=True)
     parser.add_argument('--match-policy', choices=['stamp', 'index'], default='stamp')
     parser.add_argument('--storage-id', default='',

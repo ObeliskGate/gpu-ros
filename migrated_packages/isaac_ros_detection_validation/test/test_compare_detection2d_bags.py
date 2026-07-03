@@ -88,6 +88,35 @@ def test_filter_detections_applies_score_and_top_k():
     assert compare.detection_score(filtered[0]) == 0.95
 
 
+def test_resolve_detection_topic_auto_selects_single_detection_topic():
+    topic = compare.resolve_detection_topic(
+        {
+            '/image': 'sensor_msgs/msg/Image',
+            '/ns/detections_output': compare.DETECTION2D_ARRAY_TYPE,
+        },
+        requested_topic='auto',
+        bag_path='bag',
+    )
+
+    assert topic == '/ns/detections_output'
+
+
+def test_resolve_detection_topic_auto_rejects_multiple_detection_topics():
+    try:
+        compare.resolve_detection_topic(
+            {
+                '/a/detections_output': compare.DETECTION2D_ARRAY_TYPE,
+                '/b/detections_output': compare.DETECTION2D_ARRAY_TYPE,
+            },
+            requested_topic='auto',
+            bag_path='bag',
+        )
+    except RuntimeError as exc:
+        assert 'Multiple' in str(exc)
+    else:
+        raise AssertionError('Expected multiple detection topics to fail')
+
+
 def test_empty_frames_pass():
     result = compare.compare_frame(frame(0, 1, []), frame(0, 1, []), thresholds())
     assert result.passed
