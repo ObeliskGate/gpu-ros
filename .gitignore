@@ -7,3 +7,14 @@ inner_docs/
 
 __pycache__/
 *.pyc
+
+# colcon workspace artifacts
+/build/
+/install/
+/log/
+
+# colcon artifacts accidentally created under benchmark_results
+/migrated_packages/benchmark_results/build/
+/migrated_packages/benchmark_results/install/
+/migrated_packages/benchmark_results/log/
+
