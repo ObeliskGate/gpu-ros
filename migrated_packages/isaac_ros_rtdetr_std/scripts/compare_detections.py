@@ -16,9 +16,8 @@
 """Compare RT-DETR detections between two pipelines (e.g. config A vs config D).
 
 Subscribes to two Detection2DArray topics, pairs messages by header stamp, and
-for each paired frame matches detections via IoU using the Hungarian algorithm.
-Reports mean/median/p95 IoU and score delta, and PASS/FAIL against thresholds
-(mean IoU >= 0.95, mean score delta <= 0.05, >= 90% of frames passing).
+for each paired frame matches detections via IoU. Reports mean/median/p95 IoU,
+score delta, unmatched detections, and PASS/FAIL against configurable thresholds.
 """
 
 import argparse
@@ -92,12 +91,25 @@ def match_frame(dets_a, dets_b):
 
 class DetectionComparator(Node):
 
-    def __init__(self, topic_a, topic_b):
+    def __init__(
+        self,
+        topic_a,
+        topic_b,
+        min_mean_iou,
+        max_mean_score_delta,
+        min_frame_pass_rate,
+        min_paired_frames,
+    ):
         super().__init__('detection_comparator')
+        self.min_mean_iou = min_mean_iou
+        self.max_mean_score_delta = max_mean_score_delta
+        self.min_frame_pass_rate = min_frame_pass_rate
+        self.min_paired_frames = min_paired_frames
         self.buf_a = {}
         self.buf_b = {}
         self.frame_ious = []      # mean IoU per paired frame
         self.frame_deltas = []    # mean score delta per paired frame
+        self.frame_unmatched = []
         self.frame_passes = []
         self.create_subscription(
             Detection2DArray, topic_a, lambda m: self._on(m, self.buf_a, self.buf_b), 10)
@@ -113,18 +125,23 @@ class DetectionComparator(Node):
             if not ious and unmatched_count == 0:
                 self.frame_ious.append(1.0)
                 self.frame_deltas.append(0.0)
+                self.frame_unmatched.append(0)
                 self.frame_passes.append(True)
             elif not ious:
                 self.frame_ious.append(0.0)
                 self.frame_deltas.append(float('inf'))
+                self.frame_unmatched.append(unmatched_count)
                 self.frame_passes.append(False)
             else:
                 mean_iou = float(np.mean(ious))
                 mean_delta = float(np.mean(deltas))
                 self.frame_ious.append(mean_iou)
                 self.frame_deltas.append(mean_delta)
+                self.frame_unmatched.append(unmatched_count)
                 self.frame_passes.append(
-                    unmatched_count == 0 and mean_iou >= 0.95 and mean_delta <= 0.05)
+                    unmatched_count == 0 and
+                    mean_iou >= self.min_mean_iou and
+                    mean_delta <= self.max_mean_score_delta)
         else:
             own_buf[key] = msg
 
@@ -134,18 +151,31 @@ class DetectionComparator(Node):
             return False
         ious = np.array(self.frame_ious)
         deltas = np.array(self.frame_deltas)
+        unmatched = np.array(self.frame_unmatched)
         finite_deltas = deltas[np.isfinite(deltas)]
         delta_mean = finite_deltas.mean() if finite_deltas.size else float('inf')
         delta_median = np.median(finite_deltas) if finite_deltas.size else float('inf')
         delta_p95 = np.percentile(finite_deltas, 95) if finite_deltas.size else float('inf')
         frame_pass = np.mean(np.array(self.frame_passes, dtype=bool))
+        unmatched_frames = int(np.count_nonzero(unmatched))
         print(f'Paired frames: {len(ious)}')
         print(f'IoU   mean={ious.mean():.4f} median={np.median(ious):.4f} '
               f'p95={np.percentile(ious, 95):.4f}')
         print(f'Score mean={delta_mean:.4f} median={delta_median:.4f} '
               f'p95={delta_p95:.4f}')
+        print(f'Unmatched detections: total={int(unmatched.sum())} '
+              f'frames={unmatched_frames}/{len(unmatched)}')
         print(f'Frames passing per-frame threshold: {frame_pass * 100:.1f}%')
-        ok = ious.mean() >= 0.95 and delta_mean <= 0.05 and frame_pass >= 0.90
+        print('Thresholds: '
+              f'min_paired_frames={self.min_paired_frames}, '
+              f'min_mean_iou={self.min_mean_iou:.4f}, '
+              f'max_mean_score_delta={self.max_mean_score_delta:.4f}, '
+              f'min_frame_pass_rate={self.min_frame_pass_rate:.4f}')
+        ok = (
+            len(ious) >= self.min_paired_frames and
+            ious.mean() >= self.min_mean_iou and
+            delta_mean <= self.max_mean_score_delta and
+            frame_pass >= self.min_frame_pass_rate)
         print('PASS' if ok else 'FAIL')
         return ok
 
@@ -156,10 +186,25 @@ def main():
     parser.add_argument('--topic-b', default='/d/detections_output')
     parser.add_argument('--duration', type=float, default=30.0,
                         help='Seconds to collect before reporting')
+    parser.add_argument('--min-mean-iou', type=float, default=0.95,
+                        help='Minimum mean IoU across paired frames')
+    parser.add_argument('--max-mean-score-delta', type=float, default=0.05,
+                        help='Maximum mean score delta across paired frames')
+    parser.add_argument('--min-frame-pass-rate', type=float, default=0.90,
+                        help='Minimum fraction of paired frames passing per-frame thresholds')
+    parser.add_argument('--min-paired-frames', type=int, default=1,
+                        help='Minimum number of paired frames required')
     args = parser.parse_args()
 
     rclpy.init()
-    node = DetectionComparator(args.topic_a, args.topic_b)
+    node = DetectionComparator(
+        args.topic_a,
+        args.topic_b,
+        args.min_mean_iou,
+        args.max_mean_score_delta,
+        args.min_frame_pass_rate,
+        args.min_paired_frames,
+    )
     end = node.get_clock().now().nanoseconds + int(args.duration * 1e9)
     while rclpy.ok() and node.get_clock().now().nanoseconds < end:
         rclpy.spin_once(node, timeout_sec=0.1)
