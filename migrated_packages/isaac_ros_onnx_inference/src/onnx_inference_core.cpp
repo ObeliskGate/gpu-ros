@@ -16,6 +16,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace nvidia::isaac_ros::onnx_inference
@@ -51,34 +52,40 @@ void AppendExecutionProvider(
   int device_id)
 {
   switch (ep) {
-    case ExecutionProvider::kCuda: {
-        OrtCUDAProviderOptions cuda_opts{};
-        cuda_opts.device_id = device_id;
-        opts.AppendExecutionProvider_CUDA(cuda_opts);
-        break;
-      }
-    case ExecutionProvider::kRocm:
-#ifdef ORT_ROCM_AVAILABLE
+    case ExecutionProvider::kCuda:
+#ifdef ORT_CUDA_AVAILABLE
       {
-        OrtROCMProviderOptions rocm_opts{};
-        rocm_opts.device_id = device_id;
-        opts.AppendExecutionProvider_ROCM(rocm_opts);
+        const std::unordered_map<std::string, std::string> provider_options{
+          {"device_id", std::to_string(device_id)}};
+        opts.AppendExecutionProvider("CUDAExecutionProvider", provider_options);
         break;
       }
 #else
       throw std::runtime_error(
-              "ROCm EP requested but not built. Recompile with ORT_ROCM_AVAILABLE.");
+              "CUDA EP requested but not built. Recompile with -DORT_ENABLE_CUDA=ON.");
+#endif
+    case ExecutionProvider::kRocm:
+#ifdef ORT_ROCM_AVAILABLE
+      {
+        const std::unordered_map<std::string, std::string> provider_options{
+          {"device_id", std::to_string(device_id)}};
+        opts.AppendExecutionProvider("ROCMExecutionProvider", provider_options);
+        break;
+      }
+#else
+      throw std::runtime_error(
+              "ROCm EP requested but not built. Recompile with -DORT_ENABLE_ROCM=ON.");
 #endif
     case ExecutionProvider::kMigraphx:
 #ifdef ORT_MIGRAPHX_AVAILABLE
       {
-        OrtMIGraphXProviderOptions migx_opts{};
-        opts.AppendExecutionProvider_MIGraphX(migx_opts);
+        const std::unordered_map<std::string, std::string> provider_options{};
+        opts.AppendExecutionProvider("MIGraphXExecutionProvider", provider_options);
         break;
       }
 #else
       throw std::runtime_error(
-              "MIGraphX EP requested but not built. Recompile with ORT_MIGRAPHX_AVAILABLE.");
+              "MIGraphX EP requested but not built. Recompile with -DORT_ENABLE_MIGRAPHX=ON.");
 #endif
     case ExecutionProvider::kCpu:
       // CPU is the default fallback; no explicit provider needed.
@@ -101,7 +108,16 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
 : env_(ORT_LOGGING_LEVEL_WARNING, "isaac_ros_onnx_inference")
 {
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-  AppendExecutionProvider(session_options_, cfg.ep, cfg.gpu_device_id);
+  if (cfg.ep != ExecutionProvider::kCpu) {
+    session_options_.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+  }
+  try {
+    AppendExecutionProvider(session_options_, cfg.ep, cfg.gpu_device_id);
+  } catch (const Ort::Exception & e) {
+    throw std::runtime_error(
+            "Failed to append requested ONNX Runtime execution provider: " +
+            std::string(e.what()));
+  }
 
   session_ = std::make_unique<Ort::Session>(
     env_, cfg.model_file_path.c_str(), session_options_);

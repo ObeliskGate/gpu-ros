@@ -1,0 +1,37 @@
+services:
+  amd:
+    build:
+      context: .
+      dockerfile: docker/phase2a-amd.Dockerfile
+      args:
+        AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.2.2-complete}
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+        INSTALL_BENCHMARK_DEPS: ${INSTALL_BENCHMARK_DEPS:-0}
+    network_mode: host
+    ipc: host
+    shm_size: 8gb
+    stdin_open: true
+    tty: true
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+      ONNXRUNTIME_ROOT: /opt/onnxruntime
+      ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include
+      ONNXRUNTIME_LIBRARY: /opt/onnxruntime/lib/libonnxruntime.so
+      COLCON_DEFAULTS_FILE: /workspaces/amd_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml
+      ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
+    volumes:
+      - .:/workspaces/amd_ros_object_detection
+      - assets:/workspaces/isaac_ros-dev/assets
+      - ${ONNXRUNTIME_ROOT_HOST:-./third_party/onnxruntime}:/opt/onnxruntime:ro
+    working_dir: /workspaces/amd_ros_object_detection
+
+volumes:
+  assets:
