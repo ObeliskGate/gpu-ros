@@ -10,6 +10,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+
+# RtDetrImageEncoderNode
+ament_auto_add_library(rtdetr_image_encoder_node SHARED src/rtdetr_image_encoder_node.cpp)
+target_include_directories(rtdetr_image_encoder_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(rtdetr_image_encoder_node ${OpenCV_LIBRARIES})
+rclcpp_components_register_nodes(rtdetr_image_encoder_node
+  "nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode")
 
 # RtDetrPreprocessorNode
 ament_auto_add_library(rtdetr_preprocessor_node SHARED src/rtdetr_preprocessor_node.cpp)

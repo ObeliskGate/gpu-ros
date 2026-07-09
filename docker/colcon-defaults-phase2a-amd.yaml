@@ -1,0 +1,10 @@
+build:
+  cmake-args:
+    - -DBUILD_NITROS_TRANSPORT=OFF
+    - -DORT_ENABLE_CUDA=OFF
+    - -DORT_ENABLE_ROCM=OFF
+    - -DORT_ENABLE_MIGRAPHX=ON
+    - -DONNXRUNTIME_ROOT=/opt/onnxruntime
+  symlink-install: true
+test:
+  packages-select:

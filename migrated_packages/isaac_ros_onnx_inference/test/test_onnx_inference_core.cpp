@@ -32,13 +32,38 @@ TEST(OnnxInferenceCoreTest, ParseEpCpu)
   EXPECT_EQ(ParseExecutionProvider("cpu"), ExecutionProvider::kCpu);
 }
 
+TEST(OnnxInferenceCoreTest, ParseEpRocm)
+{
+  EXPECT_EQ(ParseExecutionProvider("rocm"), ExecutionProvider::kRocm);
+}
+
+TEST(OnnxInferenceCoreTest, ParseEpMigraphx)
+{
+  EXPECT_EQ(ParseExecutionProvider("migraphx"), ExecutionProvider::kMigraphx);
+}
+
 TEST(OnnxInferenceCoreTest, ParseEpRocmThrows)
 {
-  // ROCm EP is not built in Phase 1; requesting it must throw, not silently degrade.
+#ifndef ORT_ROCM_AVAILABLE
   OnnxInferenceCore::Config cfg;
   cfg.model_file_path = "/dev/null";  // EP check happens before the model is opened
   cfg.ep = ExecutionProvider::kRocm;
   EXPECT_THROW(OnnxInferenceCore core(cfg), std::runtime_error);
+#else
+  GTEST_SKIP() << "ROCm EP was enabled for this build.";
+#endif
+}
+
+TEST(OnnxInferenceCoreTest, ParseEpMigraphxThrows)
+{
+#ifndef ORT_MIGRAPHX_AVAILABLE
+  OnnxInferenceCore::Config cfg;
+  cfg.model_file_path = "/dev/null";  // EP check happens before the model is opened
+  cfg.ep = ExecutionProvider::kMigraphx;
+  EXPECT_THROW(OnnxInferenceCore core(cfg), std::runtime_error);
+#else
+  GTEST_SKIP() << "MIGraphX EP was enabled for this build.";
+#endif
 }
 
 TEST(OnnxInferenceCoreTest, ParseEpUnknownThrows)

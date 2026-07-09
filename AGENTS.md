@@ -8,14 +8,16 @@ The upstream source is `isaac_ros_object_detection` (v4.4.0) which contains dete
 
 ## Long-term Goals
 
-0. **Phase 0 (current)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
+0. **Phase 0 (completed)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
 1. **Phase 1**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using standard ROS2 `isaac_ros_tensor_list_interfaces` messages. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2×2 matrix of inference backend × transport):
    - (A) TensorRT + NITROS (baseline)
    - (B) TensorRT + standard ROS2 interfaces (isolate NITROS overhead)
    - (C) ONNX Runtime + NITROS (isolate inference backend overhead)
    - (D) ONNX Runtime + standard ROS2 interfaces (target)
-2. **Phase 2**: Port the pipeline to AMD GPU using ONNX Runtime ROCm EP or MIGraphX EP.
-3. **Phase 3**: Extend to RT-DETR and Grounding DINO pipelines.
+2. **Phase 2a (current)**: Port the RT-DETR target pipeline to AMD using only standard ROS2 transport and ONNX Runtime MIGraphX EP:
+   `Image -> std image encoder -> official TensorList -> ONNX Runtime MIGraphX -> std decoder -> Detection2DArray`.
+3. **Phase 2b (future, separate repository)**: Build a reusable AMD TensorList transport/runtime layer similar to the transport subset of NITROS. This repository documents the boundary only; it does not implement or depend on Phase 2b.
+4. **Phase 3**: Extend the migrated AMD/std ROS2 pattern to Grounding DINO and other deferred object detection pipelines.
 
 ## Phase 0: Reproduce NVIDIA Official Benchmarks
 
@@ -99,6 +101,46 @@ launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_grounding_dino_benchmar
 - TRT engine files are generated on first run via `trtexec`; first run will be slow
 - Our hardware GPU model will differ from NVIDIA's test rigs; document the delta
 
+## Phase 2a: AMD Standard ROS2 RT-DETR Port
+
+### Scope
+
+Phase 2a is implemented in this repository. It covers only the production target path for AMD:
+
+```
+Image -> RtDetrImageEncoderNode (std ROS2)
+      -> RtDetrPreprocessorNode (official TensorList)
+      -> OnnxInferenceNode (transport=std, execution_provider=migraphx)
+      -> RtDetrDecoderNode (std ROS2)
+      -> Detection2DArray
+```
+
+Phase 2a does **not** reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking only measures the target standard ROS2 + ONNX Runtime MIGraphX path. NVIDIA A100 Phase 1 results remain the reference for performance and offline numeric comparison.
+
+### Requirements
+
+- Use the existing official `isaac_ros_tensor_list_interfaces/msg/TensorList`; do not add a custom TensorList message in this repository.
+- ONNX Runtime must be discoverable through `ONNXRUNTIME_ROOT`, or through explicit `ONNXRUNTIME_INCLUDE_DIR` and `ONNXRUNTIME_LIBRARY` CMake parameters.
+- Build AMD/CPU standard ROS2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present.
+- Build MIGraphX support explicitly with `-DORT_ENABLE_MIGRAPHX=ON`. If `execution_provider:=migraphx` is requested without that build flag, the node must fail clearly instead of silently falling back to CPU.
+
+### Benchmark And Validation
+
+- Run the Phase 2a AMD benchmark script for the standard ROS2 + MIGraphX graph and archive JSON results under `migrated_packages/benchmark_results/`.
+- Compare AMD `Detection2DArray` output against the existing A100 Phase 1 baseline bag using `migrated_packages/isaac_ros_detection_validation/scripts/compare_detection2d_bags.py`.
+- Prefer strict same-input validation. If cross-machine timestamps differ, use index-based matching and document that choice in the result notes.
+
+## Phase 2b: Future AMD TensorList Transport Runtime
+
+Phase 2b is intentionally out of scope for this repository and should be developed as a future independent repository. It may provide:
+
+- AMD device-buffer TensorList transport.
+- Same-process zero-copy transport for component containers.
+- Future cross-process transport once the device-memory ownership and synchronization contract is defined.
+- Component/container helper APIs for wiring AMD TensorList publishers and subscribers.
+
+Phase 2b must not contain object detection model logic. It must not implement RT-DETR/YOLO/Grounding DINO decoders, detection postprocessing, model-specific preprocessing, or a GXF graph runtime replacement. Phase 2a must not wait for Phase 2b.
+
 ## Architecture
 
 ### Original pipeline (NVIDIA-only)
@@ -109,6 +151,11 @@ Image → dnn_image_encoder (NITROS) → TensorRTNode (NITROS) → DecoderNode (
 ### Target pipeline (vendor-neutral)
 ```
 Image → ImageEncoder (std ROS2) → OnnxInferenceNode (std ROS2 TensorList) → DecoderNode (std ROS2 TensorList) → Detection2DArray
+```
+
+### Phase 2a AMD target pipeline
+```
+Image → RtDetrImageEncoderNode → RtDetrPreprocessorNode → OnnxInferenceNode(transport=std, EP=MIGraphX) → RtDetrDecoderNode → Detection2DArray
 ```
 
 ## Subpackage Status
@@ -128,6 +175,7 @@ Image → ImageEncoder (std ROS2) → OnnxInferenceNode (std ROS2 TensorList) �
 - `isaac_ros_tensor_rt` (TensorRTNode) → new ONNX Runtime inference node
 - `isaac_ros_dnn_image_encoder` (NITROS-based) → simple OpenCV-based image encoder node
 - `cudaMemcpyAsync` in decoders → host-memory tensor access (data already on host in std msg)
+- Custom TensorList messages are out of scope; use `isaac_ros_tensor_list_interfaces/msg/TensorList`.
 
 ## Build System
 
@@ -145,7 +193,7 @@ Image → ImageEncoder (std ROS2) → OnnxInferenceNode (std ROS2 TensorList) �
 
 ## Profiling Plan
 
-Compare four configurations on the same NVIDIA GPU (2×2 matrix):
+Phase 1 compares four configurations on the same NVIDIA GPU (2×2 matrix):
 
 | Config | Inference Backend | Transport | Purpose |
 |--------|------------------|-----------|---------|
@@ -159,3 +207,5 @@ Metrics:
 - Inference-only latency (tensor in → tensor out)
 - Throughput (FPS at sustained load)
 - GPU memory usage
+
+Phase 2a AMD profiling measures only the target path: ONNX Runtime MIGraphX + standard ROS2 TensorList. Report it beside the Phase 1 A100 TensorRT+NITROS baseline and A100 ORT+std target; do not create an AMD A/B/C/D matrix in this repository.
