@@ -50,6 +50,10 @@ def generate_launch_description():
             default_value='cuda',
             description='ONNX Runtime execution provider (cuda/rocm/migraphx/cpu)'),
         DeclareLaunchArgument(
+            'ort_profile_prefix',
+            default_value='',
+            description='Enable ORT profiling and write JSON using this path prefix'),
+        DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
             description='Minimum score for a bounding box to be published'),
@@ -59,6 +63,7 @@ def generate_launch_description():
     input_image_height = LaunchConfiguration('input_image_height')
     model_file_path = LaunchConfiguration('model_file_path')
     execution_provider = LaunchConfiguration('execution_provider')
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     resize_node = ComposableNode(
@@ -154,6 +159,7 @@ def generate_launch_description():
         parameters=[{
             'model_file_path': model_file_path,
             'execution_provider': execution_provider,
+            'ort_profile_prefix': ort_profile_prefix,
             'transport': 'std',
         }],
         remappings=[

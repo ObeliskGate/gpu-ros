@@ -14,6 +14,7 @@
 
 #include "isaac_ros_onnx_inference/onnx_inference_node.hpp"
 
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("execution_provider", "cuda");
   const int gpu_device_id =
     declare_parameter<int>("gpu_device_id", 0);
+  const std::string ort_profile_prefix =
+    declare_parameter<std::string>("ort_profile_prefix", "");
   const std::string transport =
     declare_parameter<std::string>("transport", "std");
 
@@ -49,16 +52,39 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   cfg.model_file_path = model_file_path;
   cfg.ep = ParseExecutionProvider(ep_str);
   cfg.gpu_device_id = gpu_device_id;
+  cfg.ort_profile_prefix = ort_profile_prefix;
   core_ = std::make_unique<OnnxInferenceCore>(cfg);
 
   RCLCPP_INFO(
     get_logger(),
-    "Loaded model '%s' with %zu inputs, %zu outputs, EP=%s, transport=%s",
+    "Loaded model '%s' with %zu inputs, %zu outputs, EP=%s, transport=%s, "
+    "CPU fallback=allowed",
     model_file_path.c_str(),
     core_->GetInputCount(),
     core_->GetOutputCount(),
     ep_str.c_str(),
     transport.c_str());
+
+  if (core_->IsProfilingEnabled()) {
+    RCLCPP_INFO(
+      get_logger(),
+      "ONNX Runtime profiling enabled with prefix '%s'. The profile is finalized on shutdown.",
+      ort_profile_prefix.c_str());
+  }
+}
+
+OnnxInferenceNode::~OnnxInferenceNode()
+{
+  if (!core_ || !core_->IsProfilingEnabled()) {
+    return;
+  }
+
+  try {
+    const std::string profile_path = core_->EndProfiling();
+    RCLCPP_INFO(get_logger(), "ONNX Runtime profile written to '%s'.", profile_path.c_str());
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR(get_logger(), "Failed to finalize ONNX Runtime profile: %s", e.what());
+  }
 }
 
 void OnnxInferenceNode::OnTensors(

@@ -49,6 +49,7 @@ public:
     std::string model_file_path;
     ExecutionProvider ep{ExecutionProvider::kCuda};
     int gpu_device_id{0};
+    std::string ort_profile_prefix;
   };
 
   explicit OnnxInferenceCore(const Config & cfg);
@@ -62,12 +63,15 @@ public:
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
+  bool IsProfilingEnabled() const;
+  std::string EndProfiling();
 
 private:
   Ort::Env env_;
   Ort::SessionOptions session_options_;
   std::unique_ptr<Ort::Session> session_;
   Ort::AllocatorWithDefaultOptions allocator_;
+  bool profiling_enabled_{false};
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

@@ -108,8 +108,9 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
 : env_(ORT_LOGGING_LEVEL_WARNING, "isaac_ros_onnx_inference")
 {
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-  if (cfg.ep != ExecutionProvider::kCpu) {
-    session_options_.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+  if (!cfg.ort_profile_prefix.empty()) {
+    session_options_.EnableProfiling(cfg.ort_profile_prefix.c_str());
+    profiling_enabled_ = true;
   }
   try {
     AppendExecutionProvider(session_options_, cfg.ep, cfg.gpu_device_id);
@@ -134,6 +135,18 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
 
 size_t OnnxInferenceCore::GetInputCount() const {return session_->GetInputCount();}
 size_t OnnxInferenceCore::GetOutputCount() const {return session_->GetOutputCount();}
+bool OnnxInferenceCore::IsProfilingEnabled() const {return profiling_enabled_;}
+
+std::string OnnxInferenceCore::EndProfiling()
+{
+  if (!profiling_enabled_) {
+    return {};
+  }
+
+  auto profile_path = session_->EndProfilingAllocated(allocator_);
+  profiling_enabled_ = false;
+  return profile_path ? profile_path.get() : std::string{};
+}
 
 std::vector<HostTensor> OnnxInferenceCore::RunInference(
   const std::vector<HostTensor> & inputs)

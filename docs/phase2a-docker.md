@@ -135,6 +135,30 @@ ros2 launch isaac_ros_rtdetr_std rtdetr_ort_std_image.launch.py \
 
 For bag replay, run `ros2 bag play` in another shell and remap or set `image_topic` to the bag image topic.
 
+## Audit ONNX Runtime Provider Placement
+
+Normal inference allows ONNX Runtime to place unsupported or CPU-preferred graph
+nodes on its default CPU EP. This matches the Phase 1 NVIDIA behavior. Requesting
+an execution provider that was not built remains an error.
+
+Enable an ORT profile for a short representative run:
+
+```bash
+mkdir -p /tmp/ort_profiles
+ros2 launch isaac_ros_rtdetr_std rtdetr_ort_std_image.launch.py model_file_path:=/workspaces/isaac_ros-dev/assets/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx execution_provider:=migraphx image_topic:=/camera_1/color/image_raw ort_profile_prefix:=/tmp/ort_profiles/rtdetr_migraphx
+```
+
+After at least one inference, stop the launch cleanly. Then inspect which
+providers actually executed graph nodes:
+
+```bash
+ros2 run isaac_ros_onnx_inference summarize_ort_profile.py /tmp/ort_profiles/rtdetr_migraphx_*.json --expected-provider MIGraphXExecutionProvider --output-json /tmp/ort_profiles/provider_report_migraphx.json
+```
+
+To make CPU assignment fail an automated audit, add
+`--require-no-cpu-nodes`. Do not enable profiling for final benchmark numbers;
+the per-node event collection adds overhead and can produce a large JSON file.
+
 ## Run Port Tests
 
 After building and sourcing the workspace inside the container:

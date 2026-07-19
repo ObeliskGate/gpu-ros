@@ -30,6 +30,7 @@ class OnnxInferenceNode : public rclcpp::Node
 {
 public:
   explicit OnnxInferenceNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  ~OnnxInferenceNode() override;
 
 private:
   void OnTensors(

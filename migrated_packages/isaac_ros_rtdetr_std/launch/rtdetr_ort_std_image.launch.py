@@ -60,6 +60,10 @@ def generate_launch_description():
             default_value='0',
             description='GPU device id for providers that support it'),
         DeclareLaunchArgument(
+            'ort_profile_prefix',
+            default_value='',
+            description='Enable ORT profiling and write JSON using this path prefix'),
+        DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
             description='Minimum score for a bounding box to be published'),
@@ -72,6 +76,7 @@ def generate_launch_description():
     input_image_height = LaunchConfiguration('input_image_height')
     execution_provider = LaunchConfiguration('execution_provider')
     gpu_device_id = LaunchConfiguration('gpu_device_id')
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     image_encoder_node = ComposableNode(
@@ -104,6 +109,7 @@ def generate_launch_description():
             'model_file_path': model_file_path,
             'execution_provider': execution_provider,
             'gpu_device_id': gpu_device_id,
+            'ort_profile_prefix': ort_profile_prefix,
             'transport': 'std',
         }],
         remappings=[

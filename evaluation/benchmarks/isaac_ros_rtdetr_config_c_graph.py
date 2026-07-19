@@ -56,6 +56,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 TestIsaacROSRtDetrConfigC.get_assets_root_path(),
                 'models', common.MODEL_FILE_NAME),
             'execution_provider': 'cuda',
+            'ort_profile_prefix': os.environ.get('ORT_PROFILE_PREFIX', ''),
             'transport': 'nitros',
         }],
         remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]

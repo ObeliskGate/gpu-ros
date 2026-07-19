@@ -37,6 +37,7 @@ def generate_launch_description():
         DeclareLaunchArgument('input_image_width', default_value='640'),
         DeclareLaunchArgument('input_image_height', default_value='480'),
         DeclareLaunchArgument('execution_provider', default_value='cuda'),
+        DeclareLaunchArgument('ort_profile_prefix', default_value=''),
         DeclareLaunchArgument('confidence_threshold', default_value='0.6'),
     ]
 
@@ -44,6 +45,7 @@ def generate_launch_description():
     input_image_height = LaunchConfiguration('input_image_height')
     model_file_path = LaunchConfiguration('model_file_path')
     execution_provider = LaunchConfiguration('execution_provider')
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     resize_node = ComposableNode(
@@ -137,6 +139,7 @@ def generate_launch_description():
         parameters=[{
             'model_file_path': model_file_path,
             'execution_provider': execution_provider,
+            'ort_profile_prefix': ort_profile_prefix,
             'transport': 'nitros',
         }],
         remappings=[

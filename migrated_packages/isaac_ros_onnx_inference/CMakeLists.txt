@@ -117,6 +117,11 @@ target_link_libraries(onnx_inference_node onnx_inference_core)
 rclcpp_components_register_nodes(onnx_inference_node
   "nvidia::isaac_ros::onnx_inference::OnnxInferenceNode")
 
+install(PROGRAMS
+  scripts/summarize_ort_profile.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 if(BUILD_NITROS_TRANSPORT)
   find_package(isaac_ros_nitros QUIET)
   find_package(isaac_ros_managed_nitros QUIET)
@@ -155,6 +160,11 @@ if(BUILD_TESTING)
     $<$<BOOL:${ORT_ENABLE_CUDA}>:ORT_CUDA_AVAILABLE>
     $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
     $<$<BOOL:${ORT_ENABLE_MIGRAPHX}>:ORT_MIGRAPHX_AVAILABLE>
+  )
+
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_summarize_ort_profile
+    test/test_summarize_ort_profile.py
   )
 
   if(BUILD_NITROS_TRANSPORT)
