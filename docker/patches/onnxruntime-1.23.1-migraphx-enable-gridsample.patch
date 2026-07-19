@@ -1,0 +1,18 @@
+Upstream-Status: Not submitted
+Applies-To: ONNX Runtime v1.23.1
+Reason: MIGraphX 7.1.1 implements the ONNX GridSample parser, but the
+        ONNX Runtime MIGraphX EP capability allowlist omits GridSample.
+Risk: Changes provider graph assignment; validate provider placement and
+      model outputs before using benchmark results.
+
+diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+--- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
++++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+@@ -904,6 +904,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
+                                                     "GlobalMaxPool",
+                                                     "Greater",
+                                                     "GreaterOrEqual",
++                                                    "GridSample",
+                                                     "GroupNormalization",
+                                                     "GroupNorm",
+                                                     "GroupQueryAttention",

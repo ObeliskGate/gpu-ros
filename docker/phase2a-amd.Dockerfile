@@ -46,6 +46,12 @@ WORKDIR /opt/src/onnxruntime
 COPY docker/patches/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch /tmp/
 RUN patch -p1 < /tmp/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch
 
+# MIGraphX 7.1.1 implements GridSample, but ORT 1.23.1 omits it from the
+# MIGraphX EP capability allowlist. Fail if the pinned source no longer matches.
+COPY docker/patches/onnxruntime-1.23.1-migraphx-enable-gridsample.patch /tmp/
+RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch \
+    && git apply /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch
+
 RUN ./build.sh \
       --config Release \
       --parallel "${ORT_BUILD_JOBS}" \
