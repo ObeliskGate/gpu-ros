@@ -12,9 +12,9 @@ __pycache__/
 /build/
 /install/
 /log/
+/third_party/
 
 # colcon artifacts accidentally created under benchmark_results
 /migrated_packages/benchmark_results/build/
 /migrated_packages/benchmark_results/install/
 /migrated_packages/benchmark_results/log/
-

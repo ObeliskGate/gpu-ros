@@ -14,20 +14,23 @@ The existing `dev` compose service remains the NVIDIA Isaac ROS baseline environ
 
 - AMD GPU compute device visible to containers as `/dev/kfd` and `/dev/dri`.
 - Docker Engine with permission to pass those devices into the container.
-- A MIGraphX-enabled ONNX Runtime installation on the host, mounted into the container at `/opt/onnxruntime`.
+- Git and network access for the first image build.
 
 If `/dev/kfd` is not present on the host, the `amd` profile will not run the GPU path. On WSL, verify device exposure first; otherwise use an AMD Linux server.
 
-## ONNX Runtime Layout
+## Pinned Runtime Versions
 
-The compose profile mounts `ONNXRUNTIME_ROOT_HOST` to `/opt/onnxruntime`. The mounted directory must contain:
+The image builds its own C++ ONNX Runtime installation. No host ORT installation
+or `ONNXRUNTIME_ROOT_HOST` mount is required.
 
-```bash
-/opt/onnxruntime/include/onnxruntime_cxx_api.h
-/opt/onnxruntime/lib/libonnxruntime.so
-```
+| Dependency | Default | Reason |
+|------------|---------|--------|
+| ONNX Runtime | 1.23.1 | Matches the final Phase 1 NVIDIA environment |
+| ROCm | 7.1.1 | AMD-supported ROCm pairing for ORT 1.23.1 |
+| Isaac ROS common | v4.4-0 | Matches the Phase 0/1 Isaac ROS release |
 
-The `libonnxruntime.so` must be built with MIGraphX EP support. If it is not, `execution_provider:=migraphx` should fail during session creation instead of falling back to CPU.
+The Dockerfile builds ORT with MIGraphX in a builder stage. Only its headers and
+runtime libraries are copied to the final ROS image.
 
 ## Isaac ROS TensorList Interface
 
@@ -37,51 +40,56 @@ Phase 2a still uses the official message package:
 isaac_ros_tensor_list_interfaces/msg/TensorList
 ```
 
-The Dockerfile installs `ros-jazzy-isaac-ros-tensor-list-interfaces` only if that package is available from configured apt sources. If your AMD base image does not have the Isaac ROS apt source, provide the official `isaac_ros_tensor_list_interfaces` package in the workspace before building `isaac_ros_onnx_inference` and `isaac_ros_rtdetr_std`.
+The bootstrap script checks out the official `isaac_ros_common` v4.4 release
+under the ignored `third_party/` directory and builds only the TensorList
+interface package needed by Phase 2a.
 
 Do not add a custom TensorList message package in this repository.
 
-## Configure
+## One-command Setup
 
-Start from the example env file:
+On a new AMD development machine:
+
+```bash
+./docker/phase2a-amd.sh bootstrap
+```
+
+This command:
+
+1. Checks `/dev/kfd`, `/dev/dri`, Docker, and Docker Compose.
+2. Fetches the official TensorList interface at the pinned Isaac ROS release.
+3. Builds ORT 1.23.1 with MIGraphX inside the ROCm 7.1.1 image.
+4. Starts the AMD container.
+5. Builds and verifies the Phase 2a ROS packages.
+
+The first run builds ONNX Runtime from source and is slow. Docker caches that
+stage for subsequent runs. Colcon `build`, `install`, and `log` directories use
+named volumes, so the bind-mounted repository does not receive root-owned build
+artifacts.
+
+## Optional Configuration
+
+Defaults work without an env file. To override them:
 
 ```bash
 cp .env.phase2a-amd.example .env.phase2a-amd
 ```
 
-Edit at least:
+`ORT_BUILD_JOBS` limits the ORT source-build parallelism. Keep
+`INSTALL_BENCHMARK_DEPS=0` unless `ros-jazzy-ros2-benchmark` is available.
+
+## Enter The Container
 
 ```bash
-AMD_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.2.2-complete
-ONNXRUNTIME_ROOT_HOST=/absolute/path/to/migraphx-enabled/onnxruntime
-```
-
-`INSTALL_BENCHMARK_DEPS=1` is optional and should only be used when `ros-jazzy-ros2-benchmark` is available from apt.
-
-## Build And Start
-
-```bash
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml build amd
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml up -d amd
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml exec amd bash
-```
-
-Inside the container:
-
-```bash
-rocminfo | head
-test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
-test -f /opt/onnxruntime/lib/libonnxruntime.so
+./docker/phase2a-amd.sh shell
 ```
 
 ## Build Phase 2a Packages
 
-Inside the container:
+Bootstrap builds the workspace automatically. To rebuild it later:
 
 ```bash
-colcon build \
-  --packages-select isaac_ros_onnx_inference isaac_ros_rtdetr_std
-source install/setup.bash
+./docker/phase2a-amd.sh colcon
 ```
 
 The compose service sets:
@@ -130,12 +138,9 @@ migrated_packages/benchmark_results/phase2a-rtdetr-amd-migraphx.json
 ## Common Commands
 
 ```bash
-# Stop only the AMD service
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml stop amd
-
-# Rebuild after Dockerfile changes
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml build amd
-
-# Open a second shell
-docker compose --env-file .env.phase2a-amd -f docker-compose.phase2a-amd.yaml exec amd bash
+./docker/phase2a-amd.sh build
+./docker/phase2a-amd.sh up
+./docker/phase2a-amd.sh shell
+./docker/phase2a-amd.sh stop
+./docker/phase2a-amd.sh down
 ```

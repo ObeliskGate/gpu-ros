@@ -5,6 +5,7 @@ build:
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=ON
     - -DONNXRUNTIME_ROOT=/opt/onnxruntime
+    - -DBUILD_TESTING=OFF
   symlink-install: true
 test:
   packages-select:

@@ -4,7 +4,9 @@ services:
       context: .
       dockerfile: docker/phase2a-amd.Dockerfile
       args:
-        AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.2.2-complete}
+        AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}
+        ORT_VERSION: ${ORT_VERSION:-1.23.1}
+        ORT_BUILD_JOBS: ${ORT_BUILD_JOBS:-16}
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
         INSTALL_BENCHMARK_DEPS: ${INSTALL_BENCHMARK_DEPS:-0}
     network_mode: host
@@ -30,8 +32,13 @@ services:
     volumes:
       - .:/workspaces/amd_ros_object_detection
       - assets:/workspaces/isaac_ros-dev/assets
-      - ${ONNXRUNTIME_ROOT_HOST:-./third_party/onnxruntime}:/opt/onnxruntime:ro
+      - phase2a_build:/workspaces/amd_ros_object_detection/build
+      - phase2a_install:/workspaces/amd_ros_object_detection/install
+      - phase2a_log:/workspaces/amd_ros_object_detection/log
     working_dir: /workspaces/amd_ros_object_detection
 
 volumes:
   assets:
+  phase2a_build:
+  phase2a_install:
+  phase2a_log:
