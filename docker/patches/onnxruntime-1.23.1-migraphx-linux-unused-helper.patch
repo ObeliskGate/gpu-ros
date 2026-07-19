@@ -1,0 +1,23 @@
+Upstream-Status: Backport
+Upstream-Commit: https://github.com/microsoft/onnxruntime/commit/935affb848b1635be7d48d9c21c625300e7a3571
+
+diff --git a/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc b/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
+index 68c87d4..98aca10 100644
+--- a/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
++++ b/onnxruntime/test/providers/migraphx/migraphx_basic_test.cc
+@@ -188,6 +188,7 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
+   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
+ }
+ 
++#if defined(WIN32)
+ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+   // Access the underlying InferenceSession.
+   const OrtSession* ort_session = session;
+@@ -203,7 +204,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+   return has_ep;
+ }
+ 
+-#if defined(WIN32)
+ // Tests autoEP feature to automatically select an EP that supports the GPU.
+ // Currently only works on Windows.
+ TEST(MIGraphXExecutionProviderTest, AutoEp_PreferGpu) {

@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     git \
     ninja-build \
+    patch \
     python3 \
     python3-dev \
     python3-packaging \
@@ -40,6 +41,11 @@ RUN git clone --branch "v${ORT_VERSION}" --depth 1 \
       https://github.com/microsoft/onnxruntime.git
 
 WORKDIR /opt/src/onnxruntime
+# Backport the Linux MIGraphX test-build fix merged upstream after ORT 1.23.x.
+# Keep unit-test targets and warnings-as-errors enabled.
+COPY docker/patches/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch /tmp/
+RUN patch -p1 < /tmp/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch
+
 RUN ./build.sh \
       --config Release \
       --parallel "${ORT_BUILD_JOBS}" \
