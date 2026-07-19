@@ -74,6 +74,8 @@ check_host() {
 
 build_workspace() {
   "${COMPOSE[@]}" exec -T amd bash -lc '
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+
     base_paths=(
       migrated_packages/isaac_ros_onnx_inference
       migrated_packages/isaac_ros_rtdetr_std
@@ -101,6 +103,7 @@ build_workspace() {
 
 verify_workspace() {
   "${COMPOSE[@]}" exec -T amd bash -lc '
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
     source install/setup.bash
     test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
     test -e /opt/onnxruntime/lib/libonnxruntime.so
