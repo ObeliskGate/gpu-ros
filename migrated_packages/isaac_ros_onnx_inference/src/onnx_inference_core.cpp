@@ -14,6 +14,7 @@
 
 #include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
 
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,24 @@ namespace nvidia::isaac_ros::onnx_inference
 
 namespace
 {
+
+OrtLoggingLevel GetOrtLoggingLevel()
+{
+  const char * value = std::getenv("ISAAC_ROS_ORT_LOG_LEVEL");
+  if (value == nullptr || value[0] == '\0') {
+    return ORT_LOGGING_LEVEL_WARNING;
+  }
+
+  const std::string level{value};
+  if (level == "verbose") {return ORT_LOGGING_LEVEL_VERBOSE;}
+  if (level == "info") {return ORT_LOGGING_LEVEL_INFO;}
+  if (level == "warning") {return ORT_LOGGING_LEVEL_WARNING;}
+  if (level == "error") {return ORT_LOGGING_LEVEL_ERROR;}
+  if (level == "fatal") {return ORT_LOGGING_LEVEL_FATAL;}
+
+  throw std::invalid_argument(
+          "ISAAC_ROS_ORT_LOG_LEVEL must be verbose, info, warning, error, or fatal");
+}
 
 size_t ElementCount(const std::vector<int64_t> & shape)
 {
@@ -105,7 +124,7 @@ ExecutionProvider ParseExecutionProvider(const std::string & ep_str)
 }
 
 OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
-: env_(ORT_LOGGING_LEVEL_WARNING, "isaac_ros_onnx_inference")
+: env_(GetOrtLoggingLevel(), "isaac_ros_onnx_inference")
 {
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
   if (!cfg.ort_profile_prefix.empty()) {
