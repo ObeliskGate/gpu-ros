@@ -27,7 +27,7 @@ or `ONNXRUNTIME_ROOT_HOST` mount is required.
 |------------|---------|--------|
 | ONNX Runtime | 1.23.1 | Matches the final Phase 1 NVIDIA environment |
 | ROCm | 7.1.1 | AMD-supported ROCm pairing for ORT 1.23.1 |
-| Isaac ROS common | v4.4-0 | Matches the Phase 0/1 Isaac ROS release |
+| Isaac ROS TensorList source | v4.4-0 | Matches the Phase 0/1 Isaac ROS release |
 
 The Dockerfile builds ORT with MIGraphX in a builder stage. Only its headers and
 runtime libraries are copied to the final ROS image.
@@ -42,7 +42,10 @@ isaac_ros_tensor_list_interfaces/msg/TensorList
 
 The bootstrap script checks out the official `isaac_ros_common` v4.4 release
 under the ignored `third_party/` directory and builds only the TensorList
-interface package needed by Phase 2a.
+interface package needed by Phase 2a. It applies a repository-owned build patch
+that removes the interface package's version-metadata dependency on the top-level
+`isaac_ros_common` package. The message definitions are unchanged; the CUDA-only
+top-level package is not discovered or built on AMD.
 
 Do not add a custom TensorList message package in this repository.
 
@@ -60,7 +63,9 @@ This command:
 2. Fetches the official TensorList interface at the pinned Isaac ROS release.
 3. Builds ORT 1.23.1 with MIGraphX inside the ROCm 7.1.1 image.
 4. Starts the AMD container.
-5. Builds and verifies the Phase 2a ROS packages.
+5. Builds and verifies the Phase 2a ROS packages. Verification fails if package
+   discovery expands beyond the three target packages or if the resulting ELF
+   libraries link CUDA, TensorRT, NITROS, or GXF.
 
 The first run builds ONNX Runtime from source and is slow. Docker caches that
 stage for subsequent runs. Colcon `build`, `install`, and `log` directories use
