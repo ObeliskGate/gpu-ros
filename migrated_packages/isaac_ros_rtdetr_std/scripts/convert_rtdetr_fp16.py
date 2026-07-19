@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Convert the RT-DETR ONNX model to FP16.
+"""
+Convert the RT-DETR ONNX model to FP16.
 
 keep_io_types=True preserves the original input/output dtypes (notably the
 int64 orig_target_sizes input and labels output), so only the internal float32

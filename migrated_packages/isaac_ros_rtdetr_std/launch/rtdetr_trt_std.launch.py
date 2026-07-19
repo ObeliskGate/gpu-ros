@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RT-DETR config B: TensorRT + standard ROS2 transport.
+"""
+RT-DETR config B: TensorRT + standard ROS2 transport.
 
 Upstream NITROS preprocess chain + upstream TensorRT inference node, but our
 std-ROS2 RtDetrPreprocessor/Decoder. The TensorRT NITROS publisher bridges to

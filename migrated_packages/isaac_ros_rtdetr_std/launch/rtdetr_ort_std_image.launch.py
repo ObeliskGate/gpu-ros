@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RT-DETR Phase 2a target: std image encoder + ORT std transport.
+"""
+RT-DETR Phase 2a target: std image encoder + ORT std transport.
 
 Pipeline:
 Image -> RtDetrImageEncoderNode -> RtDetrPreprocessorNode ->

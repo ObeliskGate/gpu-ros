@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RT-DETR config C: ONNX Runtime + NITROS transport.
+"""
+RT-DETR config C: ONNX Runtime + NITROS transport.
 
 Upstream NITROS preprocess chain + upstream NITROS RtDetrPreprocessor/Decoder,
 with only the inference node swapped from TensorRT to OnnxInferenceNode

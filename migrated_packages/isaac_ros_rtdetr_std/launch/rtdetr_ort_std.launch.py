@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RT-DETR config D: ONNX Runtime + standard ROS2 transport (vendor-neutral target).
+"""
+RT-DETR config D: ONNX Runtime + standard ROS2 transport (vendor-neutral target).
 
 Forks the upstream isaac_ros_rtdetr_oss launch, replacing the final three nodes
 (preprocessor / inference / decoder) with our std-ROS2 + ORT versions. The

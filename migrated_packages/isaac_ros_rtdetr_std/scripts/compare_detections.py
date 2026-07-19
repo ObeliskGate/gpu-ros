@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compare RT-DETR detections between two pipelines (e.g. config A vs config D).
+"""
+Compare RT-DETR detections between two pipelines (e.g. config A vs config D).
 
 Subscribes to two Detection2DArray topics, pairs messages by header stamp, and
 for each paired frame matches detections via IoU. Reports mean/median/p95 IoU,
@@ -54,7 +55,8 @@ def stamp_key(msg):
 
 
 def match_frame(dets_a, dets_b):
-    """Greedy IoU matching for one paired frame.
+    """
+    Greedy IoU matching for one paired frame.
 
     Returns (matched_ious, matched_score_deltas, unmatched_count). Greedy
     (highest-IoU-first) is sufficient here because the compared pipelines run

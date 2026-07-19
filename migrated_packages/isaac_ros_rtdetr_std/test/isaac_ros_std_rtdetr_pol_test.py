@@ -18,9 +18,9 @@ import pathlib
 import time
 
 import launch
-import launch_testing.actions
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
+import launch_testing.actions
 import onnx
 from onnx import helper, TensorProto
 import pytest
