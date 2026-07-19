@@ -1,0 +1,40 @@
+diff --git a/ros2_benchmark/CMakeLists.txt b/ros2_benchmark/CMakeLists.txt
+index 79b7a36..b159eaa 100644
+--- a/ros2_benchmark/CMakeLists.txt
++++ b/ros2_benchmark/CMakeLists.txt
+@@ -104,6 +104 @@ endif()
+-# Embed versioning information into installed files
+-ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+-include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+-generate_version_info(${PROJECT_NAME})
+-
+ ament_auto_package(INSTALL_TO_SHARE scripts)
+diff --git a/ros2_benchmark/package.xml b/ros2_benchmark/package.xml
+index 73802ca..f83a2a5 100644
+--- a/ros2_benchmark/package.xml
++++ b/ros2_benchmark/package.xml
+@@ -34,4 +34,3 @@
+   <buildtool_depend>ament_cmake_auto</buildtool_depend>
+-  <build_depend>isaac_ros_common</build_depend>
+-
++
+   <depend>rclcpp</depend>
+diff --git a/ros2_benchmark_interfaces/CMakeLists.txt b/ros2_benchmark_interfaces/CMakeLists.txt
+index 94327aa..1059c7a 100644
+--- a/ros2_benchmark_interfaces/CMakeLists.txt
++++ b/ros2_benchmark_interfaces/CMakeLists.txt
+@@ -71,6 +71 @@ endif()
+-# Embed versioning information into installed files
+-ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
+-include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
+-generate_version_info(${PROJECT_NAME})
+-
+ ament_auto_package()
+diff --git a/ros2_benchmark_interfaces/package.xml b/ros2_benchmark_interfaces/package.xml
+index 5ee4e72..a11eb51 100644
+--- a/ros2_benchmark_interfaces/package.xml
++++ b/ros2_benchmark_interfaces/package.xml
+@@ -34,3 +34,2 @@
+   <build_depend>rosidl_default_generators</build_depend>
+-  <build_depend>isaac_ros_common</build_depend>
+   <exec_depend>rosidl_default_runtime</exec_depend>

@@ -28,9 +28,14 @@ or `ONNXRUNTIME_ROOT_HOST` mount is required.
 | ONNX Runtime | 1.23.1 | Matches the final Phase 1 NVIDIA environment |
 | ROCm | 7.1.1 | AMD-supported ROCm pairing for ORT 1.23.1 |
 | Isaac ROS TensorList source | v4.4-0 | Matches the Phase 0/1 Isaac ROS release |
+| ros2_benchmark | v4.4-0 | Matches the Phase 0/1 benchmark controller and report format |
 
-The Dockerfile builds ORT with MIGraphX in a builder stage. Only its headers and
-runtime libraries are copied to the final ROS image.
+The Dockerfile builds ORT with MIGraphX and `ros2_benchmark` in separate builder
+stages. Only their install artifacts are copied to the final ROS image.
+`ros2_benchmark` uses generic ROS 2 playback and monitor nodes for this graph;
+the NVIDIA-only `isaac_ros_benchmark` and its NITROS playback plug-in are not
+installed. A small repository-owned patch removes the upstream
+`isaac_ros_common` dependency that is used only to generate version metadata.
 
 ## Isaac ROS TensorList Interface
 
@@ -81,10 +86,9 @@ Defaults work without an env file. To override them:
 cp .env.phase2a-amd.example .env.phase2a-amd
 ```
 
-`ORT_BUILD_JOBS` limits the ORT source-build parallelism. Keep
-`INSTALL_BENCHMARK_DEPS=0` unless `ros-jazzy-ros2-benchmark` is available.
-The bootstrap script detects `AMD_GPU_TARGETS` from `rocminfo`; set it in the
-env file only when cross-building or overriding detection.
+`ORT_BUILD_JOBS` limits the ORT source-build parallelism. The bootstrap script
+detects `AMD_GPU_TARGETS` from `rocminfo`; set it in the env file only when
+cross-building or overriding detection.
 
 ## Enter The Container
 
@@ -197,12 +201,51 @@ The benchmark script is:
 migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
 ```
 
-It requires `ros2_benchmark`. Build the Docker image with `INSTALL_BENCHMARK_DEPS=1` only if that apt package is available, or provide `ros2_benchmark` in the workspace.
-
-Expected result path:
+The AMD image includes the official `ros2_benchmark` v4.4 install. Verify it
+after entering the container:
 
 ```bash
-migrated_packages/benchmark_results/phase2a-rtdetr-amd-migraphx.json
+ros2 pkg prefix ros2_benchmark
+```
+
+Run the benchmark from the repository root with ORT profiling disabled:
+
+```bash
+unset ORT_PROFILE_PREFIX
+launch_test migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
+```
+
+The script sends one buffered frame and waits for the first detection before it
+enters the measured trial and throughput search. This excludes lazy MIGraphX
+compilation from the measured runs. A warm-up from a different launch process
+does not replace this step by itself. The container also sets
+`ORT_MIGRAPHX_MODEL_CACHE_PATH` to the persistent assets volume. The first
+session compiles and saves an `.mxr` model; later containers on the same machine
+can load it instead of compiling the graph again. The default warm-up timeout is
+900 seconds; override it with `MIGRAPHX_WARMUP_TIMEOUT_SEC` if needed.
+
+Clear `/workspaces/isaac_ros-dev/assets/cache/migraphx` after changing the ONNX
+model, GPU architecture, ROCm/MIGraphX version, ORT version, or the MIGraphX EP
+patches. Compiled `.mxr` files should not be moved between different hardware or
+runtime combinations.
+
+By default, the framework writes a timestamped `r2b-log-*.json` file so repeated
+runs cannot append into the same JSON. Set `R2B_RESULT_FILE` to request a
+specific filename:
+
+```bash
+R2B_RESULT_FILE=phase2a-rtdetr-amd-migraphx-mi300x.json launch_test migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
+```
+
+The generic resource profiler records CPU utilization on AMD. It does not
+currently report AMD GPU utilization because upstream v4.4 only supports
+`nvidia-smi`/`gpustat` for GPU metrics; collect AMD GPU utilization separately
+rather than enabling ORT profiling during the performance run.
+
+Default result directory:
+
+```bash
+migrated_packages/benchmark_results/
 ```
 
 ## Common Commands

@@ -9,7 +9,6 @@ services:
         ORT_BUILD_JOBS: ${ORT_BUILD_JOBS:-16}
         AMD_GPU_TARGETS: ${AMD_GPU_TARGETS:-gfx942}
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
-        INSTALL_BENCHMARK_DEPS: ${INSTALL_BENCHMARK_DEPS:-0}
     network_mode: host
     ipc: host
     shm_size: 8gb
@@ -28,6 +27,7 @@ services:
       ONNXRUNTIME_ROOT: /opt/onnxruntime
       ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include
       ONNXRUNTIME_LIBRARY: /opt/onnxruntime/lib/libonnxruntime.so
+      ORT_MIGRAPHX_MODEL_CACHE_PATH: /workspaces/isaac_ros-dev/assets/cache/migraphx
       COLCON_DEFAULTS_FILE: /workspaces/amd_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
     volumes:

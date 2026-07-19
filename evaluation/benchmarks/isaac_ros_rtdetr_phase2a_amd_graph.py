@@ -25,6 +25,7 @@ std RtDetrDecoder -> Detection2DArray.
 
 import os
 import sys
+import time
 
 sys.path.append(os.path.dirname(__file__))
 import rtdetr_common as common  # noqa: E402
@@ -32,10 +33,14 @@ import rtdetr_common as common  # noqa: E402
 from launch_ros.actions import ComposableNodeContainer  # noqa: E402
 from launch_ros.descriptions import ComposableNode  # noqa: E402
 
-from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
+import rclpy  # noqa: E402
+from ros2_benchmark import BenchmarkMode, ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
+from ros2_benchmark_interfaces.srv import PlayMessages  # noqa: E402
+from vision_msgs.msg import Detection2DArray  # noqa: E402
 
 RESULTS_DIR = 'migrated_packages/benchmark_results'
-RESULTS_FILE = 'phase2a-rtdetr-amd-migraphx.json'
+RESULTS_FILE = os.environ.get('R2B_RESULT_FILE', '')
+MIGRAPHX_WARMUP_TIMEOUT_SEC = float(os.environ.get('MIGRAPHX_WARMUP_TIMEOUT_SEC', '900'))
 
 
 def make_std_playback_node(namespace):
@@ -137,7 +142,7 @@ class TestIsaacROSRtDetrPhase2aAmd(ROS2BenchmarkTest):
         benchmark_name='Isaac ROS RT-DETR Phase 2a AMD (ORT MIGraphX + std ROS2)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
-        publisher_lower_frequency=10.0,
+        publisher_lower_frequency=1.0,
         playback_message_buffer_size=1,
         pre_trial_run_wait_time_sec=5.0,
         log_folder=RESULTS_DIR,
@@ -147,9 +152,50 @@ class TestIsaacROSRtDetrPhase2aAmd(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'inference_backend': 'ONNX Runtime MIGraphX EP',
             'transport': 'standard ROS2 TensorList',
-            'result_path': os.path.join(RESULTS_DIR, RESULTS_FILE),
+            'result_directory': RESULTS_DIR,
         }
     )
+
+    def prepare_buffer(self):
+        """Buffer the input and finish lazy MIGraphX compilation before measurement."""
+        super().prepare_buffer()
+        if getattr(self, '_migraphx_warmup_complete', False):
+            return
+
+        detection_received = False
+
+        def on_detection(_message):
+            nonlocal detection_received
+            detection_received = True
+
+        subscription = self.node.create_subscription(
+            Detection2DArray, 'detections_output', on_detection, 10)
+        try:
+            client = self.create_service_client_blocking(PlayMessages, 'play_messages')
+            request = PlayMessages.Request()
+            request.playback_mode = BenchmarkMode.LOOPING.value
+            request.target_publisher_rate = 1.0
+            request.message_count = 1
+            request.enforce_publisher_rate = False
+            request.revise_timestamps_as_message_ids = False
+
+            self.get_logger().info(
+                'Starting one-frame MIGraphX warm-up; waiting for detections_output')
+            future = client.call_async(request)
+            deadline = time.monotonic() + MIGRAPHX_WARMUP_TIMEOUT_SEC
+            while not detection_received and time.monotonic() < deadline:
+                rclpy.spin_once(self.node, timeout_sec=0.5)
+                if future.done() and future.exception() is not None:
+                    raise RuntimeError('MIGraphX warm-up playback failed') from future.exception()
+
+            if not detection_received:
+                raise RuntimeError(
+                    'MIGraphX warm-up did not produce detections within '
+                    f'{MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds')
+            self._migraphx_warmup_complete = True
+            self.get_logger().info('MIGraphX warm-up complete; starting measured benchmark')
+        finally:
+            self.node.destroy_subscription(subscription)
 
     def test_benchmark(self):
         self.run_benchmark()

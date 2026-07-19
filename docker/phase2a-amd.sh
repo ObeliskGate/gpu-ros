@@ -93,6 +93,7 @@ case "${1:-bootstrap}" in
     "${COMPOSE[@]}" exec amd bash -lc '
       set -e
       source "/opt/ros/${ROS_DISTRO}/setup.bash"
+      source /opt/ros2_benchmark/setup.bash
       test -f "/opt/ros/${ROS_DISTRO}/share/ament_cmake_auto/cmake/ament_cmake_autoConfig.cmake" || {
         echo "ERROR: ament_cmake_auto is missing from the container image." >&2
         exit 1

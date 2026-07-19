@@ -75,11 +75,10 @@ RUN mkdir -p /opt/onnxruntime/include /opt/onnxruntime/lib \
     && test -e /opt/onnxruntime/lib/libonnxruntime.so \
     && test -e /opt/onnxruntime/lib/libonnxruntime_providers_migraphx.so
 
-FROM rocm-migraphx AS runtime
+FROM rocm-migraphx AS ros-runtime-base
 
 ARG ROS_DISTRO=jazzy
 ARG DEBIAN_FRONTEND=noninteractive
-ARG INSTALL_BENCHMARK_DEPS=0
 ARG ORT_VERSION=1.23.1
 
 ENV LANG=en_US.UTF-8
@@ -121,22 +120,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
+    libssl-dev \
     libopencv-dev \
     pkg-config \
     python3-colcon-common-extensions \
+    python3-numpy \
     python3-onnx \
     python3-pip \
+    python3-psutil \
     python3-rosdep \
     python3-vcstool \
+    python3-yaml \
     ros-${ROS_DISTRO}-ament-cmake-auto \
     ros-${ROS_DISTRO}-ament-cmake-gtest \
+    ros-${ROS_DISTRO}-ament-cmake-python \
     ros-${ROS_DISTRO}-ament-lint-auto \
     ros-${ROS_DISTRO}-ament-lint-common \
     ros-${ROS_DISTRO}-cv-bridge \
     ros-${ROS_DISTRO}-launch-testing-ament-cmake \
     ros-${ROS_DISTRO}-rclcpp \
+    ros-${ROS_DISTRO}-rclcpp-action \
     ros-${ROS_DISTRO}-rclcpp-components \
     ros-${ROS_DISTRO}-ros-base \
+    ros-${ROS_DISTRO}-rosbag2-compression-zstd \
+    ros-${ROS_DISTRO}-rosbag2-cpp \
+    ros-${ROS_DISTRO}-rosbag2-py \
+    ros-${ROS_DISTRO}-rosbag2-storage \
+    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
     ros-${ROS_DISTRO}-rosidl-default-generators \
     ros-${ROS_DISTRO}-rosidl-default-runtime \
     ros-${ROS_DISTRO}-sensor-msgs \
@@ -144,17 +154,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-vision-msgs \
     && rm -rf /var/lib/apt/lists/*
 
-# Optional benchmark harness dependencies. Leave disabled for a lean build
-# image; enable with --build-arg INSTALL_BENCHMARK_DEPS=1 when the required apt
-# packages are available for the target environment.
-RUN if [[ "${INSTALL_BENCHMARK_DEPS}" == "1" ]]; then \
-      apt-get update && apt-get install -y --no-install-recommends \
-        ros-${ROS_DISTRO}-ros2-benchmark \
-      && rm -rf /var/lib/apt/lists/*; \
-    fi
-
 RUN rosdep init 2>/dev/null || true
 RUN rosdep update --rosdistro ${ROS_DISTRO}
+
+FROM ros-runtime-base AS ros2-benchmark-builder
+
+ARG ROS2_BENCHMARK_REF=v4.4-0
+
+WORKDIR /opt/src
+RUN git clone --branch "${ROS2_BENCHMARK_REF}" --depth 1 \
+      https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark.git
+
+COPY docker/patches/ros2-benchmark-v4.4-standalone.patch /tmp/
+WORKDIR /opt/src/ros2_benchmark
+RUN git apply --check /tmp/ros2-benchmark-v4.4-standalone.patch \
+    && git apply /tmp/ros2-benchmark-v4.4-standalone.patch
+
+RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
+    && colcon --log-base /tmp/ros2_benchmark_log build \
+      --merge-install \
+      --install-base /opt/ros2_benchmark \
+      --build-base /tmp/ros2_benchmark_build \
+      --base-paths \
+        /opt/src/ros2_benchmark/ros2_benchmark_interfaces \
+        /opt/src/ros2_benchmark/ros2_benchmark \
+      --cmake-args -DBUILD_TESTING=OFF \
+    && source /opt/ros2_benchmark/setup.bash \
+    && ros2 pkg prefix ros2_benchmark \
+    && ros2 pkg prefix ros2_benchmark_interfaces
+
+FROM ros-runtime-base AS runtime
+
+COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
 
 COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
 RUN chmod +x /usr/local/bin/phase2a-amd-entrypoint.sh
