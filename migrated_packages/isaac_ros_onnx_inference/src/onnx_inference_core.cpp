@@ -49,7 +49,7 @@ size_t DtypeSize(ONNXTensorElementDataType dtype)
 void AppendExecutionProvider(
   Ort::SessionOptions & opts,
   ExecutionProvider ep,
-  int device_id)
+  [[maybe_unused]] int device_id)
 {
   switch (ep) {
     case ExecutionProvider::kCuda:
