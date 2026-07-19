@@ -7,6 +7,7 @@ services:
         AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}
         ORT_VERSION: ${ORT_VERSION:-1.23.1}
         ORT_BUILD_JOBS: ${ORT_BUILD_JOBS:-16}
+        AMD_GPU_TARGETS: ${AMD_GPU_TARGETS:-gfx942}
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
         INSTALL_BENCHMARK_DEPS: ${INSTALL_BENCHMARK_DEPS:-0}
     network_mode: host

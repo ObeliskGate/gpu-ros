@@ -12,12 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     half \
     migraphx \
+    migraphx-dev \
     && rm -rf /var/lib/apt/lists/*
 
 FROM rocm-migraphx AS onnxruntime-builder
 
 ARG ORT_VERSION=1.23.1
 ARG ORT_BUILD_JOBS=16
+ARG AMD_GPU_TARGETS=gfx942
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -45,7 +47,10 @@ RUN ./build.sh \
       --skip_tests \
       --allow_running_as_root \
       --use_migraphx \
-      --migraphx_home /opt/rocm
+      --migraphx_home /opt/rocm \
+      --cmake_extra_defines \
+        GPU_TARGETS="${AMD_GPU_TARGETS}" \
+        CMAKE_HIP_ARCHITECTURES="${AMD_GPU_TARGETS}"
 
 # ORT does not publish a standalone C++ MIGraphX archive. Assemble the same
 # include/lib layout consumed by the ROS package from the source build.

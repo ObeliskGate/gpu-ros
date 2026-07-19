@@ -77,6 +77,8 @@ cp .env.phase2a-amd.example .env.phase2a-amd
 
 `ORT_BUILD_JOBS` limits the ORT source-build parallelism. Keep
 `INSTALL_BENCHMARK_DEPS=0` unless `ros-jazzy-ros2-benchmark` is available.
+The bootstrap script detects `AMD_GPU_TARGETS` from `rocminfo`; set it in the
+env file only when cross-building or overriding detection.
 
 ## Enter The Container
 

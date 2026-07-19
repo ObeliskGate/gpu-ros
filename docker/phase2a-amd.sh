@@ -11,6 +11,10 @@ COMMON_REF="v4.4-0"
 cd "${ROOT_DIR}"
 
 if [[ -f "${ENV_FILE}" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
   COMPOSE=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 else
   COMPOSE=(docker compose -f "${COMPOSE_FILE}")
@@ -39,6 +43,15 @@ check_host() {
     echo "ERROR: /dev/dri is not available on the host." >&2
     exit 1
   }
+
+  if [[ -z "${AMD_GPU_TARGETS:-}" ]] && command -v rocminfo >/dev/null; then
+    AMD_GPU_TARGETS="$(
+      rocminfo | awk '/^[[:space:]]*Name:[[:space:]]+gfx[0-9]/{print $2; exit}'
+    )"
+  fi
+  AMD_GPU_TARGETS="${AMD_GPU_TARGETS:-gfx942}"
+  export AMD_GPU_TARGETS
+  echo "AMD GPU build target: ${AMD_GPU_TARGETS}"
 }
 
 build_workspace() {
