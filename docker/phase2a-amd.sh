@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "ERROR: phase2a setup failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.phase2a-amd.yaml"
@@ -46,7 +47,12 @@ check_host() {
 
   if [[ -z "${AMD_GPU_TARGETS:-}" ]] && command -v rocminfo >/dev/null; then
     AMD_GPU_TARGETS="$(
-      rocminfo | awk '/^[[:space:]]*Name:[[:space:]]+gfx[0-9]/{print $2; exit}'
+      rocminfo | awk '
+        /^[[:space:]]*Name:[[:space:]]+gfx[0-9]/ && target == "" {
+          target = $2
+        }
+        END {print target}
+      '
     )"
   fi
   AMD_GPU_TARGETS="${AMD_GPU_TARGETS:-gfx942}"
