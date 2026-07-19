@@ -92,6 +92,11 @@ env file only when cross-building or overriding detection.
 ./docker/phase2a-amd.sh shell
 ```
 
+The shell command sources the base ROS installation and any existing Phase 2a
+workspace install before opening the interactive prompt. This is required
+because processes started by `docker compose exec` do not run the image
+entrypoint again.
+
 ## Build Phase 2a Packages
 
 Inside the container:

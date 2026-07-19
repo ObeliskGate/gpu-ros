@@ -90,7 +90,18 @@ case "${1:-bootstrap}" in
     "${COMPOSE[@]}" up -d amd
     ;;
   shell)
-    "${COMPOSE[@]}" exec amd bash
+    "${COMPOSE[@]}" exec amd bash -lc '
+      set -e
+      source "/opt/ros/${ROS_DISTRO}/setup.bash"
+      test -f "/opt/ros/${ROS_DISTRO}/share/ament_cmake_auto/cmake/ament_cmake_autoConfig.cmake" || {
+        echo "ERROR: ament_cmake_auto is missing from the container image." >&2
+        exit 1
+      }
+      if [[ -f /workspaces/amd_ros_object_detection/install/setup.bash ]]; then
+        source /workspaces/amd_ros_object_detection/install/setup.bash
+      fi
+      exec bash -i
+    '
     ;;
   stop)
     "${COMPOSE[@]}" stop amd
