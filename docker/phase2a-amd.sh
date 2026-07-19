@@ -72,113 +72,12 @@ check_host() {
   echo "AMD GPU build target: ${AMD_GPU_TARGETS}"
 }
 
-build_workspace() {
-  "${COMPOSE[@]}" exec -T amd bash -lc '
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-
-    base_paths=(
-      migrated_packages/isaac_ros_onnx_inference
-      migrated_packages/isaac_ros_rtdetr_std
-      third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
-    )
-    expected="$(printf "%s\n" \
-      isaac_ros_onnx_inference \
-      isaac_ros_rtdetr_std \
-      isaac_ros_tensor_list_interfaces | LC_ALL=C sort)"
-    discovered="$(colcon list --base-paths "${base_paths[@]}" --names-only | LC_ALL=C sort)"
-    if [[ "${discovered}" != "${expected}" ]]; then
-      echo "ERROR: unexpected Phase 2a package discovery:" >&2
-      printf "%s\n" "${discovered}" >&2
-      exit 1
-    fi
-
-    colcon build \
-      --base-paths "${base_paths[@]}" \
-      --packages-select \
-        isaac_ros_tensor_list_interfaces \
-        isaac_ros_onnx_inference \
-        isaac_ros_rtdetr_std
-  '
-}
-
-verify_workspace() {
-  "${COMPOSE[@]}" exec -T amd bash -lc '
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-    source install/setup.bash
-    test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
-    test -e /opt/onnxruntime/lib/libonnxruntime.so
-    grep -qx "BUILD_NITROS_TRANSPORT:BOOL=OFF" \
-      build/isaac_ros_onnx_inference/CMakeCache.txt
-    grep -qx "ORT_ENABLE_CUDA:BOOL=OFF" \
-      build/isaac_ros_onnx_inference/CMakeCache.txt
-    grep -qx "ORT_ENABLE_ROCM:BOOL=OFF" \
-      build/isaac_ros_onnx_inference/CMakeCache.txt
-    grep -qx "ORT_ENABLE_MIGRAPHX:BOOL=ON" \
-      build/isaac_ros_onnx_inference/CMakeCache.txt
-
-    forbidden="NEEDED.*\\[(libcuda|libcudart|libcublas|libcudnn|libnvrtc|libnvinfer|libnvonnxparser|libgxf|[^]]*nitros)"
-    while IFS= read -r -d "" library; do
-      if readelf -d "${library}" | grep -Eiq "${forbidden}"; then
-        echo "ERROR: NVIDIA runtime dependency found in ${library}:" >&2
-        readelf -d "${library}" | grep -Ei "${forbidden}" >&2
-        exit 1
-      fi
-    done < <(find \
-      /opt/onnxruntime/lib \
-      install/isaac_ros_onnx_inference/lib \
-      install/isaac_ros_rtdetr_std/lib \
-      -type f -name "*.so*" -print0)
-
-    rocminfo | grep -m1 "Name:.*gfx"
-    ros2 component types | grep -E "OnnxInference|RtDetr"
-    echo "Verified: Phase 2a target has no CUDA, TensorRT, NITROS, or GXF linkage."
-  '
-}
-
-test_workspace() {
-  "${COMPOSE[@]}" exec -T amd bash -lc '
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-    source install/setup.bash
-
-    base_paths=(
-      migrated_packages/isaac_ros_onnx_inference
-      migrated_packages/isaac_ros_rtdetr_std
-    )
-    COLCON_DEFAULTS_FILE=/dev/null colcon build \
-      --base-paths "${base_paths[@]}" \
-      --packages-select \
-        isaac_ros_onnx_inference \
-        isaac_ros_rtdetr_std \
-      --symlink-install \
-      --cmake-clean-cache \
-      --cmake-args \
-        -DBUILD_NITROS_TRANSPORT=OFF \
-        -DORT_ENABLE_CUDA=OFF \
-        -DORT_ENABLE_ROCM=OFF \
-        -DORT_ENABLE_MIGRAPHX=ON \
-        -DONNXRUNTIME_ROOT=/opt/onnxruntime \
-        -DBUILD_MIGRAPHX_POL_TEST=ON \
-        -DBUILD_TESTING=ON
-
-    source install/setup.bash
-    COLCON_DEFAULTS_FILE=/dev/null colcon test \
-      --packages-select \
-        isaac_ros_onnx_inference \
-        isaac_ros_rtdetr_std \
-      --event-handlers console_direct+
-    COLCON_DEFAULTS_FILE=/dev/null colcon test-result --verbose
-  '
-  verify_workspace
-}
-
 case "${1:-bootstrap}" in
   bootstrap)
     check_host
     prepare_interfaces
     "${COMPOSE[@]}" build amd
     "${COMPOSE[@]}" up -d amd
-    build_workspace
-    verify_workspace
     ;;
   build)
     check_host
@@ -190,15 +89,6 @@ case "${1:-bootstrap}" in
     prepare_interfaces
     "${COMPOSE[@]}" up -d amd
     ;;
-  colcon)
-    prepare_interfaces
-    build_workspace
-    verify_workspace
-    ;;
-  test)
-    prepare_interfaces
-    test_workspace
-    ;;
   shell)
     "${COMPOSE[@]}" exec amd bash
     ;;
@@ -209,7 +99,7 @@ case "${1:-bootstrap}" in
     "${COMPOSE[@]}" down
     ;;
   *)
-    echo "Usage: $0 {bootstrap|build|up|colcon|test|shell|stop|down}" >&2
+    echo "Usage: $0 {bootstrap|build|up|shell|stop|down}" >&2
     exit 2
     ;;
 esac

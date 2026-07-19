@@ -41,15 +41,15 @@ isaac_ros_tensor_list_interfaces/msg/TensorList
 ```
 
 The bootstrap script checks out the official `isaac_ros_common` v4.4 release
-under the ignored `third_party/` directory and builds only the TensorList
-interface package needed by Phase 2a. It applies a repository-owned build patch
-that removes the interface package's version-metadata dependency on the top-level
-`isaac_ros_common` package. The message definitions are unchanged; the CUDA-only
-top-level package is not discovered or built on AMD.
+under the ignored `third_party/` directory and exposes only the TensorList
+interface package to the Phase 2a colcon build. It applies a repository-owned
+build patch that removes the interface package's version-metadata dependency on
+the top-level `isaac_ros_common` package. The message definitions are unchanged;
+the CUDA-only top-level package is not discovered or built on AMD.
 
 Do not add a custom TensorList message package in this repository.
 
-## One-command Setup
+## One-command Environment Setup
 
 On a new AMD development machine:
 
@@ -63,9 +63,10 @@ This command:
 2. Fetches the official TensorList interface at the pinned Isaac ROS release.
 3. Builds ORT 1.23.1 with MIGraphX inside the ROCm 7.1.1 image.
 4. Starts the AMD container.
-5. Builds and verifies the Phase 2a ROS packages. Verification fails if package
-   discovery expands beyond the three target packages or if the resulting ELF
-   libraries link CUDA, TensorRT, NITROS, or GXF.
+
+ROS package builds and tests are intentionally run interactively after entering
+the container, so individual commands and CMake options are easy to change
+while debugging.
 
 The first run builds ONNX Runtime from source and is slow. Docker caches that
 stage for subsequent runs. Colcon `build`, `install`, and `log` directories use
@@ -93,10 +94,11 @@ env file only when cross-building or overriding detection.
 
 ## Build Phase 2a Packages
 
-Bootstrap builds the workspace automatically. To rebuild it later:
+Inside the container:
 
 ```bash
-./docker/phase2a-amd.sh colcon
+colcon build
+source install/setup.bash
 ```
 
 The compose service sets:
@@ -113,6 +115,8 @@ That file passes:
 -DORT_ENABLE_ROCM=OFF
 -DORT_ENABLE_MIGRAPHX=ON
 -DONNXRUNTIME_ROOT=/opt/onnxruntime
+-DBUILD_MIGRAPHX_POL_TEST=ON
+-DBUILD_TESTING=ON
 ```
 
 ## Run The Target Launch
@@ -128,17 +132,29 @@ For bag replay, run `ros2 bag play` in another shell and remap or set `image_top
 
 ## Run Port Tests
 
-Run the AMD-compatible unit tests from the host:
+After building and sourcing the workspace inside the container:
 
 ```bash
-./docker/phase2a-amd.sh test
+colcon test --event-handlers console_direct+
+colcon test-result --verbose
 ```
 
-This rebuilds the two migrated packages with tests enabled and checks the ONNX
-Runtime provider-selection core plus the standard ROS2 RT-DETR image encoder,
-preprocessor, and decoder. It also ports the original proof-of-life test to the
-Phase 2a graph: a deterministic ONNX test model is executed by MIGraphX between
-the standard TensorList preprocessor and decoder.
+The container's colcon defaults restrict build discovery to the three Phase 2a
+packages and test discovery to the two migrated packages. The tests check the
+ONNX Runtime provider-selection core and the ported proof-of-life graph. A
+deterministic ONNX test model is executed by MIGraphX between the standard
+TensorList preprocessor and decoder.
+
+To rebuild and rerun only the proof-of-life package while debugging:
+
+```bash
+colcon build --packages-select isaac_ros_rtdetr_std --cmake-clean-cache
+source install/setup.bash
+colcon test --packages-select isaac_ros_rtdetr_std \
+  --event-handlers console_direct+ \
+  --ctest-args -R isaac_ros_std_rtdetr_pol_test --output-on-failure
+colcon test-result --verbose
+```
 
 The proof-of-life model validates graph wiring and execution-provider behavior,
 not RT-DETR numeric accuracy. After it passes, use the target launch above with

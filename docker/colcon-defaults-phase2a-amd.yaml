@@ -1,11 +1,15 @@
 build:
+  base-paths:
+    - third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
   cmake-args:
     - -DBUILD_NITROS_TRANSPORT=OFF
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=ON
     - -DONNXRUNTIME_ROOT=/opt/onnxruntime
-    - -DBUILD_TESTING=OFF
+    - -DBUILD_MIGRAPHX_POL_TEST=ON
+    - -DBUILD_TESTING=ON
   symlink-install: true
 test:
+  base-paths:
   packages-select:
