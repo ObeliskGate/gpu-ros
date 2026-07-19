@@ -126,6 +126,24 @@ ros2 launch isaac_ros_rtdetr_std rtdetr_ort_std_image.launch.py \
 
 For bag replay, run `ros2 bag play` in another shell and remap or set `image_topic` to the bag image topic.
 
+## Run Port Tests
+
+Run the AMD-compatible unit tests from the host:
+
+```bash
+./docker/phase2a-amd.sh test
+```
+
+This rebuilds the two migrated packages with tests enabled and checks the ONNX
+Runtime provider-selection core plus the standard ROS2 RT-DETR image encoder,
+preprocessor, and decoder. It also ports the original proof-of-life test to the
+Phase 2a graph: a deterministic ONNX test model is executed by MIGraphX between
+the standard TensorList preprocessor and decoder.
+
+The proof-of-life model validates graph wiring and execution-provider behavior,
+not RT-DETR numeric accuracy. After it passes, use the target launch above with
+the FP32 `sdetr_grasp.onnx` model for model-level validation.
+
 ## Benchmark
 
 The benchmark script is:

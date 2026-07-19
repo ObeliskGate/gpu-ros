@@ -33,8 +33,15 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  find_package(launch_testing_ament_cmake REQUIRED)
-  add_launch_test(test/isaac_ros_std_rtdetr_pol_test.py TIMEOUT "600")
+  option(
+    BUILD_MIGRAPHX_POL_TEST
+    "Build the standard ROS2 + ONNX Runtime MIGraphX proof-of-life test"
+    OFF
+  )
+  if(BUILD_MIGRAPHX_POL_TEST)
+    find_package(launch_testing_ament_cmake REQUIRED)
+    add_launch_test(test/isaac_ros_std_rtdetr_pol_test.py TIMEOUT "300")
+  endif()
 endif()
 
 install(PROGRAMS

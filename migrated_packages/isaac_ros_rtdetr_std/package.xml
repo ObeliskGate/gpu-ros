@@ -18,11 +18,9 @@
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-  <test_depend>ament_cmake_gtest</test_depend>
-  <test_depend>isaac_ros_test</test_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>isaac_ros_onnx_inference</test_depend>
-  <test_depend>isaac_ros_image_proc</test_depend>
-  <test_depend>isaac_ros_tensor_proc</test_depend>
+  <test_depend>python3-onnx</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

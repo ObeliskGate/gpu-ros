@@ -135,6 +135,42 @@ verify_workspace() {
   '
 }
 
+test_workspace() {
+  "${COMPOSE[@]}" exec -T amd bash -lc '
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+    source install/setup.bash
+
+    base_paths=(
+      migrated_packages/isaac_ros_onnx_inference
+      migrated_packages/isaac_ros_rtdetr_std
+    )
+    COLCON_DEFAULTS_FILE=/dev/null colcon build \
+      --base-paths "${base_paths[@]}" \
+      --packages-select \
+        isaac_ros_onnx_inference \
+        isaac_ros_rtdetr_std \
+      --symlink-install \
+      --cmake-clean-cache \
+      --cmake-args \
+        -DBUILD_NITROS_TRANSPORT=OFF \
+        -DORT_ENABLE_CUDA=OFF \
+        -DORT_ENABLE_ROCM=OFF \
+        -DORT_ENABLE_MIGRAPHX=ON \
+        -DONNXRUNTIME_ROOT=/opt/onnxruntime \
+        -DBUILD_MIGRAPHX_POL_TEST=ON \
+        -DBUILD_TESTING=ON
+
+    source install/setup.bash
+    COLCON_DEFAULTS_FILE=/dev/null colcon test \
+      --packages-select \
+        isaac_ros_onnx_inference \
+        isaac_ros_rtdetr_std \
+      --event-handlers console_direct+
+    COLCON_DEFAULTS_FILE=/dev/null colcon test-result --verbose
+  '
+  verify_workspace
+}
+
 case "${1:-bootstrap}" in
   bootstrap)
     check_host
@@ -159,6 +195,10 @@ case "${1:-bootstrap}" in
     build_workspace
     verify_workspace
     ;;
+  test)
+    prepare_interfaces
+    test_workspace
+    ;;
   shell)
     "${COMPOSE[@]}" exec amd bash
     ;;
@@ -169,7 +209,7 @@ case "${1:-bootstrap}" in
     "${COMPOSE[@]}" down
     ;;
   *)
-    echo "Usage: $0 {bootstrap|build|up|colcon|shell|stop|down}" >&2
+    echo "Usage: $0 {bootstrap|build|up|colcon|test|shell|stop|down}" >&2
     exit 2
     ;;
 esac

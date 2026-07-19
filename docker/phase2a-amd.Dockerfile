@@ -118,10 +118,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopencv-dev \
     pkg-config \
     python3-colcon-common-extensions \
+    python3-onnx \
     python3-pip \
     python3-rosdep \
     python3-vcstool \
     ros-${ROS_DISTRO}-ament-cmake-auto \
+    ros-${ROS_DISTRO}-ament-cmake-gtest \
+    ros-${ROS_DISTRO}-ament-lint-auto \
+    ros-${ROS_DISTRO}-ament-lint-common \
     ros-${ROS_DISTRO}-cv-bridge \
     ros-${ROS_DISTRO}-launch-testing-ament-cmake \
     ros-${ROS_DISTRO}-rclcpp \

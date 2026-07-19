@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+# http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,218 +12,192 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Proof-Of-Life test for the fully std-ROS2 RT-DETR pipeline (config D).
+"""Proof-of-life test for the Phase 2a standard ROS2 + MIGraphX pipeline."""
 
-Upstream NITROS preprocess chain -> std RtDetrPreprocessor (NITROS auto-compat
-bridge) -> OnnxInferenceNode(transport=std) -> std RtDetrDecoder. Verifies the
-vendor-neutral preprocessor + decoder produce a Detection2DArray with a
-random-weight RT-DETR-shaped ONNX (data not checked).
-"""
-
-import os
 import pathlib
 import time
 
-from isaac_ros_test import IsaacROSBaseTest, JSONConversion, MockModelGenerator
-from launch_ros.actions.composable_node_container import ComposableNodeContainer
-from launch_ros.descriptions.composable_node import ComposableNode
+import launch
+import launch_testing.actions
+from launch_ros.actions import ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
+import onnx
+from onnx import helper, TensorProto
 import pytest
 import rclpy
-from sensor_msgs.msg import CameraInfo, Image
-import torch
+from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray
 
 
-MODEL_ONNX_PATH = '/tmp/rtdetr_std_pol_model.onnx'
-MODEL_GENERATION_TIMEOUT_SEC = 300
+MODEL_PATH = pathlib.Path('/tmp/rtdetr_std_migraphx_pol.onnx')
+NAMESPACE = 'rtdetr_migraphx_pol'
 
 
-@pytest.mark.rostest
-def generate_test_description():
-    """Generate launch description for the all-std-ROS2 RT-DETR POL test."""
-    MockModelGenerator.generate(
-        input_bindings=[
-            MockModelGenerator.Binding('images', [-1, 3, 640, 640], torch.float32),
-            MockModelGenerator.Binding('orig_target_sizes', [-1, 2], torch.int64)
-        ],
-        output_bindings=[
-            MockModelGenerator.Binding('labels', [-1, 300], torch.int64),
-            MockModelGenerator.Binding('boxes', [-1, 300, 4], torch.float32),
-            MockModelGenerator.Binding('scores', [-1, 300], torch.float32)
-        ],
-        output_onnx_path=MODEL_ONNX_PATH
+def generate_test_model():
+    """Create a small RT-DETR-shaped graph that must execute on MIGraphX."""
+    inputs = [
+        helper.make_tensor_value_info('images', TensorProto.FLOAT, [1, 3, 640, 640]),
+        helper.make_tensor_value_info('orig_target_sizes', TensorProto.INT64, [1, 2]),
+    ]
+    outputs = [
+        helper.make_tensor_value_info('labels', TensorProto.INT64, [1, 1]),
+        helper.make_tensor_value_info('boxes', TensorProto.FLOAT, [1, 1, 4]),
+        helper.make_tensor_value_info('scores', TensorProto.FLOAT, [1, 1]),
+    ]
+    initializers = [
+        helper.make_tensor('labels', TensorProto.INT64, [1, 1], [7]),
+        helper.make_tensor(
+            'boxes_base', TensorProto.FLOAT, [1, 1, 4], [10.0, 20.0, 30.0, 50.0]),
+        helper.make_tensor('scores_base', TensorProto.FLOAT, [1, 1], [0.95]),
+        helper.make_tensor('zero', TensorProto.FLOAT, [], [0.0]),
+    ]
+    nodes = [
+        helper.make_node('ReduceMean', ['images'], ['image_mean'], keepdims=0),
+        helper.make_node('Mul', ['image_mean', 'zero'], ['image_zero']),
+        helper.make_node('Add', ['boxes_base', 'image_zero'], ['boxes']),
+        helper.make_node('Add', ['scores_base', 'image_zero'], ['scores']),
+    ]
+    graph = helper.make_graph(
+        nodes,
+        'rtdetr_std_migraphx_pol',
+        inputs,
+        outputs,
+        initializer=initializers,
     )
+    model = helper.make_model(
+        graph,
+        opset_imports=[helper.make_opsetid('', 17)],
+        producer_name='isaac_ros_rtdetr_std_test',
+    )
+    model.ir_version = 9
+    onnx.checker.check_model(model)
+    onnx.save(model, MODEL_PATH)
 
-    ns = IsaacROSStdRtDetrPOLTest.generate_namespace()
 
-    resize_node = ComposableNode(
-        name='resize_node',
-        package='isaac_ros_image_proc',
-        plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        namespace=ns,
+@pytest.mark.launch_test
+def generate_test_description():
+    """Launch the complete AMD target path with a deterministic test model."""
+    generate_test_model()
+
+    image_encoder = ComposableNode(
+        package='isaac_ros_rtdetr_std',
+        plugin='nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode',
+        name='image_encoder',
+        namespace=NAMESPACE,
         parameters=[{
-            'input_width': 640,
-            'input_height': 480,
+            'tensor_name': 'input_tensor',
             'output_width': 640,
             'output_height': 640,
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True
-        }]
-    )
-
-    pad_node = ComposableNode(
-        name='pad_node',
-        package='isaac_ros_image_proc',
-        plugin='nvidia::isaac_ros::image_proc::PadNode',
-        namespace=ns,
-        parameters=[{
-            'output_image_width': 640,
-            'output_image_height': 640,
-            'padding_type': 'BOTTOM_RIGHT'
         }],
-        remappings=[('image', 'resize/image')]
     )
-
-    image_format_node = ComposableNode(
-        name='image_format_node',
-        package='isaac_ros_image_proc',
-        plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-        namespace=ns,
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': 640,
-            'image_height': 640
-        }],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
-    )
-
-    image_to_tensor_node = ComposableNode(
-        name='image_to_tensor_node',
-        package='isaac_ros_tensor_proc',
-        plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
-        namespace=ns,
-        parameters=[{'scale': False, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
-    )
-
-    interleave_to_planar_node = ComposableNode(
-        name='interleaved_to_planar_node',
-        package='isaac_ros_tensor_proc',
-        plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
-        namespace=ns,
-        parameters=[{'input_tensor_shape': [640, 640, 3]}],
-        remappings=[('interleaved_tensor', 'normalized_tensor')]
-    )
-
-    reshape_node = ComposableNode(
-        name='reshape_node',
-        package='isaac_ros_tensor_proc',
-        plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-        namespace=ns,
-        parameters=[{
-            'output_tensor_name': 'input_tensor',
-            'input_tensor_shape': [3, 640, 640],
-            'output_tensor_shape': [1, 3, 640, 640]
-        }],
-        remappings=[('tensor', 'planar_tensor')]
-    )
-
-    # std-ROS2 preprocessor (subscribes via NITROS auto-compat to the chain above).
-    rtdetr_preprocessor_node = ComposableNode(
-        name='rtdetr_preprocessor',
+    preprocessor = ComposableNode(
         package='isaac_ros_rtdetr_std',
         plugin='nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode',
-        namespace=ns,
-        parameters=[{'image_width': 640, 'image_height': 480, 'use_max_dim_for_orig_size': False}],
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        name='preprocessor',
+        namespace=NAMESPACE,
+        parameters=[{
+            'image_width': 640,
+            'image_height': 640,
+        }],
     )
-
-    onnx_node = ComposableNode(
-        name='onnx_inference',
+    inference = ComposableNode(
         package='isaac_ros_onnx_inference',
         plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
-        namespace=ns,
+        name='inference',
+        namespace=NAMESPACE,
         parameters=[{
-            'model_file_path': MODEL_ONNX_PATH,
-            'execution_provider': 'cuda',
+            'model_file_path': str(MODEL_PATH),
+            'execution_provider': 'migraphx',
             'transport': 'std',
         }],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'tensor_sub'),
-        ]
+        ],
     )
-
-    rtdetr_decoder_node = ComposableNode(
-        name='rtdetr_decoder',
+    decoder = ComposableNode(
         package='isaac_ros_rtdetr_std',
         plugin='nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode',
-        namespace=ns
+        name='decoder',
+        namespace=NAMESPACE,
+        parameters=[{'confidence_threshold': 0.5}],
     )
-
     container = ComposableNodeContainer(
-        name='rtdetr_container',
-        namespace='rtdetr_container',
         package='rclcpp_components',
         executable='component_container_mt',
+        name='rtdetr_migraphx_pol_container',
+        namespace='',
         composable_node_descriptions=[
-            resize_node, pad_node, image_format_node,
-            image_to_tensor_node, interleave_to_planar_node, reshape_node,
-            rtdetr_preprocessor_node, onnx_node, rtdetr_decoder_node
+            image_encoder,
+            preprocessor,
+            inference,
+            decoder,
         ],
-        output='screen'
+        output='screen',
     )
 
-    return IsaacROSStdRtDetrPOLTest.generate_test_description([container])
+    return launch.LaunchDescription([
+        container,
+        launch_testing.actions.ReadyToTest(),
+    ])
 
 
-class IsaacROSStdRtDetrPOLTest(IsaacROSBaseTest):
-    """Validate the std-ROS2 preprocessor + decoder produce detections (config D)."""
+class TestRtDetrMigraphxProofOfLife:
+    """Verify one image traverses the complete Phase 2a target graph."""
 
-    filepath = pathlib.Path(os.path.dirname(__file__))
-    INIT_WAIT_SEC = 10
+    @classmethod
+    def setup_class(cls):
+        """Create the ROS test client."""
+        rclpy.init()
+        cls.node = rclpy.create_node('rtdetr_migraphx_pol_test_client')
 
-    @IsaacROSBaseTest.for_each_test_case()
-    def test_object_detection(self, test_folder):
-        """Expect the pipeline to produce a detection array given an image."""
-        self.node._logger.info(f'Generating model (timeout={MODEL_GENERATION_TIMEOUT_SEC}s)')
-        start_time = time.time()
-        while not os.path.isfile(MODEL_ONNX_PATH):
-            if time.time() - start_time > MODEL_GENERATION_TIMEOUT_SEC:
-                self.fail('Model generation timed out')
-            time.sleep(1)
+    @classmethod
+    def teardown_class(cls):
+        """Destroy test resources and the generated model."""
+        cls.node.destroy_node()
+        rclpy.shutdown()
+        MODEL_PATH.unlink(missing_ok=True)
 
-        received_messages = {}
-        self.generate_namespace_lookup(['image', 'camera_info', 'detections_output'])
+    def test_detection_output(self):
+        """Publish one image and validate the decoded deterministic output."""
+        received = []
+        subscription = self.node.create_subscription(
+            Detection2DArray,
+            f'/{NAMESPACE}/detections_output',
+            received.append,
+            10,
+        )
+        publisher = self.node.create_publisher(Image, f'/{NAMESPACE}/image', 10)
 
-        image_pub = self.node.create_publisher(
-            Image, self.namespaces['image'], self.DEFAULT_QOS)
-        camera_info_pub = self.node.create_publisher(
-            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS)
-        subs = self.create_logging_subscribers(
-            [('detections_output', Detection2DArray)], received_messages)
+        image = Image()
+        image.header.frame_id = 'camera'
+        image.height = 1
+        image.width = 2
+        image.encoding = 'rgb8'
+        image.step = 6
+        image.data = [10, 20, 30, 40, 50, 60]
 
-        try:
-            image = JSONConversion.load_image_from_json(test_folder / 'image.json')
-            camera_info = JSONConversion.load_camera_info_from_json(
-                test_folder / 'camera_info.json')
-            timestamp = self.node.get_clock().now().to_msg()
-            image.header.stamp = timestamp
-            camera_info.header.stamp = timestamp
+        deadline = time.monotonic() + 120.0
+        next_publish = 0.0
+        while time.monotonic() < deadline and not received:
+            now = time.monotonic()
+            if now >= next_publish:
+                image.header.stamp = self.node.get_clock().now().to_msg()
+                publisher.publish(image)
+                next_publish = now + 0.25
+            rclpy.spin_once(self.node, timeout_sec=0.1)
 
-            end_time = time.time() + 60
-            done = False
-            while time.time() < end_time:
-                image_pub.publish(image)
-                camera_info_pub.publish(camera_info)
-                rclpy.spin_once(self.node, timeout_sec=0.1)
-                if 'detections_output' in received_messages:
-                    done = True
-                    break
+        self.node.destroy_publisher(publisher)
+        self.node.destroy_subscription(subscription)
 
-            self.assertTrue(done, "Didn't receive output on detections_output topic!")
-        finally:
-            self.node.destroy_subscription(subs)
-            self.node.destroy_publisher(image_pub)
+        assert received, 'No Detection2DArray received from the MIGraphX pipeline'
+        detections = received[-1].detections
+        assert len(detections) == 1
+        detection = detections[0]
+        assert detection.header.frame_id == 'camera'
+        assert detection.results[0].hypothesis.class_id == '7'
+        assert detection.results[0].hypothesis.score == pytest.approx(0.95)
+        assert detection.bbox.center.position.x == pytest.approx(20.0)
+        assert detection.bbox.center.position.y == pytest.approx(35.0)
+        assert detection.bbox.size_x == pytest.approx(20.0)
+        assert detection.bbox.size_y == pytest.approx(30.0)
