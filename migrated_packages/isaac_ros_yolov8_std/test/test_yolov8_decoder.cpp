@@ -14,6 +14,7 @@
 
 #include "isaac_ros_yolov8_std/yolov8_decoder.hpp"
 
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -32,7 +33,7 @@ using nvidia::isaac_ros::yolov8_std::YoloV8DecoderConfig;
 
 Tensor MakeTensor(
   const std::string & name,
-  const std::vector<int64_t> & shape,
+  const std::vector<uint32_t> & shape,
   const std::vector<float> & values,
   int data_type = kGxfFloat32)
 {

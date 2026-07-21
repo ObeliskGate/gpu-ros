@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -47,11 +48,11 @@ const Tensor & FindTensor(const TensorList & msg, const std::string & tensor_nam
   throw std::runtime_error("YOLOv8 tensor '" + tensor_name + "' not found");
 }
 
-size_t ElementCount(const std::vector<int64_t> & dims)
+size_t ElementCount(const std::vector<uint32_t> & dims)
 {
   size_t count = 1;
   for (const auto dim : dims) {
-    if (dim <= 0) {
+    if (dim == 0) {
       throw std::runtime_error("YOLOv8 output tensor has non-positive dimension");
     }
     count *= static_cast<size_t>(dim);
