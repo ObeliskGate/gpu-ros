@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "isaac_ros_yolov8_std/yolov8_decoder.hpp"
-
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
@@ -21,6 +19,8 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+
+#include "isaac_ros_yolov8_std/yolov8_decoder.hpp"
 
 namespace
 {
