@@ -6,6 +6,13 @@ This project migrates NVIDIA Isaac ROS object detection packages from the NVIDIA
 
 The upstream source is `isaac_ros_object_detection` (v4.4.0) which contains detection pipelines for YOLOv8, RT-DETR, Grounding DINO, and DetectNet.
 
+## Optional Local Environment
+
+If `inner_docs/environment_conventions.md` exists, read it for machine-local paths,
+remote-host roles, and operational commands. The file is intentionally untracked.
+It may refine environment-specific details, but the architecture, security, scope,
+and quality requirements in this `AGENTS.md` remain authoritative.
+
 ## Long-term Goals
 
 0. **Phase 0 (completed)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
