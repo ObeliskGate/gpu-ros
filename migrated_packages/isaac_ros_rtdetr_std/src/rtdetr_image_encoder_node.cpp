@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -153,8 +154,13 @@ RtDetrImageEncoderNode::RtDetrImageEncoderNode(const rclcpp::NodeOptions options
   output_height_{declare_parameter<int64_t>("output_height", 640)},
   output_width_{declare_parameter<int64_t>("output_width", 640)}
 {
-  if (output_height_ <= 0 || output_width_ <= 0) {
-    throw std::invalid_argument("output_height and output_width must be positive");
+  if (
+    output_height_ <= 0 || output_width_ <= 0 ||
+    output_height_ > std::numeric_limits<int>::max() ||
+    output_width_ > std::numeric_limits<int>::max())
+  {
+    throw std::invalid_argument(
+            "output_height and output_width must be positive and fit in an int");
   }
 
   pub_ = create_publisher<TensorList>("encoded_tensor", 10);
@@ -174,7 +180,11 @@ void RtDetrImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
     tensor.name = tensor_name_;
     tensor.data_type = kGxfFloat32;
     tensor.shape.rank = 4;
-    tensor.shape.dims = {1, kChannels, output_height_, output_width_};
+    tensor.shape.dims = {
+      1U,
+      static_cast<uint32_t>(kChannels),
+      static_cast<uint32_t>(output_height_),
+      static_cast<uint32_t>(output_width_)};
     tensor.data = HwcRgbU8ToNchwF32Bytes(padded);
 
     TensorList out_msg;
