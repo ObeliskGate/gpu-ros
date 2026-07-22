@@ -69,3 +69,33 @@ reported as a pure backend comparison.
 Results collected before the device-resident I/O Binding and Release-build
 checks should be retained as historical data and labeled
 `host-staged/build-type-unknown`, not overwritten by the corrected matrix.
+
+## Benchmark And Audit Discipline
+
+Formal A/B/C/D benchmarks run without ORT profiling or bridge timing. Provider
+placement and bridge timing are separate diagnostic runs because both add
+instrumentation to the measured process. To time the standard-to-NITROS bridge,
+set `enable_timing:=true` on `TensorListBridgeNode` in a short diagnostic launch;
+the default is `false`.
+
+Run the matrix scripts from the workspace root after `colcon` completes:
+
+```bash
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_a_fp32_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_b_fp32_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_c_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_d_graph.py
+```
+
+```bash
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_a_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_b_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_c_graph.py
+launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_d_graph.py
+```
+
+See [`phase1-results.md`](phase1-results.md) for the completed matrix and its
+interpretation. In particular, the graph labels describe complete pipeline
+configurations; they are not guaranteed to be a purely additive factorial
+experiment because the TensorRT and ORT integrations place copies and
+synchronization in different stages.

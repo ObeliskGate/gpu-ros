@@ -66,7 +66,7 @@ public:
   {
     const std::string input_transport =
       declare_parameter<std::string>("input_transport", "std");
-    enable_timing_ = declare_parameter<bool>("enable_timing", true);
+    enable_timing_ = declare_parameter<bool>("enable_timing", false);
     timing_log_every_ = declare_parameter<int>("timing_log_every", 500);
     declare_parameter<int>("gpu_device_id", 0);
 
@@ -91,7 +91,10 @@ private:
   void Forward(
     const std::vector<TensorView> & tensors, const std_msgs::msg::Header & header)
   {
-    const auto start = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point start;
+    if (enable_timing_) {
+      start = std::chrono::steady_clock::now();
+    }
 
     nitros::NitrosTensorListBuilder builder;
     builder.WithHeader(header);
@@ -150,7 +153,7 @@ private:
   }
 
   cudaStream_t stream_;
-  bool enable_timing_{true};
+  bool enable_timing_{false};
   int timing_log_every_{500};
   std::vector<double> timings_ms_;
   std::unique_ptr<ITensorListIO> input_io_;

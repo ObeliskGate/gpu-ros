@@ -16,7 +16,7 @@ and quality requirements in this `AGENTS.md` remain authoritative.
 ## Long-term Goals
 
 0. **Phase 0 (completed)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
-1. **Phase 1**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using standard ROS2 `isaac_ros_tensor_list_interfaces` messages. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2×2 matrix of inference backend × transport):
+1. **Phase 1 (completed)**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using standard ROS2 `isaac_ros_tensor_list_interfaces` messages. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2×2 matrix of inference backend × transport):
    - (A) TensorRT + NITROS (baseline)
    - (B) TensorRT + standard ROS2 interfaces (isolate NITROS overhead)
    - (C) ONNX Runtime + NITROS (isolate inference backend overhead)
@@ -25,6 +25,12 @@ and quality requirements in this `AGENTS.md` remain authoritative.
    `Image -> std image encoder -> official TensorList -> ONNX Runtime MIGraphX -> std decoder -> Detection2DArray`.
 3. **Phase 2b (future, separate repository)**: Build a reusable AMD TensorList transport/runtime layer similar to the transport subset of NITROS. This repository documents the boundary only; it does not implement or depend on Phase 2b.
 4. **Phase 3**: Extend the migrated AMD/std ROS2 pattern to Grounding DINO and other deferred object detection pipelines.
+
+The final Phase 1 NVIDIA results, correctness checks, provider-placement audit,
+and interpretation limits are recorded in
+[`docs/phase1-results.md`](docs/phase1-results.md). The normalized machine-readable
+summary is
+[`migrated_packages/benchmark_results/phase1_final_summary_20260722.json`](migrated_packages/benchmark_results/phase1_final_summary_20260722.json).
 
 ## Phase 0: Reproduce NVIDIA Official Benchmarks
 

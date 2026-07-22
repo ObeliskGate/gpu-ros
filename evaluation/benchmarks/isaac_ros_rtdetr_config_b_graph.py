@@ -56,8 +56,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         plugin='nvidia::isaac_ros::onnx_inference::TensorListBridgeNode',
         parameters=[{
             'input_transport': 'std',
-            'enable_timing': True,
-            'timing_log_every': 500,
+            'enable_timing': False,
         }],
         remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'bridged_tensor')]
     )
