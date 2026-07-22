@@ -55,9 +55,11 @@ NITROS or standard adapter; provider selection chooses CUDA or MIGraphX. The
 core contains no NITROS/GXF or model-specific types, and the NITROS adapter is
 omitted entirely from AMD builds.
 
-This transport guarantee is separate from ORT operator placement. Enable
-`ORT_PROFILE_PREFIX` for a short audit run to identify any operators that ORT
-assigns to the CPU EP, then disable profiling for performance measurements.
+This transport guarantee is separate from ORT operator placement. CPU-preferred
+shape and bookkeeping operators are allowed. A separate, short launch may use
+the node's `ort_profile_prefix` parameter to confirm that the requested GPU EP
+executes model kernels and the graph has not fallen back entirely to CPU.
+Benchmark graphs never enable ORT profiling.
 
 RT-DETR has FP32 TensorRT A/B graphs for the fair A/C and B/D backend
 comparisons. YOLOv8 A/B use TensorRT FP16 while C/D use ORT FP32, so YOLOv8

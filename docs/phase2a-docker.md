@@ -159,9 +159,11 @@ providers actually executed graph nodes:
 ros2 run isaac_ros_onnx_inference summarize_ort_profile.py /tmp/ort_profiles/rtdetr_migraphx_*.json --expected-provider MIGraphXExecutionProvider --output-json /tmp/ort_profiles/provider_report_migraphx.json
 ```
 
-To make CPU assignment fail an automated audit, add
-`--require-no-cpu-nodes`. Do not enable profiling for final benchmark numbers;
-the per-node event collection adds overhead and can produce a large JSON file.
+The audit passes when the expected GPU provider has kernel events. CPU-preferred
+shape or bookkeeping nodes are allowed; `--require-no-cpu-nodes` is only an
+optional diagnostic and is not a Phase 2a acceptance criterion. Benchmark
+graphs never enable ORT profiling because per-node event collection adds
+overhead and can produce a large JSON file.
 
 ## Run Port Tests
 
@@ -212,10 +214,10 @@ after entering the container:
 ros2 pkg prefix ros2_benchmark
 ```
 
-Run the benchmark from the repository root with ORT profiling disabled:
+Run the benchmark from the repository root. Benchmark graphs do not expose the
+node's profiling parameter:
 
 ```bash
-unset ORT_PROFILE_PREFIX
 launch_test migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
 ```
 
