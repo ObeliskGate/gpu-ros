@@ -40,6 +40,9 @@ prepare_env() {
 verify_container() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
     source /opt/ros/jazzy/setup.bash
+    test "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}" = \
+      /workspaces/isaac_ros-dev/assets
+    test -d "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}"
     nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
     test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
     test -e /opt/tritonserver/backends/onnxruntime/libonnxruntime.so

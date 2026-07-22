@@ -6,6 +6,8 @@ services:
     tty: true
     env_file:
       - .env
+    environment:
+      ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
     deploy:
       resources:
         reservations:
