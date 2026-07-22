@@ -48,16 +48,43 @@ verify_container() {
   '
 }
 
+verify_release_caches() {
+  "${COMPOSE[@]}" exec -T dev bash -lc '
+    set -e
+    for package in \
+      isaac_ros_onnx_inference \
+      isaac_ros_rtdetr_std \
+      isaac_ros_yolov8_std; do
+      cache="/workspaces/isaac_ros-dev/build/${package}/CMakeCache.txt"
+      test -f "${cache}"
+      grep -Fqx "CMAKE_BUILD_TYPE:STRING=Release" "${cache}" || {
+        echo "ERROR: ${package} was not built with CMAKE_BUILD_TYPE=Release" >&2
+        exit 1
+      }
+    done
+  '
+}
+
 build_workspace() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
     source /opt/ros/jazzy/setup.bash
     colcon build \
       --symlink-install \
-      --base-paths src/amd_ros_object_detection/migrated_packages \
+      --base-paths \
+        src/amd_ros_object_detection/migrated_packages \
+        src/amd_ros_object_detection/isaac_ros_object_detection/isaac_ros_yolov8 \
       --packages-select \
         isaac_ros_onnx_inference \
-        isaac_ros_rtdetr_std
+        isaac_ros_rtdetr_std \
+        isaac_ros_yolov8 \
+        isaac_ros_yolov8_std \
+        isaac_ros_detection_validation \
+      --cmake-args \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DORT_ENABLE_CUDA=ON \
+        -DBUILD_NITROS_TRANSPORT=ON
   '
+  verify_release_caches
 }
 
 case "${1:-bootstrap}" in
@@ -84,6 +111,7 @@ case "${1:-bootstrap}" in
     ;;
   verify)
     verify_container
+    verify_release_caches
     ;;
   shell)
     "${COMPOSE[@]}" exec dev bash

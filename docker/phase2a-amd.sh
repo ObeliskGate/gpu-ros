@@ -72,6 +72,20 @@ check_host() {
   echo "AMD GPU build target: ${AMD_GPU_TARGETS}"
 }
 
+verify_release_caches() {
+  "${COMPOSE[@]}" exec -T amd bash -lc '
+    set -e
+    for package in isaac_ros_onnx_inference isaac_ros_rtdetr_std; do
+      cache="/workspaces/amd_ros_object_detection/build/${package}/CMakeCache.txt"
+      test -f "${cache}"
+      grep -Fqx "CMAKE_BUILD_TYPE:STRING=Release" "${cache}" || {
+        echo "ERROR: ${package} was not built with CMAKE_BUILD_TYPE=Release" >&2
+        exit 1
+      }
+    done
+  '
+}
+
 case "${1:-bootstrap}" in
   bootstrap)
     check_host
@@ -104,6 +118,9 @@ case "${1:-bootstrap}" in
       exec bash -i
     '
     ;;
+  verify)
+    verify_release_caches
+    ;;
   stop)
     "${COMPOSE[@]}" stop amd
     ;;
@@ -111,7 +128,7 @@ case "${1:-bootstrap}" in
     "${COMPOSE[@]}" down
     ;;
   *)
-    echo "Usage: $0 {bootstrap|build|up|shell|stop|down}" >&2
+    echo "Usage: $0 {bootstrap|build|up|shell|verify|stop|down}" >&2
     exit 2
     ;;
 esac

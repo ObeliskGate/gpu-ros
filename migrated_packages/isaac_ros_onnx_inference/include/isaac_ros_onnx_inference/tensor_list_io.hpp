@@ -28,18 +28,19 @@
 namespace nvidia::isaac_ros::onnx_inference
 {
 
-// Transport-agnostic tensor IO. Both std-ROS2 and NITROS implementations
-// deliver/accept host-memory HostTensors so they can share OnnxInferenceCore.
+// Transport-agnostic tensor IO. Input views are valid only for the duration of
+// the synchronous callback. Publish takes ownership of inference results.
 class ITensorListIO
 {
 public:
-  using Callback = std::function<void (const std::vector<HostTensor> &,
+  using Callback = std::function<void (const std::vector<TensorView> &,
       const std_msgs::msg::Header &)>;
 
   virtual ~ITensorListIO() = default;
   virtual void Subscribe(Callback callback) = 0;
+  virtual TensorMemoryKind OutputMemoryKind() const = 0;
   virtual void Publish(
-    const std::vector<HostTensor> & tensors,
+    std::vector<OwnedTensor> tensors,
     const std_msgs::msg::Header & header) = 0;
 };
 

@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(isaac_ros_onnx_inference LANGUAGES CXX)
 
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -161,6 +165,14 @@ if(BUILD_TESTING)
     $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
     $<$<BOOL:${ORT_ENABLE_MIGRAPHX}>:ORT_MIGRAPHX_AVAILABLE>
   )
+  get_filename_component(REPOSITORY_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+  set(CUDA_IO_BINDING_TEST_MODEL
+    "${REPOSITORY_ROOT}/isaac_ros_object_detection/isaac_ros_yolov8/test/dummy_model/yolov8/dummy_yolov8s.onnx")
+  if(ORT_ENABLE_CUDA AND BUILD_NITROS_TRANSPORT AND EXISTS "${CUDA_IO_BINDING_TEST_MODEL}")
+    target_compile_definitions(test_onnx_inference_core PRIVATE
+      TEST_CUDA_IO_BINDING_MODEL_PATH="${CUDA_IO_BINDING_TEST_MODEL}")
+    target_link_libraries(test_onnx_inference_core CUDA::cudart)
+  endif()
 
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_summarize_ort_profile

@@ -2,6 +2,7 @@ build:
   base-paths:
     - third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
   cmake-args:
+    - -DCMAKE_BUILD_TYPE=Release
     - -DBUILD_NITROS_TRANSPORT=OFF
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF

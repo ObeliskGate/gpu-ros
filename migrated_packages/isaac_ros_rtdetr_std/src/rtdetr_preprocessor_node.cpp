@@ -16,6 +16,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "rclcpp_components/register_node_macro.hpp"
@@ -50,17 +52,17 @@ RtDetrPreprocessorNode::RtDetrPreprocessorNode(const rclcpp::NodeOptions options
     std::bind(&RtDetrPreprocessorNode::InputCallback, this, std::placeholders::_1));
 }
 
-void RtDetrPreprocessorNode::InputCallback(const TensorList::SharedPtr msg)
+void RtDetrPreprocessorNode::InputCallback(TensorList::UniquePtr msg)
 {
   // Locate the encoded image tensor by name.
-  const isaac_ros_tensor_list_interfaces::msg::Tensor * image_tensor = nullptr;
-  for (const auto & t : msg->tensors) {
-    if (t.name == input_image_tensor_name_) {
-      image_tensor = &t;
+  size_t image_tensor_index = msg->tensors.size();
+  for (size_t i = 0; i < msg->tensors.size(); ++i) {
+    if (msg->tensors[i].name == input_image_tensor_name_) {
+      image_tensor_index = i;
       break;
     }
   }
-  if (image_tensor == nullptr) {
+  if (image_tensor_index == msg->tensors.size()) {
     RCLCPP_WARN(
       get_logger(), "Input tensor '%s' not found; dropping message.",
       input_image_tensor_name_.c_str());
@@ -73,13 +75,14 @@ void RtDetrPreprocessorNode::InputCallback(const TensorList::SharedPtr msg)
     std::max(image_height_, image_width_) : image_height_;
   const int64_t output_size[2]{orig_width, orig_height};
 
-  TensorList out_msg;
-  out_msg.header = msg->header;
+  auto loaned_output = pub_->borrow_loaned_message();
+  auto & out_msg = loaned_output.get();
+  out_msg.header = std::move(msg->header);
 
   // Forward the image tensor unchanged, renamed to the model's input binding.
-  isaac_ros_tensor_list_interfaces::msg::Tensor image_out = *image_tensor;
+  auto image_out = std::move(msg->tensors[image_tensor_index]);
   image_out.name = output_image_tensor_name_;
-  out_msg.tensors.push_back(image_out);
+  out_msg.tensors.push_back(std::move(image_out));
 
   // Append the orig_target_sizes int64 [1, 2] tensor.
   isaac_ros_tensor_list_interfaces::msg::Tensor size_out;
@@ -89,9 +92,9 @@ void RtDetrPreprocessorNode::InputCallback(const TensorList::SharedPtr msg)
   size_out.shape.dims = {1, 2};
   size_out.data.resize(sizeof(output_size));
   std::memcpy(size_out.data.data(), output_size, sizeof(output_size));
-  out_msg.tensors.push_back(size_out);
+  out_msg.tensors.push_back(std::move(size_out));
 
-  pub_->publish(out_msg);
+  pub_->publish(std::move(loaned_output));
 }
 
 }  // namespace rtdetr_std

@@ -34,7 +34,7 @@ public:
 
 private:
   void OnTensors(
-    const std::vector<HostTensor> & inputs, const std_msgs::msg::Header & header);
+    const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header);
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorListIO> io_;

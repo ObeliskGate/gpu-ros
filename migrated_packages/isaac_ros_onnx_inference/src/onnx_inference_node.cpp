@@ -15,6 +15,8 @@
 #include "isaac_ros_onnx_inference/onnx_inference_node.hpp"
 
 #include <exception>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -36,10 +38,15 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("ort_profile_prefix", "");
   const std::string transport =
     declare_parameter<std::string>("transport", "std");
+  const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
+
+  if (transport == "nitros" && execution_provider != ExecutionProvider::kCuda) {
+    throw std::invalid_argument("transport=nitros requires execution_provider=cuda");
+  }
 
   io_ = CreateTensorListIO(this, transport);
   io_->Subscribe(
-    [this](const std::vector<HostTensor> & inputs, const std_msgs::msg::Header & header) {
+    [this](const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header) {
       OnTensors(inputs, header);
     });
 
@@ -50,7 +57,7 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
   OnnxInferenceCore::Config cfg;
   cfg.model_file_path = model_file_path;
-  cfg.ep = ParseExecutionProvider(ep_str);
+  cfg.ep = execution_provider;
   cfg.gpu_device_id = gpu_device_id;
   cfg.ort_profile_prefix = ort_profile_prefix;
   core_ = std::make_unique<OnnxInferenceCore>(cfg);
@@ -88,13 +95,13 @@ OnnxInferenceNode::~OnnxInferenceNode()
 }
 
 void OnnxInferenceNode::OnTensors(
-  const std::vector<HostTensor> & inputs, const std_msgs::msg::Header & header)
+  const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header)
 {
   if (!core_) {
     RCLCPP_WARN_ONCE(get_logger(), "Received tensor but inference core is not initialized.");
     return;
   }
-  io_->Publish(core_->RunInference(inputs), header);
+  io_->Publish(core_->RunInference(inputs, io_->OutputMemoryKind()), header);
 }
 
 }  // namespace nvidia::isaac_ros::onnx_inference

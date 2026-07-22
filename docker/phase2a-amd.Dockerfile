@@ -178,7 +178,7 @@ RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
       --base-paths \
         /opt/src/ros2_benchmark/ros2_benchmark_interfaces \
         /opt/src/ros2_benchmark/ros2_benchmark \
-      --cmake-args -DBUILD_TESTING=OFF \
+      --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
     && source /opt/ros2_benchmark/setup.bash \
     && ros2 pkg prefix ros2_benchmark \
     && ros2 pkg prefix ros2_benchmark_interfaces

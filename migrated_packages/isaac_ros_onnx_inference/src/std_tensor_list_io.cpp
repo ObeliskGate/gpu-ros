@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "isaac_ros_onnx_inference/tensor_list_io.hpp"
@@ -45,37 +48,49 @@ public:
       [this](const TensorListMsg::SharedPtr msg) {OnMsg(msg);});
   }
 
+  TensorMemoryKind OutputMemoryKind() const override
+  {
+    return TensorMemoryKind::kHost;
+  }
+
   void Publish(
-    const std::vector<HostTensor> & tensors,
+    std::vector<OwnedTensor> tensors,
     const std_msgs::msg::Header & header) override
   {
-    TensorListMsg msg;
+    auto loaned_message = pub_->borrow_loaned_message();
+    auto & msg = loaned_message.get();
     msg.header = header;
     msg.tensors.reserve(tensors.size());
-    for (const auto & ht : tensors) {
+    for (auto & tensor : tensors) {
+      auto * host_data = std::get_if<std::vector<uint8_t>>(&tensor.storage);
+      if (host_data == nullptr) {
+        throw std::runtime_error("StdTensorListIO received a device-memory output tensor");
+      }
       isaac_ros_tensor_list_interfaces::msg::Tensor t;
-      t.name = ht.name;
-      t.data_type = OnnxToGxfDtype(ht.dtype);
-      t.shape.rank = static_cast<int32_t>(ht.shape.size());
-      t.shape.dims.assign(ht.shape.begin(), ht.shape.end());
-      t.data = ht.data;
+      t.name = std::move(tensor.name);
+      t.data_type = OnnxToGxfDtype(tensor.dtype);
+      t.shape.rank = static_cast<int32_t>(tensor.shape.size());
+      t.shape.dims.assign(tensor.shape.begin(), tensor.shape.end());
+      t.data = std::move(*host_data);
       msg.tensors.push_back(std::move(t));
     }
-    pub_->publish(msg);
+    pub_->publish(std::move(loaned_message));
   }
 
 private:
   void OnMsg(const TensorListMsg::SharedPtr msg)
   {
-    std::vector<HostTensor> inputs;
+    std::vector<TensorView> inputs;
     inputs.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
-      HostTensor ht;
-      ht.name = t.name;
-      ht.dtype = GxfToOnnxDtype(t.data_type);
-      ht.shape.assign(t.shape.dims.begin(), t.shape.dims.end());
-      ht.data = t.data;
-      inputs.push_back(std::move(ht));
+      TensorView view;
+      view.name = t.name;
+      view.dtype = GxfToOnnxDtype(t.data_type);
+      view.shape.assign(t.shape.dims.begin(), t.shape.dims.end());
+      view.data = t.data.data();
+      view.byte_size = t.data.size();
+      view.memory_kind = TensorMemoryKind::kHost;
+      inputs.push_back(std::move(view));
     }
     callback_(inputs, msg->header);
   }

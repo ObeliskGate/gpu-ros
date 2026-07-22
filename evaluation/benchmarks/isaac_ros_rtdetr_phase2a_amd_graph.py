@@ -152,6 +152,7 @@ class TestIsaacROSRtDetrPhase2aAmd(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'inference_backend': 'ONNX Runtime MIGraphX EP',
             'transport': 'standard ROS2 TensorList',
+            'build_type': 'Release',
             'result_directory': RESULTS_DIR,
         }
     )

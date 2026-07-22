@@ -172,6 +172,10 @@ colcon test --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
+The checked-in colcon defaults force `CMAKE_BUILD_TYPE=Release`. From the host,
+`./docker/phase2a-amd.sh verify` confirms that the ONNX Runtime and RT-DETR
+package caches are Release builds before collecting benchmark results.
+
 The container's colcon defaults restrict build discovery to the three Phase 2a
 packages and test discovery to the two migrated packages. The tests check the
 ONNX Runtime provider-selection core and the ported proof-of-life graph. A

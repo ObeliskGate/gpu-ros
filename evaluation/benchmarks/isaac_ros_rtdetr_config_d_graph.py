@@ -102,7 +102,8 @@ class TestIsaacROSRtDetrConfigD(ROS2BenchmarkTest):
         pre_trial_run_wait_time_sec=5.0,
         custom_report_info={
             'data_resolution': common.IMAGE_RESOLUTION,
-            'network_resolution': common.NETWORK_RESOLUTION
+            'network_resolution': common.NETWORK_RESOLUTION,
+            'build_type': 'Release',
         }
     )
 

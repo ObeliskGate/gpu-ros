@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cuda_runtime.h>
-
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "isaac_ros_onnx_inference/tensor_list_io.hpp"
@@ -72,20 +73,29 @@ nitros::NitrosDataType OnnxToNitrosDtype(ONNXTensorElementDataType dtype)
   }
 }
 
+std::vector<int32_t> ToNitrosDims(const std::vector<int64_t> & shape)
+{
+  std::vector<int32_t> dims;
+  dims.reserve(shape.size());
+  for (const int64_t dimension : shape) {
+    if (dimension < 0 || dimension > std::numeric_limits<int32_t>::max()) {
+      throw std::invalid_argument("NitrosTensorListIO: tensor dimension is outside int32 range");
+    }
+    dims.push_back(static_cast<int32_t>(dimension));
+  }
+  return dims;
+}
+
 class NitrosTensorListIO : public ITensorListIO
 {
 public:
   explicit NitrosTensorListIO(rclcpp::Node * node)
-  : node_{node}
+  : node_{node},
+    gpu_device_id_{node_->has_parameter("gpu_device_id") ?
+      static_cast<int>(node_->get_parameter("gpu_device_id").as_int()) : 0}
   {
-    cudaStreamCreate(&stream_);
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
       node_, "tensor_output", Format());
-  }
-
-  ~NitrosTensorListIO() override
-  {
-    cudaStreamDestroy(stream_);
   }
 
   void Subscribe(Callback callback) override
@@ -96,50 +106,57 @@ public:
       std::bind(&NitrosTensorListIO::OnView, this, std::placeholders::_1));
   }
 
+  TensorMemoryKind OutputMemoryKind() const override
+  {
+    return TensorMemoryKind::kCudaDevice;
+  }
+
   void Publish(
-    const std::vector<HostTensor> & tensors,
+    std::vector<OwnedTensor> tensors,
     const std_msgs::msg::Header & header) override
   {
     nitros::NitrosTensorListBuilder builder;
     builder.WithHeader(header);
-    for (const auto & ht : tensors) {
-      void * gpu_buffer = nullptr;
-      cudaMallocAsync(&gpu_buffer, ht.data.size(), stream_);
-      cudaMemcpyAsync(
-        gpu_buffer, ht.data.data(), ht.data.size(), cudaMemcpyHostToDevice, stream_);
-
-      std::vector<int32_t> dims(ht.shape.begin(), ht.shape.end());
+    for (auto & tensor : tensors) {
+      auto * device_buffer = std::get_if<DeviceTensorBuffer>(&tensor.storage);
+      if (device_buffer == nullptr || !device_buffer->owner) {
+        throw std::runtime_error("NitrosTensorListIO requires an ORT-owned CUDA output tensor");
+      }
+      if (device_buffer->device_id != gpu_device_id_) {
+        throw std::runtime_error(
+                "NitrosTensorListIO output CUDA device does not match gpu_device_id");
+      }
+      auto owner = std::move(device_buffer->owner);
       builder.AddTensor(
-        ht.name,
+        tensor.name,
         nitros::NitrosTensorBuilder()
-        .WithShape(nitros::NitrosTensorShape(dims))
-        .WithDataType(OnnxToNitrosDtype(ht.dtype))
-        .WithData(gpu_buffer)
+        .WithShape(nitros::NitrosTensorShape(ToNitrosDims(tensor.shape)))
+        .WithDataType(OnnxToNitrosDtype(tensor.dtype))
+        .WithData(device_buffer->data)
+        .WithReleaseCallback([owner = std::move(owner)]() mutable {owner.reset();})
         .Build());
     }
-    cudaStreamSynchronize(stream_);
     pub_->publish(builder.Build());
   }
 
 private:
   void OnView(const nitros::NitrosTensorListView & view)
   {
-    std::vector<HostTensor> inputs;
+    std::vector<TensorView> inputs;
     inputs.reserve(view.GetTensorCount());
     for (const auto & t : view.GetAllTensor()) {
-      HostTensor ht;
-      ht.name = t.GetName();
-      ht.dtype = GxfPrimitiveToOnnx(t.GetElementType());
+      TensorView tensor;
+      tensor.name = t.GetName();
+      tensor.dtype = GxfPrimitiveToOnnx(t.GetElementType());
       for (uint32_t i = 0; i < t.GetRank(); ++i) {
-        ht.shape.push_back(static_cast<int64_t>(t.GetDimension(i)));
+        tensor.shape.push_back(static_cast<int64_t>(t.GetDimension(i)));
       }
-      ht.data.resize(t.GetTensorSize());
-      cudaMemcpyAsync(
-        ht.data.data(), t.GetBuffer(), t.GetTensorSize(),
-        cudaMemcpyDeviceToHost, stream_);
-      inputs.push_back(std::move(ht));
+      tensor.data = t.GetBuffer();
+      tensor.byte_size = t.GetTensorSize();
+      tensor.memory_kind = TensorMemoryKind::kCudaDevice;
+      tensor.device_id = gpu_device_id_;
+      inputs.push_back(std::move(tensor));
     }
-    cudaStreamSynchronize(stream_);
 
     std_msgs::msg::Header header;
     header.stamp.sec = view.GetTimestampSeconds();
@@ -150,7 +167,7 @@ private:
 
   rclcpp::Node * node_;
   Callback callback_;
-  cudaStream_t stream_;
+  int gpu_device_id_;
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> pub_;
   std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> sub_;
 };

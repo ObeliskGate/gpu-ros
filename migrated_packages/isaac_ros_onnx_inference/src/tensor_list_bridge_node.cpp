@@ -23,6 +23,7 @@
 #include <chrono>
 #include <memory>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,7 @@ public:
       declare_parameter<std::string>("input_transport", "std");
     enable_timing_ = declare_parameter<bool>("enable_timing", true);
     timing_log_every_ = declare_parameter<int>("timing_log_every", 500);
+    declare_parameter<int>("gpu_device_id", 0);
 
     cudaStreamCreate(&stream_);
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
@@ -75,7 +77,7 @@ public:
 
     input_io_ = CreateTensorListIO(this, input_transport);
     input_io_->Subscribe(
-      [this](const std::vector<HostTensor> & tensors, const std_msgs::msg::Header & header) {
+      [this](const std::vector<TensorView> & tensors, const std_msgs::msg::Header & header) {
         Forward(tensors, header);
       });
   }
@@ -87,23 +89,26 @@ public:
 
 private:
   void Forward(
-    const std::vector<HostTensor> & tensors, const std_msgs::msg::Header & header)
+    const std::vector<TensorView> & tensors, const std_msgs::msg::Header & header)
   {
     const auto start = std::chrono::steady_clock::now();
 
     nitros::NitrosTensorListBuilder builder;
     builder.WithHeader(header);
-    for (const auto & ht : tensors) {
+    for (const auto & tensor : tensors) {
+      if (tensor.memory_kind != TensorMemoryKind::kHost) {
+        throw std::invalid_argument("TensorListBridge only supports standard host-memory input");
+      }
       void * gpu_buffer = nullptr;
-      cudaMallocAsync(&gpu_buffer, ht.data.size(), stream_);
+      cudaMallocAsync(&gpu_buffer, tensor.byte_size, stream_);
       cudaMemcpyAsync(
-        gpu_buffer, ht.data.data(), ht.data.size(), cudaMemcpyHostToDevice, stream_);
-      std::vector<int32_t> dims(ht.shape.begin(), ht.shape.end());
+        gpu_buffer, tensor.data, tensor.byte_size, cudaMemcpyHostToDevice, stream_);
+      std::vector<int32_t> dims(tensor.shape.begin(), tensor.shape.end());
       builder.AddTensor(
-        ht.name,
+        tensor.name,
         nitros::NitrosTensorBuilder()
         .WithShape(nitros::NitrosTensorShape(dims))
-        .WithDataType(OnnxToNitrosDtype(ht.dtype))
+        .WithDataType(OnnxToNitrosDtype(tensor.dtype))
         .WithData(gpu_buffer)
         .Build());
     }

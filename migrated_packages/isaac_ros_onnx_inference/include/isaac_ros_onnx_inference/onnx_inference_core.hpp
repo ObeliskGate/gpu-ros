@@ -15,9 +15,11 @@
 #ifndef ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_CORE_HPP_
 #define ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_CORE_HPP_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"  // NOLINT
@@ -25,13 +27,36 @@
 namespace nvidia::isaac_ros::onnx_inference
 {
 
-/// Flat host-memory tensor passed to/from RunInference.
-struct HostTensor
+enum class TensorMemoryKind { kHost, kCudaDevice };
+
+/// Non-owning tensor view. The backing storage must remain valid until RunInference returns.
+struct TensorView
 {
   std::string name;
-  ONNXTensorElementDataType dtype;
+  ONNXTensorElementDataType dtype{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
   std::vector<int64_t> shape;
-  std::vector<uint8_t> data;  // raw bytes, row-major
+  const void * data{nullptr};
+  size_t byte_size{0};
+  TensorMemoryKind memory_kind{TensorMemoryKind::kHost};
+  int device_id{-1};
+};
+
+/// ORT-owned CUDA output kept alive until the transport releases it.
+struct DeviceTensorBuffer
+{
+  void * data{nullptr};
+  size_t byte_size{0};
+  int device_id{-1};
+  std::shared_ptr<Ort::Value> owner;
+};
+
+/// Tensor result owned either by host storage or by an ORT CUDA allocation.
+struct OwnedTensor
+{
+  std::string name;
+  ONNXTensorElementDataType dtype{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
+  std::vector<int64_t> shape;
+  std::variant<std::vector<uint8_t>, DeviceTensorBuffer> storage;
 };
 
 /// Supported execution providers.
@@ -59,7 +84,9 @@ public:
   OnnxInferenceCore(const OnnxInferenceCore &) = delete;
   OnnxInferenceCore & operator=(const OnnxInferenceCore &) = delete;
 
-  std::vector<HostTensor> RunInference(const std::vector<HostTensor> & inputs);
+  std::vector<OwnedTensor> RunInference(
+    const std::vector<TensorView> & inputs,
+    TensorMemoryKind output_memory_kind = TensorMemoryKind::kHost);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;
@@ -72,6 +99,8 @@ private:
   std::unique_ptr<Ort::Session> session_;
   Ort::AllocatorWithDefaultOptions allocator_;
   bool profiling_enabled_{false};
+  ExecutionProvider execution_provider_;
+  int gpu_device_id_;
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;

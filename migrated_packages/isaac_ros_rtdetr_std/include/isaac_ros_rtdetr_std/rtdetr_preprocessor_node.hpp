@@ -38,7 +38,7 @@ public:
 private:
   using TensorList = isaac_ros_tensor_list_interfaces::msg::TensorList;
 
-  void InputCallback(const TensorList::SharedPtr msg);
+  void InputCallback(TensorList::UniquePtr msg);
 
   rclcpp::Subscription<TensorList>::SharedPtr sub_;
   rclcpp::Publisher<TensorList>::SharedPtr pub_;

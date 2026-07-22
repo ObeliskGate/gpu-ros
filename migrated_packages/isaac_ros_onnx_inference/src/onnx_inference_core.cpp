@@ -15,10 +15,13 @@
 #include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
 
 #include <cstdlib>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace nvidia::isaac_ros::onnx_inference
 {
@@ -48,7 +51,14 @@ size_t ElementCount(const std::vector<int64_t> & shape)
 {
   size_t n = 1;
   for (auto d : shape) {
-    n *= static_cast<size_t>(d);
+    if (d < 0) {
+      throw std::invalid_argument("Tensor shape contains a negative dimension");
+    }
+    const size_t dimension = static_cast<size_t>(d);
+    if (dimension != 0 && n > std::numeric_limits<size_t>::max() / dimension) {
+      throw std::overflow_error("Tensor element count overflows size_t");
+    }
+    n *= dimension;
   }
   return n;
 }
@@ -61,7 +71,45 @@ size_t DtypeSize(ONNXTensorElementDataType dtype)
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
       return sizeof(int64_t);
     default:
-      return 1;
+      throw std::invalid_argument(
+              "Unsupported tensor dtype " + std::to_string(static_cast<int>(dtype)));
+  }
+}
+
+size_t RequiredBytes(const TensorView & tensor)
+{
+  const size_t element_count = ElementCount(tensor.shape);
+  const size_t element_size = DtypeSize(tensor.dtype);
+  if (element_count > std::numeric_limits<size_t>::max() / element_size) {
+    throw std::overflow_error("Tensor byte size overflows size_t: " + tensor.name);
+  }
+  return element_count * element_size;
+}
+
+void ValidateTensorView(
+  const TensorView & tensor,
+  ExecutionProvider execution_provider,
+  int gpu_device_id)
+{
+  const size_t required_bytes = RequiredBytes(tensor);
+  if (tensor.byte_size < required_bytes) {
+    throw std::invalid_argument(
+            "Tensor '" + tensor.name + "' has " + std::to_string(tensor.byte_size) +
+            " bytes, but its shape and dtype require " + std::to_string(required_bytes));
+  }
+  if (required_bytes != 0 && tensor.data == nullptr) {
+    throw std::invalid_argument("Tensor '" + tensor.name + "' has a null data pointer");
+  }
+  if (tensor.memory_kind == TensorMemoryKind::kCudaDevice) {
+    if (execution_provider != ExecutionProvider::kCuda) {
+      throw std::invalid_argument("CUDA device input requires the CUDA execution provider");
+    }
+    if (tensor.device_id != gpu_device_id) {
+      throw std::invalid_argument(
+              "Tensor '" + tensor.name + "' is on CUDA device " +
+              std::to_string(tensor.device_id) + ", but the session uses device " +
+              std::to_string(gpu_device_id));
+    }
   }
 }
 
@@ -124,7 +172,9 @@ ExecutionProvider ParseExecutionProvider(const std::string & ep_str)
 }
 
 OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
-: env_(GetOrtLoggingLevel(), "isaac_ros_onnx_inference")
+: env_(GetOrtLoggingLevel(), "isaac_ros_onnx_inference"),
+  execution_provider_(cfg.ep),
+  gpu_device_id_(cfg.gpu_device_id)
 {
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
   if (!cfg.ort_profile_prefix.empty()) {
@@ -167,11 +217,15 @@ std::string OnnxInferenceCore::EndProfiling()
   return profile_path ? profile_path.get() : std::string{};
 }
 
-std::vector<HostTensor> OnnxInferenceCore::RunInference(
-  const std::vector<HostTensor> & inputs)
+std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
+  const std::vector<TensorView> & inputs,
+  TensorMemoryKind output_memory_kind)
 {
-  Ort::MemoryInfo mem_info =
-    Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  if (output_memory_kind == TensorMemoryKind::kCudaDevice &&
+    execution_provider_ != ExecutionProvider::kCuda)
+  {
+    throw std::invalid_argument("CUDA device output requires the CUDA execution provider");
+  }
 
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char *> input_name_ptrs;
@@ -179,25 +233,15 @@ std::vector<HostTensor> OnnxInferenceCore::RunInference(
   input_name_ptrs.reserve(inputs.size());
 
   for (const auto & t : inputs) {
+    ValidateTensorView(t, execution_provider_, gpu_device_id_);
     input_name_ptrs.push_back(t.name.c_str());
-    const size_t elem_count = ElementCount(t.shape);
-    auto * mutable_data = const_cast<uint8_t *>(t.data.data());
-
-    if (t.dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-      ort_inputs.push_back(
-        Ort::Value::CreateTensor<float>(
-          mem_info, reinterpret_cast<float *>(mutable_data),
-          elem_count, t.shape.data(), t.shape.size()));
-    } else if (t.dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-      ort_inputs.push_back(
-        Ort::Value::CreateTensor<int64_t>(
-          mem_info, reinterpret_cast<int64_t *>(mutable_data),
-          elem_count, t.shape.data(), t.shape.size()));
-    } else {
-      throw std::runtime_error(
-              "OnnxInferenceCore: unsupported input dtype " +
-              std::to_string(static_cast<int>(t.dtype)));
-    }
+    auto memory_info = t.memory_kind == TensorMemoryKind::kCudaDevice ?
+      Ort::MemoryInfo("Cuda", OrtArenaAllocator, t.device_id, OrtMemTypeDefault) :
+      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    ort_inputs.push_back(
+      Ort::Value::CreateTensor(
+        memory_info, const_cast<void *>(t.data), RequiredBytes(t),
+        t.shape.data(), t.shape.size(), t.dtype));
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -206,23 +250,81 @@ std::vector<HostTensor> OnnxInferenceCore::RunInference(
     output_name_ptrs.push_back(n.c_str());
   }
 
-  auto ort_outputs = session_->Run(
-    Ort::RunOptions{nullptr},
-    input_name_ptrs.data(), ort_inputs.data(), ort_inputs.size(),
-    output_name_ptrs.data(), output_name_ptrs.size());
+  std::vector<Ort::Value> ort_outputs;
+  if (output_memory_kind == TensorMemoryKind::kCudaDevice) {
+    Ort::MemoryInfo cuda_memory_info(
+      "Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault);
+    Ort::IoBinding binding(*session_);
+    for (size_t i = 0; i < ort_inputs.size(); ++i) {
+      binding.BindInput(input_name_ptrs[i], ort_inputs[i]);
+    }
+    for (const auto * output_name : output_name_ptrs) {
+      binding.BindOutput(output_name, cuda_memory_info);
+    }
 
-  std::vector<HostTensor> results;
+    binding.SynchronizeInputs();
+    session_->Run(Ort::RunOptions{nullptr}, binding);
+    binding.SynchronizeOutputs();
+
+    const auto bound_output_names = binding.GetOutputNames();
+    if (bound_output_names != output_names_) {
+      throw std::runtime_error("ONNX Runtime returned unexpected bound output names");
+    }
+    ort_outputs = binding.GetOutputValues();
+  } else {
+    ort_outputs = session_->Run(
+      Ort::RunOptions{nullptr},
+      input_name_ptrs.data(), ort_inputs.data(), ort_inputs.size(),
+      output_name_ptrs.data(), output_name_ptrs.size());
+  }
+
+  if (ort_outputs.size() != output_names_.size()) {
+    throw std::runtime_error("ONNX Runtime returned an unexpected number of outputs");
+  }
+
+  std::vector<OwnedTensor> results;
   results.reserve(ort_outputs.size());
   for (size_t i = 0; i < ort_outputs.size(); ++i) {
     auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
-    HostTensor ht;
-    ht.name = output_names_[i];
-    ht.dtype = type_info.GetElementType();
-    ht.shape = type_info.GetShape();
-    const size_t byte_count = type_info.GetElementCount() * DtypeSize(ht.dtype);
-    const auto * raw = reinterpret_cast<const uint8_t *>(ort_outputs[i].GetTensorRawData());
-    ht.data.assign(raw, raw + byte_count);
-    results.push_back(std::move(ht));
+    OwnedTensor tensor;
+    tensor.name = output_names_[i];
+    tensor.dtype = type_info.GetElementType();
+    tensor.shape = type_info.GetShape();
+    const size_t element_count = type_info.GetElementCount();
+    const size_t element_size = DtypeSize(tensor.dtype);
+    if (element_count > std::numeric_limits<size_t>::max() / element_size) {
+      throw std::overflow_error("Output tensor byte size overflows size_t: " + tensor.name);
+    }
+    const size_t byte_count = element_count * element_size;
+
+    if (output_memory_kind == TensorMemoryKind::kCudaDevice) {
+      const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
+      if (memory_info.GetAllocatorName() != "Cuda" ||
+        memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
+        memory_info.GetDeviceId() != gpu_device_id_)
+      {
+        throw std::runtime_error(
+                "Output tensor '" + tensor.name +
+                "' was not allocated on the requested CUDA device");
+      }
+      auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
+      tensor.storage = DeviceTensorBuffer{
+        owner->GetTensorMutableRawData(), byte_count, gpu_device_id_, std::move(owner)};
+    } else {
+      const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
+      if (memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_CPU) {
+        throw std::runtime_error(
+                "Output tensor '" + tensor.name + "' is not in host-accessible memory");
+      }
+      const auto * raw =
+        reinterpret_cast<const uint8_t *>(ort_outputs[i].GetTensorRawData());
+      std::vector<uint8_t> host_data;
+      if (byte_count != 0) {
+        host_data.assign(raw, raw + byte_count);
+      }
+      tensor.storage = std::move(host_data);
+    }
+    results.push_back(std::move(tensor));
   }
   return results;
 }

@@ -41,6 +41,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 TestIsaacROSYoloV8ConfigC.get_assets_root_path(),
                 'models', common.MODEL_FILE_NAME),
             'execution_provider': 'cuda',
+            'ort_profile_prefix': os.environ.get('ORT_PROFILE_PREFIX', ''),
             'transport': 'nitros',
         }],
         remappings=[('tensor_input', 'reshaped_tensor'), ('tensor_output', 'tensor_sub')]
@@ -94,7 +95,9 @@ class TestIsaacROSYoloV8ConfigC(ROS2BenchmarkTest):
         pre_trial_run_wait_time_sec=5.0,
         custom_report_info={
             'data_resolution': common.IMAGE_RESOLUTION,
-            'network_resolution': common.NETWORK_RESOLUTION
+            'network_resolution': common.NETWORK_RESOLUTION,
+            'build_type': 'Release',
+            'inference_precision': 'FP32',
         }
     )
 
