@@ -74,9 +74,9 @@ void AppendExecutionProvider(
     case ExecutionProvider::kCuda:
 #ifdef ORT_CUDA_AVAILABLE
       {
-        const std::unordered_map<std::string, std::string> provider_options{
-          {"device_id", std::to_string(device_id)}};
-        opts.AppendExecutionProvider("CUDAExecutionProvider", provider_options);
+        OrtCUDAProviderOptions provider_options{};
+        provider_options.device_id = device_id;
+        opts.AppendExecutionProvider_CUDA(provider_options);
         break;
       }
 #else
