@@ -17,7 +17,7 @@ same FP32 ONNX model used by C/D.
 | Config | Backend and transport | Peak prediction | Mean output at peak | 30 Hz first / last latency |
 |---|---|---:|---:|---:|
 | A_fp32 | TensorRT FP32 + NITROS | 195.63 fps | 188.07 fps | 15.38 / 11.54 ms |
-| B_fp32 | TensorRT FP32 + std ROS 2 bridge | 187.89 fps | 180.05 fps | 21.94 / 18.47 ms |
+| B_fp32 | TensorRT FP32 + std ROS 2 bridge | 187.89 fps | 180.37 fps | 21.55 / 17.56 ms |
 | C | ORT FP32 CUDA EP + NITROS | 100.08 fps | 95.61 fps | 19.03 / 16.60 ms |
 | D | ORT FP32 CUDA EP + std ROS 2 | 87.34 fps | 83.86 fps | 29.64 / 27.73 ms |
 
@@ -25,7 +25,7 @@ At peak, changing A to B reduced predicted throughput by 3.95%; changing C to
 D reduced it by 12.72%. Reciprocal throughput is more useful than subtracting
 FPS: the implied period increased by about 0.21 ms for A to B and 1.46 ms for C
 to D. At fixed 60 Hz, the last-frame transport penalties were much closer:
-4.29 ms for A to B and 4.77 ms for C to D.
+5.58 ms for A to B and 4.77 ms for C to D.
 
 This is not contradictory. B performs its host-to-device copy in a separate
 bridge component, so the multithreaded pipeline can overlap that stage with
@@ -44,7 +44,7 @@ from the four peak-FPS values alone.
 | Config | Backend and transport | Peak prediction | Mean output at peak | 30 Hz first / last latency |
 |---|---|---:|---:|---:|
 | A | TensorRT FP16 + NITROS | 141.48 fps | 133.60 fps | 21.31 / 15.83 ms |
-| B | TensorRT FP16 + std ROS 2 bridge | 249.77 fps | 242.68 fps | 20.44 / 12.04 ms |
+| B | TensorRT FP16 + std ROS 2 bridge | 242.03 fps | 237.08 fps | 22.37 / 17.25 ms |
 | C | ORT FP32 CUDA EP + NITROS | 126.02 fps | 122.89 fps | 19.64 / 19.48 ms |
 | D | ORT FP32 CUDA EP + std ROS 2 | 141.48 fps | 137.88 fps | 19.59 / 13.29 ms |
 
@@ -54,6 +54,10 @@ scans. TensorRT inference is fast enough for decoder work to become the
 bottleneck, which makes the B-over-A difference much larger than D-over-C.
 These results compare complete deployable configurations, not a decoder-neutral
 transport microbenchmark.
+
+In the clean formal run, B's predicted peak was 71.07% higher than A's, while
+D's was 12.28% higher than C's. This asymmetric result is therefore still
+present without bridge timing instrumentation.
 
 ## Detection-Output Validation
 
@@ -107,10 +111,14 @@ last endpoint latencies, not a per-frame latency mean or percentile. First-frame
 values can include startup variation, so both endpoints and missed-frame counts
 should be retained in reports.
 
-The B results above were collected before bridge timing was disabled in the
-formal graphs. The instrumentation only records a timestamp and periodic
-summary, but B and B_fp32 should be rerun once after rebuilding to freeze the
-clean raw artifacts. This does not require rerunning A, C, or D.
+The B configurations were rebuilt and rerun on July 23 with bridge timing
+disabled. Relative to the earlier instrumented runs, RT-DETR B_fp32 retained
+the same 187.89 fps peak prediction and its mean output changed by +0.18%;
+YOLOv8 B changed from 249.77 to 242.03 fps predicted peak (-3.10%) and from
+242.68 to 237.08 fps mean output (-2.31%). The clean results above supersede
+the earlier B values. They also confirm that bridge timing was not the cause of
+the YOLOv8 A/B reversal. Fixed-rate first/last endpoint latency varies more
+between runs and should not be read as a stable per-frame mean.
 
 Older July 2 JSON files remain in `migrated_packages/benchmark_results` for
 history. They predate device-resident I/O Binding and Release enforcement and
