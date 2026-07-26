@@ -27,8 +27,8 @@ or `ONNXRUNTIME_ROOT_HOST` mount is required.
 |------------|---------|--------|
 | ONNX Runtime | 1.23.1 | Matches the final Phase 1 NVIDIA environment |
 | ROCm | 7.1.1 | AMD-supported ROCm pairing for ORT 1.23.1 |
-| Isaac ROS TensorList source | v4.4-0 | Matches the Phase 0/1 Isaac ROS release |
-| ros2_benchmark | v4.4-0 | Matches the Phase 0/1 benchmark controller and report format |
+| Isaac ROS TensorList source | v4.5-0 | Matches the active Isaac ROS release |
+| ros2_benchmark | v4.5-0 | Matches the active Isaac ROS benchmark controller |
 
 The Dockerfile builds ORT with MIGraphX and `ros2_benchmark` in separate builder
 stages. Only their install artifacts are copied to the final ROS image.
@@ -45,7 +45,7 @@ Phase 2a still uses the official message package:
 isaac_ros_tensor_list_interfaces/msg/TensorList
 ```
 
-The bootstrap script checks out the official `isaac_ros_common` v4.4 release
+The bootstrap script checks out the official `isaac_ros_common` v4.5 release
 under the ignored `third_party/` directory and exposes only the TensorList
 interface package to the Phase 2a colcon build. It applies a repository-owned
 build patch that removes the interface package's version-metadata dependency on
@@ -207,7 +207,7 @@ The benchmark script is:
 migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
 ```
 
-The AMD image includes the official `ros2_benchmark` v4.4 install. Verify it
+The AMD image includes the official `ros2_benchmark` v4.5 install. Verify it
 after entering the container:
 
 ```bash
@@ -244,7 +244,7 @@ R2B_RESULT_FILE=phase2a-rtdetr-amd-migraphx-mi300x.json launch_test migrated_pac
 ```
 
 The generic resource profiler records CPU utilization on AMD. It does not
-currently report AMD GPU utilization because upstream v4.4 only supports
+currently report AMD GPU utilization because upstream v4.5 only supports
 `nvidia-smi`/`gpustat` for GPU metrics; collect AMD GPU utilization separately
 rather than enabling ORT profiling during the performance run.
 

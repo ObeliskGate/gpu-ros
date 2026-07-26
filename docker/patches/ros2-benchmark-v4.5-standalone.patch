@@ -1,3 +1,5 @@
+Applies-To: ros2_benchmark v4.5-0
+
 diff --git a/ros2_benchmark/CMakeLists.txt b/ros2_benchmark/CMakeLists.txt
 index 79b7a36..b159eaa 100644
 --- a/ros2_benchmark/CMakeLists.txt

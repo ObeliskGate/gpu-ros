@@ -7,9 +7,9 @@ COMPOSE_FILE="${ROOT_DIR}/docker-compose.phase2a-amd.yaml"
 ENV_FILE="${ROOT_DIR}/.env.phase2a-amd"
 COMMON_DIR="${ROOT_DIR}/third_party/isaac_ros_common"
 COMMON_URL="https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"
-COMMON_REF="v4.4-0"
+COMMON_REF="v4.5-0"
 INTERFACES_DIR="${COMMON_DIR}/isaac_ros_tensor_list_interfaces"
-INTERFACES_PATCH="${ROOT_DIR}/docker/patches/isaac-ros-common-v4.4-tensor-list-standalone.patch"
+INTERFACES_PATCH="${ROOT_DIR}/docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch"
 
 cd "${ROOT_DIR}"
 

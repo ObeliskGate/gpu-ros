@@ -1,14 +1,16 @@
 # Phase 1 NVIDIA Docker Environment
 
-This helper preserves the NVIDIA environment used for the Phase 1 matrix. It
-wraps the existing root `Dockerfile` and `docker-compose.yaml`; it does not
-replace them with the AMD image or rebuild ONNX Runtime from source.
+This helper provides the current NVIDIA Isaac ROS 4.5 environment. It wraps the
+existing root `Dockerfile` and `docker-compose.yaml`; it does not replace them
+with the AMD image or rebuild ONNX Runtime from source. The checked-in Phase 1
+matrix was collected on 4.4 and remains historical unless it is rerun on 4.5.
 
 Pinned environment:
 
 | Dependency | Value |
 |------------|-------|
-| Isaac ROS base image | `isaac_ros_28556f8bc78a98822bd08b2d7c6fcf9b-amd64` |
+| Isaac ROS release | 4.5 |
+| Isaac ROS base image | `isaac_ros_89df02a734965ed64c227ef531c09d65-amd64` |
 | ONNX Runtime | 1.23.1 |
 | ORT runtime library | Triton CUDA-matched `libonnxruntime.so` |
 | ROS distribution | Jazzy |

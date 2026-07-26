@@ -1,4 +1,5 @@
 Upstream-Status: Inappropriate [AMD vendor-neutral build]
+Applies-To: isaac_ros_common v4.5-0
 Reason: The message definitions do not require CUDA. isaac_ros_common is used only
 for installed version metadata, but its top-level package requires nvcc.
 

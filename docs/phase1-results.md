@@ -4,6 +4,10 @@ Phase 1 is complete at the implementation and detection-output validation
 levels. RT-DETR and YOLOv8 run end to end on the NVIDIA A100 with TensorRT or
 ONNX Runtime and with the NITROS or standard ROS 2 pipeline variants.
 
+These historical results were collected with Isaac ROS 4.4. The active source
+and container pins have since moved to 4.5; no number below should be presented
+as a 4.5 result without a new run.
+
 The final performance runs used an A100-SXM4-40GB, a Release build, the same
 1280x720 input dataset, a 640x640 network resolution, and dataset hash
 `8eee68848ee1a95e21b1cd44d5d6ba71`. The machine-readable values are in

@@ -1,6 +1,9 @@
 # Benchmark Reproduction Guide
 
-How to reproduce the NVIDIA Isaac ROS 4.4 object-detection benchmarks (RT-DETR and Grounding DINO) on a remote server using this repository's Docker dev environment.
+How to run the NVIDIA Isaac ROS 4.5 object-detection benchmarks (RT-DETR and
+Grounding DINO) on a remote server using this repository's Docker dev
+environment. The Phase 0/1 result artifacts in this repository were collected
+on 4.4 and remain historical until explicitly rerun on 4.5.
 
 ## Prerequisites
 
@@ -170,7 +173,7 @@ How to tell from `nvidia-smi`: a name with the `GRID` prefix or the `-XC` suffix
 
 ### 2. Driver < 580 paired with a CUDA 13 base image
 
-The Isaac ROS 4.4 base image is CUDA 13.0. Host drivers in the 535–545 range will report a driver/CUDA version mismatch on container startup. Install `cuda-compat-13-0` inside the container (commands are in the Prerequisites section). Don't install it if your host driver is already ≥ 580: putting the compat library first in `ld.so.conf.d` would cause the runtime to use the older libraries that ship with the compat package instead of the newer host driver.
+The Isaac ROS 4.5 base image is CUDA 13.0. Host drivers in the 535–545 range will report a driver/CUDA version mismatch on container startup. Install `cuda-compat-13-0` inside the container (commands are in the Prerequisites section). Don't install it if your host driver is already ≥ 580: putting the compat library first in `ld.so.conf.d` would cause the runtime to use the older libraries that ship with the compat package instead of the newer host driver.
 
 ### 3. Disk space
 

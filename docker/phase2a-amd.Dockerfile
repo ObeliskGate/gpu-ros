@@ -159,16 +159,16 @@ RUN rosdep update --rosdistro ${ROS_DISTRO}
 
 FROM ros-runtime-base AS ros2-benchmark-builder
 
-ARG ROS2_BENCHMARK_REF=v4.4-0
+ARG ROS2_BENCHMARK_REF=v4.5-0
 
 WORKDIR /opt/src
 RUN git clone --branch "${ROS2_BENCHMARK_REF}" --depth 1 \
       https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark.git
 
-COPY docker/patches/ros2-benchmark-v4.4-standalone.patch /tmp/
+COPY docker/patches/ros2-benchmark-v4.5-standalone.patch /tmp/
 WORKDIR /opt/src/ros2_benchmark
-RUN git apply --check /tmp/ros2-benchmark-v4.4-standalone.patch \
-    && git apply /tmp/ros2-benchmark-v4.4-standalone.patch
+RUN git apply --check /tmp/ros2-benchmark-v4.5-standalone.patch \
+    && git apply /tmp/ros2-benchmark-v4.5-standalone.patch
 
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon --log-base /tmp/ros2_benchmark_log build \

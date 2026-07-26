@@ -1,8 +1,8 @@
 [submodule "isaac_ros_object_detection"]
 	path = isaac_ros_object_detection
 	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection.git
-	branch = release-4.4
+	branch = release-4.5
 [submodule "isaac_ros_benchmark"]
 	path = isaac_ros_benchmark
 	url = https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark.git
-	branch = release-4.4
+	branch = release-4.5

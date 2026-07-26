@@ -4,7 +4,10 @@
 
 This project migrates NVIDIA Isaac ROS object detection packages from the NVIDIA-proprietary stack (TensorRT + NITROS + GXF) to a vendor-neutral runtime (ONNX Runtime) that supports both NVIDIA (CUDA EP) and AMD (ROCm/MIGraphX EP) GPUs.
 
-The upstream source is `isaac_ros_object_detection` (v4.4.0) which contains detection pipelines for YOLOv8, RT-DETR, Grounding DINO, and DetectNet.
+The active upstream source is `isaac_ros_object_detection` v4.5.0, which
+contains detection pipelines for YOLOv8, RT-DETR, Grounding DINO, and
+DetectNet. Phase 0 and Phase 1 measurements remain historical 4.4.0 results
+unless they are explicitly rerun and labeled as 4.5.0.
 
 ## Optional Local Environment
 
@@ -50,7 +53,7 @@ Result JSONs are saved locally (not committed; archived as `rt-detr-baseline.jso
 
 Run the official `isaac_ros_benchmark` test suite for the object detection graphs in Phase 1 migration scope and confirm our hardware produces numbers in the same ballpark as NVIDIA's published data.
 
-### NVIDIA Published Baseline (release-4.4)
+### NVIDIA Published Baseline (historical release-4.4)
 
 | Graph | Input | x86_64 + RTX 5090 | AGX Thor T5000 |
 |-------|-------|-------------------|----------------|
