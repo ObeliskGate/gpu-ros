@@ -98,6 +98,10 @@ int main()
       {grm::BackendKind::kCuda, 3}, 31, {}, ops);
 
     auto allocation = ops->allocate_device(2, 64);
+    expect_throws<std::invalid_argument>([&] {
+      grm::detail::DeviceBufferFactory::make_fresh(
+        device, allocation.get(), 64, {}, ops);
+    });
     auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
       device, allocation.get(), 64, allocation, ops);
     auto writer = buffer->get_write_handle(producer);

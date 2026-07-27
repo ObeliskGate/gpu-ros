@@ -187,13 +187,15 @@ void WriteHandle::finalize()
   if (state_->phase != detail::BufferPhase::kWriting) {
     throw std::logic_error("WriteHandle cannot finalize a buffer that is not being written");
   }
+  detail::Event event = 0;
   try {
-    const auto event = state_->ops->create_event();
+    event = state_->ops->create_event();
     state_->ops->record_event(event, state_->writer_stream);
     state_->producer_event = event;
     state_->phase = detail::BufferPhase::kReady;
     responsible_ = false;
   } catch (...) {
+    if (event != 0) {state_->ops->destroy_event(event);}
     state_->phase = detail::BufferPhase::kFailed;
     responsible_ = false;
     throw;
@@ -214,7 +216,12 @@ ReadHandle::ReadHandle(
     throw std::logic_error("Reader acquisition requires a ready buffer");
   }
   if (state_->producer_event != 0) {
-    state_->ops->wait_event(native.native, state_->producer_event);
+    try {
+      state_->ops->wait_event(native.native, state_->producer_event);
+    } catch (...) {
+      state_->phase = detail::BufferPhase::kFailed;
+      throw;
+    }
   }
 }
 ReadHandle::ReadHandle(ReadHandle && other) noexcept
@@ -263,7 +270,15 @@ BlockingReadyLease::BlockingReadyLease(std::shared_ptr<detail::BufferState> stat
     }
     event = state_->producer_event;
   }
-  if (event != 0) {state_->ops->synchronize_event(event);}
+  if (event != 0) {
+    try {
+      state_->ops->synchronize_event(event);
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(state_->mutex);
+      state_->phase = detail::BufferPhase::kFailed;
+      throw;
+    }
+  }
 }
 const uint8_t * BlockingReadyLease::data() const noexcept {return state_ ? state_->data : nullptr;}
 size_t BlockingReadyLease::size() const noexcept {return state_ ? state_->size : 0;}
@@ -311,6 +326,9 @@ std::shared_ptr<DeviceBuffer> make_buffer(
     throw std::invalid_argument("Allocation backend does not match DeviceId");
   }
   if (size != 0 && data == nullptr) {throw std::invalid_argument("Device allocation is null");}
+  if (size != 0 && !owner) {
+    throw std::invalid_argument("Device allocation requires an owner");
+  }
   auto state = std::make_shared<detail::BufferState>();
   state->device = device;
   state->data = static_cast<uint8_t *>(data);

@@ -22,6 +22,9 @@ public:
     if (size_ != 0 && data_ == nullptr) {
       throw std::invalid_argument("HostBuffer data is null");
     }
+    if (size_ != 0 && !owner_) {
+      throw std::invalid_argument("HostBuffer external storage requires an owner");
+    }
   }
   static HostBuffer copy(const void * data, size_t size)
   {
