@@ -9,7 +9,6 @@ target_compile_features(gpu_ros_managed_ros INTERFACE cxx_std_17)
 target_include_directories(gpu_ros_managed_ros INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(gpu_ros_managed_ros INTERFACE rclcpp)
 install(TARGETS gpu_ros_managed_ros EXPORT gpu_ros_managed_rosTargets)
 install(DIRECTORY include/ DESTINATION include)
 install(EXPORT gpu_ros_managed_rosTargets

@@ -14,8 +14,13 @@ if(CUDAToolkit_FOUND)
   target_include_directories(gpu_ros_managed_cuda PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
+  if(TARGET gpu_ros_managed::core)
+    set(GPU_ROS_MANAGED_CORE_TARGET gpu_ros_managed::core)
+  else()
+    set(GPU_ROS_MANAGED_CORE_TARGET gpu_ros_managed_core)
+  endif()
   target_link_libraries(gpu_ros_managed_cuda PUBLIC
-    gpu_ros_managed_core CUDA::cudart)
+    ${GPU_ROS_MANAGED_CORE_TARGET} CUDA::cudart)
   install(TARGETS gpu_ros_managed_cuda EXPORT gpu_ros_managed_cudaTargets
     ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
   install(DIRECTORY include/ DESTINATION include)

@@ -71,6 +71,7 @@ private:
 class ManagedTensorList
 {
 public:
+  ManagedTensorList() = default;
   ManagedTensorList(std_msgs::msg::Header header, std::vector<ManagedTensor> tensors);
   const std_msgs::msg::Header & header() const noexcept {return header_;}
   const std::vector<ManagedTensor> & tensors() const noexcept {return tensors_;}

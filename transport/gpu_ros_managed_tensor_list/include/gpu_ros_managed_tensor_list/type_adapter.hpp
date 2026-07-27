@@ -37,7 +37,9 @@ struct rclcpp::TypeAdapter<
       output.strides = tensor.strides();
       output.data.resize(tensor.byte_size());
       if (const auto * host = std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage())) {
-        std::copy_n(host->data(), tensor.byte_size(), output.data.data());
+        if (tensor.byte_size() != 0) {
+          std::copy_n(host->data(), tensor.byte_size(), output.data.data());
+        }
       } else {
         const auto & device = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
           tensor.storage());

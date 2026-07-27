@@ -13,7 +13,7 @@ target_include_directories(gpu_ros_managed_tensor_list PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(gpu_ros_managed_tensor_list PUBLIC gpu_ros_managed::core)
-ament_target_dependencies(gpu_ros_managed_tensor_list PUBLIC
+ament_target_dependencies(gpu_ros_managed_tensor_list
   rclcpp std_msgs isaac_ros_tensor_list_interfaces)
 install(TARGETS gpu_ros_managed_tensor_list EXPORT gpu_ros_managed_tensor_listTargets
   LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
