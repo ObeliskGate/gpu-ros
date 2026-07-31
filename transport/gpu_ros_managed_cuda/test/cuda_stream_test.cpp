@@ -3,6 +3,8 @@
 #include <cassert>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <stdexcept>
 
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
 
@@ -39,5 +41,36 @@ int main()
   assert(first_b == 0x2a);
   buffer.reset();
   assert(gpu_ros_managed::cuda::wait_for_pending_releases(std::chrono::seconds(2)));
+
+  int external_owner_releases = 0;
+  void * external_memory = nullptr;
+  assert(cudaMalloc(&external_memory, 64) == cudaSuccess);
+  auto external_owner = std::shared_ptr<void>(external_memory, [&external_owner_releases](void * p) {
+      ++external_owner_releases;
+      static_cast<void>(cudaFree(p));
+    });
+  auto externally_owned = gpu_ros_managed::cuda::adopt_synchronized_external(
+    external_memory, 64, 0, external_owner);
+  external_owner.reset();
+  assert(external_owner_releases == 0);
+  externally_owned.reset();
+  assert(gpu_ros_managed::cuda::wait_for_pending_releases(std::chrono::seconds(2)));
+  assert(external_owner_releases == 1);
+
+  if (count > 1) {
+    auto wrong_device_stream = gpu_ros_managed::cuda::make_stream(1);
+    auto device_zero_buffer = gpu_ros_managed::cuda::allocate(64, 0);
+    {
+      auto writer = device_zero_buffer->get_write_handle(producer);
+      writer.finalize();
+    }
+    bool rejected = false;
+    try {
+      static_cast<void>(device_zero_buffer->get_read_handle(wrong_device_stream));
+    } catch (const std::invalid_argument &) {
+      rejected = true;
+    }
+    assert(rejected);
+  }
   return 0;
 }

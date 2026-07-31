@@ -32,6 +32,10 @@ struct BufferState
   NativeStream writer_stream{0};
   Event producer_event{0};
   std::vector<Event> reader_events;
+  // Set when an operation using the allocation may have been submitted but no
+  // trustworthy completion event exists. Such allocations must never be
+  // returned to an allocator or pool.
+  bool release_must_orphan{false};
 
   ~BufferState();
 };
@@ -85,10 +89,11 @@ BufferState::~BufferState()
   if (producer_event != 0) {events.push_back(producer_event);}
   events.insert(events.end(), reader_events.begin(), reader_events.end());
   auto owner = std::move(allocation_owner);
-  auto backend_ops = std::move(ops);
+  auto backend_ops = ops;
   const auto allocation_device = device;
+  const bool must_orphan = release_must_orphan;
   phase = BufferPhase::kReleasing;
-  if (!owner) {return;}
+  if (!owner && events.empty()) {return;}
 
   auto & value = tracker();
   {
@@ -97,23 +102,30 @@ BufferState::~BufferState()
   }
   try {
     std::thread(
-      [events = std::move(events), owner = std::move(owner),
-      backend_ops = std::move(backend_ops), allocation_device]() mutable {
-        bool safe = true;
+      [events, owner, backend_ops, allocation_device, must_orphan]() mutable {
+        bool safe = !must_orphan;
+        bool device_selected = false;
         try {
           backend_ops->select_device(allocation_device.ordinal);
-          for (const Event event : events) {
-            if (event == 0) {continue;}
-            backend_ops->synchronize_event(event);
-            backend_ops->destroy_event(event);
-          }
+          device_selected = true;
         } catch (...) {
           safe = false;
-          for (const Event event : events) {
-            if (event != 0) {backend_ops->destroy_event(event);}
-          }
         }
-        if (safe) {
+        for (const Event event : events) {
+          if (event == 0) {continue;}
+          if (device_selected) {
+            try {
+              backend_ops->synchronize_event(event);
+            } catch (...) {
+              safe = false;
+            }
+          }
+          // BackendOps requires this operation to be noexcept. Keep it outside
+          // the synchronization try block so every event is destroyed exactly
+          // once, including after an earlier synchronization failure.
+          backend_ops->destroy_event(event);
+        }
+        if (safe || !owner) {
           owner.reset();
         } else {
           std::lock_guard<std::mutex> lock(orphan_mutex());
@@ -126,9 +138,18 @@ BufferState::~BufferState()
         }
         release_tracker.cv.notify_all();
       }).detach();
+    // Keep a local owner until std::thread has successfully copied its
+    // callable. If thread construction throws, the catch path can still
+    // safe-orphan the allocation.
+    owner.reset();
   } catch (...) {
-    std::lock_guard<std::mutex> lock(orphan_mutex());
-    orphan_storage().push_back(std::move(owner));
+    for (const Event event : events) {
+      if (event != 0) {backend_ops->destroy_event(event);}
+    }
+    if (owner) {
+      std::lock_guard<std::mutex> lock(orphan_mutex());
+      orphan_storage().push_back(std::move(owner));
+    }
     {
       std::lock_guard<std::mutex> tracker_lock(value.mutex);
       --count_for(value, allocation_device.backend);
@@ -197,6 +218,7 @@ void WriteHandle::finalize()
   } catch (...) {
     if (event != 0) {state_->ops->destroy_event(event);}
     state_->phase = detail::BufferPhase::kFailed;
+    state_->release_must_orphan = true;
     responsible_ = false;
     throw;
   }
@@ -244,14 +266,21 @@ void ReadHandle::finish()
 {
   if (!responsible_ || !state_) {return;}
   const auto & native = detail::StreamAccess::get(stream_);
-  const auto event = state_->ops->create_event();
+  detail::Event event = 0;
   try {
+    event = state_->ops->create_event();
     state_->ops->record_event(event, native.native);
     std::lock_guard<std::mutex> lock(state_->mutex);
     state_->reader_events.push_back(event);
     responsible_ = false;
   } catch (...) {
-    state_->ops->destroy_event(event);
+    if (event != 0) {state_->ops->destroy_event(event);}
+    {
+      std::lock_guard<std::mutex> lock(state_->mutex);
+      state_->phase = detail::BufferPhase::kFailed;
+      state_->release_must_orphan = true;
+    }
+    responsible_ = false;
     throw;
   }
 }
@@ -276,6 +305,7 @@ BlockingReadyLease::BlockingReadyLease(std::shared_ptr<detail::BufferState> stat
     } catch (...) {
       std::lock_guard<std::mutex> lock(state_->mutex);
       state_->phase = detail::BufferPhase::kFailed;
+      state_->release_must_orphan = true;
       throw;
     }
   }
