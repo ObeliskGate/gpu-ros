@@ -23,28 +23,26 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/header.hpp"
 
-#include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
+#include "gpu_ros_managed_tensor_list/tensor_list.hpp"
+#include "isaac_ros_onnx_inference/tensor_types.hpp"
 
 namespace nvidia::isaac_ros::onnx_inference
 {
 
-// Transport-agnostic tensor IO. Input views are valid only for the duration of
-// the synchronous callback. Publish takes ownership of inference results.
+// Transport-agnostic tensor IO. ManagedTensorListView owns its message and all
+// backing allocations for the complete callback and inference lease lifetime.
 class ITensorListIO
 {
 public:
-  using Callback = std::function<void (const std::vector<TensorView> &,
-      const std_msgs::msg::Header &)>;
+  using Callback = std::function<void (gpu_ros_managed::ManagedTensorListView)>;
 
   virtual ~ITensorListIO() = default;
   virtual void Subscribe(Callback callback) = 0;
-  virtual TensorMemoryKind OutputMemoryKind() const = 0;
-  virtual void Publish(
-    std::vector<OwnedTensor> tensors,
-    const std_msgs::msg::Header & header) = 0;
+  virtual OutputPlacement output_placement() const noexcept = 0;
+  virtual void Publish(TensorListOutput && output) = 0;
 };
 
-// Factory: transport is "std" or "nitros". NITROS requires BUILD_NITROS_TRANSPORT.
+// Factory: transport is "std", "nitros", or "managed".
 std::unique_ptr<ITensorListIO> CreateTensorListIO(
   rclcpp::Node * node, const std::string & transport);
 

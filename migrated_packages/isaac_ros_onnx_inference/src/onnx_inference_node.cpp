@@ -46,8 +46,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
   io_ = CreateTensorListIO(this, transport);
   io_->Subscribe(
-    [this](const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header) {
-      OnTensors(inputs, header);
+    [this](gpu_ros_managed::ManagedTensorListView inputs) {
+      OnTensors(std::move(inputs));
     });
 
   if (model_file_path.empty()) {
@@ -94,14 +94,16 @@ OnnxInferenceNode::~OnnxInferenceNode()
   }
 }
 
-void OnnxInferenceNode::OnTensors(
-  const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header)
+void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorListView inputs)
 {
   if (!core_) {
     RCLCPP_WARN_ONCE(get_logger(), "Received tensor but inference core is not initialized.");
     return;
   }
-  io_->Publish(core_->RunInference(inputs, io_->OutputMemoryKind()), header);
+  TensorListOutput output;
+  output.header = inputs.header();
+  output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+  io_->Publish(std::move(output));
 }
 
 }  // namespace nvidia::isaac_ros::onnx_inference

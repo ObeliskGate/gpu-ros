@@ -19,45 +19,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"  // NOLINT
+#include "gpu_ros_managed_tensor_list/tensor_list.hpp"
+#include "isaac_ros_onnx_inference/tensor_types.hpp"
 
 namespace nvidia::isaac_ros::onnx_inference
 {
-
-enum class TensorMemoryKind { kHost, kCudaDevice };
-
-/// Non-owning tensor view. The backing storage must remain valid until RunInference returns.
-struct TensorView
-{
-  std::string name;
-  ONNXTensorElementDataType dtype{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
-  std::vector<int64_t> shape;
-  const void * data{nullptr};
-  size_t byte_size{0};
-  TensorMemoryKind memory_kind{TensorMemoryKind::kHost};
-  int device_id{-1};
-};
-
-/// ORT-owned CUDA output kept alive until the transport releases it.
-struct DeviceTensorBuffer
-{
-  void * data{nullptr};
-  size_t byte_size{0};
-  int device_id{-1};
-  std::shared_ptr<Ort::Value> owner;
-};
-
-/// Tensor result owned either by host storage or by an ORT CUDA allocation.
-struct OwnedTensor
-{
-  std::string name;
-  ONNXTensorElementDataType dtype{ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED};
-  std::vector<int64_t> shape;
-  std::variant<std::vector<uint8_t>, DeviceTensorBuffer> storage;
-};
 
 /// Supported execution providers.
 enum class ExecutionProvider { kCuda, kRocm, kMigraphx, kCpu };
@@ -84,9 +53,9 @@ public:
   OnnxInferenceCore(const OnnxInferenceCore &) = delete;
   OnnxInferenceCore & operator=(const OnnxInferenceCore &) = delete;
 
-  std::vector<OwnedTensor> RunInference(
-    const std::vector<TensorView> & inputs,
-    TensorMemoryKind output_memory_kind = TensorMemoryKind::kHost);
+  std::vector<OutputTensor> RunInference(
+    gpu_ros_managed::ManagedTensorListView inputs,
+    OutputPlacement output_placement = OutputPlacement::kHost);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;

@@ -77,8 +77,8 @@ public:
 
     input_io_ = CreateTensorListIO(this, input_transport);
     input_io_->Subscribe(
-      [this](const std::vector<TensorView> & tensors, const std_msgs::msg::Header & header) {
-        Forward(tensors, header);
+      [this](gpu_ros_managed::ManagedTensorListView tensors) {
+        Forward(std::move(tensors));
       });
   }
 
@@ -88,8 +88,7 @@ public:
   }
 
 private:
-  void Forward(
-    const std::vector<TensorView> & tensors, const std_msgs::msg::Header & header)
+  void Forward(gpu_ros_managed::ManagedTensorListView input)
   {
     std::chrono::steady_clock::time_point start;
     if (enable_timing_) {
@@ -97,21 +96,22 @@ private:
     }
 
     nitros::NitrosTensorListBuilder builder;
-    builder.WithHeader(header);
-    for (const auto & tensor : tensors) {
-      if (tensor.memory_kind != TensorMemoryKind::kHost) {
+    builder.WithHeader(input.header());
+    for (const auto & tensor : input.tensors()) {
+      const auto * host = std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage());
+      if (host == nullptr) {
         throw std::invalid_argument("TensorListBridge only supports standard host-memory input");
       }
       void * gpu_buffer = nullptr;
-      cudaMallocAsync(&gpu_buffer, tensor.byte_size, stream_);
+      cudaMallocAsync(&gpu_buffer, tensor.byte_size(), stream_);
       cudaMemcpyAsync(
-        gpu_buffer, tensor.data, tensor.byte_size, cudaMemcpyHostToDevice, stream_);
-      std::vector<int32_t> dims(tensor.shape.begin(), tensor.shape.end());
+        gpu_buffer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice, stream_);
+      std::vector<int32_t> dims(tensor.shape().begin(), tensor.shape().end());
       builder.AddTensor(
-        tensor.name,
+        tensor.name(),
         nitros::NitrosTensorBuilder()
         .WithShape(nitros::NitrosTensorShape(dims))
-        .WithDataType(OnnxToNitrosDtype(tensor.dtype))
+        .WithDataType(static_cast<nitros::NitrosDataType>(tensor.data_type()))
         .WithData(gpu_buffer)
         .Build());
     }

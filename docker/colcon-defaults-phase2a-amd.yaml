@@ -1,5 +1,9 @@
 build:
   base-paths:
+    - src/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu_ros_managed/gpu_ros_managed_cuda
+    - src/gpu_ros_managed/gpu_ros_managed_hip
+    - src/gpu_ros_managed/gpu_ros_managed_ros
     - third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
   cmake-args:
     - -DCMAKE_BUILD_TYPE=Release
@@ -13,4 +17,10 @@ build:
   symlink-install: true
 test:
   base-paths:
+    - src/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu_ros_managed/gpu_ros_managed_hip
+    - src/gpu_ros_managed/gpu_ros_managed_ros
   packages-select:
+    - gpu_ros_managed_core
+    - gpu_ros_managed_hip
+    - gpu_ros_managed_ros

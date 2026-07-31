@@ -32,6 +32,7 @@ services:
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
     volumes:
       - .:/workspaces/amd_ros_object_detection
+      - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/amd_ros_object_detection/src/gpu_ros_managed:ro
       - assets:/workspaces/isaac_ros-dev/assets
       - phase2a_build:/workspaces/amd_ros_object_detection/build
       - phase2a_install:/workspaces/amd_ros_object_detection/install

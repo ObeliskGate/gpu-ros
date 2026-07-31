@@ -33,8 +33,7 @@ public:
   ~OnnxInferenceNode() override;
 
 private:
-  void OnTensors(
-    const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header);
+  void OnTensors(gpu_ros_managed::ManagedTensorListView inputs);
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorListIO> io_;

@@ -26,7 +26,7 @@ and quality requirements in this `AGENTS.md` remain authoritative.
    - (D) ONNX Runtime + standard ROS2 interfaces (target)
 2. **Phase 2a (current)**: Port the RT-DETR target pipeline to AMD using only standard ROS2 transport and ONNX Runtime MIGraphX EP:
    `Image -> std image encoder -> official TensorList -> ONNX Runtime MIGraphX -> std decoder -> Detection2DArray`.
-3. **Phase 2b (future, separate repository)**: Build a reusable AMD TensorList transport/runtime layer similar to the transport subset of NITROS. This repository documents the boundary only; it does not implement or depend on Phase 2b.
+3. **Phase 2b (active, separate sibling repository)**: Build the reusable `gpu_ros_managed` device-buffer TensorList transport/runtime layer and integrate it through the owning `ITensorListIO` contract in this repository.
 4. **Phase 3**: Extend the migrated AMD/std ROS2 pattern to Grounding DINO and other deferred object detection pipelines.
 
 The final Phase 1 NVIDIA results, correctness checks, provider-placement audit,
@@ -146,16 +146,16 @@ Phase 2a does **not** reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmark
 - Compare AMD `Detection2DArray` output against the existing A100 Phase 1 baseline bag using `migrated_packages/isaac_ros_detection_validation/scripts/compare_detection2d_bags.py`.
 - Prefer strict same-input validation. If cross-machine timestamps differ, use index-based matching and document that choice in the result notes.
 
-## Phase 2b: Future AMD TensorList Transport Runtime
+## Phase 2b: Managed Device TensorList Transport Runtime
 
-Phase 2b is intentionally out of scope for this repository and should be developed as a future independent repository. It may provide:
+Phase 2b is implemented in the independent sibling `gpu_ros_managed` repository. This application consumes it through vcstool/colcon and owns only ONNX Runtime provider, binding, synchronization, and staging policy. The sibling provides:
 
 - AMD device-buffer TensorList transport.
 - Same-process zero-copy transport for component containers.
 - Future cross-process transport once the device-memory ownership and synchronization contract is defined.
 - Component/container helper APIs for wiring AMD TensorList publishers and subscribers.
 
-Phase 2b must not contain object detection model logic. It must not implement RT-DETR/YOLO/Grounding DINO decoders, detection postprocessing, model-specific preprocessing, or a GXF graph runtime replacement. Phase 2a must not wait for Phase 2b.
+Phase 2b does not contain object detection model logic, RT-DETR/YOLO/Grounding DINO decoders, detection postprocessing, model-specific preprocessing, or a GXF graph runtime replacement. The existing Phase 2a `transport=std` path remains independently supported.
 
 ## Architecture
 

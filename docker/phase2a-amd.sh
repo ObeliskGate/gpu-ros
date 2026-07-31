@@ -10,6 +10,8 @@ COMMON_URL="https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"
 COMMON_REF="v4.5-0"
 INTERFACES_DIR="${COMMON_DIR}/isaac_ros_tensor_list_interfaces"
 INTERFACES_PATCH="${ROOT_DIR}/docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch"
+MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
+EXPECTED_MANAGED_COMMIT="ccd88c03467c6ca426210d42a920bc06b0540288"
 
 cd "${ROOT_DIR}"
 
@@ -48,6 +50,17 @@ prepare_interfaces() {
 check_host() {
   command -v docker >/dev/null
   docker compose version >/dev/null
+  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || {
+    echo "ERROR: gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}" >&2
+    exit 1
+  }
+  local managed_commit
+  managed_commit="$(git -C "${MANAGED_DIR}" rev-parse HEAD)"
+  echo "gpu_ros_managed commit: ${managed_commit}"
+  [[ "${managed_commit}" = "${EXPECTED_MANAGED_COMMIT}" ]] || {
+    echo "ERROR: gpu_ros_managed is not at the pinned commit." >&2
+    exit 1
+  }
   [[ -e /dev/kfd ]] || {
     echo "ERROR: /dev/kfd is not available on the host." >&2
     exit 1

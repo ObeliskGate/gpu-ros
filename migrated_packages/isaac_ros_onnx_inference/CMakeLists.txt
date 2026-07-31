@@ -14,6 +14,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(gpu_ros_managed_core REQUIRED)
+find_package(gpu_ros_managed_ros REQUIRED)
+find_package(gpu_ros_managed_tensor_list REQUIRED)
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
 set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation root")
@@ -103,16 +106,30 @@ target_compile_definitions(onnx_inference_core PRIVATE
   $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
   $<$<BOOL:${ORT_ENABLE_MIGRAPHX}>:ORT_MIGRAPHX_AVAILABLE>
 )
+if(ORT_ENABLE_CUDA OR BUILD_NITROS_TRANSPORT)
+  find_package(gpu_ros_managed_cuda REQUIRED)
+  if(NOT TARGET gpu_ros_managed::cuda)
+    message(FATAL_ERROR
+      "CUDA transport requires the gpu_ros_managed::cuda target and CUDA SDK.")
+  endif()
+endif()
+if(ORT_ENABLE_CUDA)
+  target_link_libraries(onnx_inference_core gpu_ros_managed::cuda)
+  target_compile_definitions(onnx_inference_core PRIVATE GPU_ROS_MANAGED_CUDA)
+endif()
 
 # ── ROS2 node + transport IO ──────────────────────────────────────────────────
 set(node_sources
   src/onnx_inference_node.cpp
   src/std_tensor_list_io.cpp
+  src/managed_tensor_list_io.cpp
   src/tensor_list_io_factory.cpp
 )
 if(BUILD_NITROS_TRANSPORT)
   list(APPEND node_sources
     src/nitros_tensor_list_io.cpp
+    src/nitros_managed_tensor_list_adapter.cpp
+    src/nitros_managed_tensor_list_nodes.cpp
     src/tensor_list_bridge_node.cpp)
 endif()
 
@@ -146,8 +163,11 @@ if(BUILD_NITROS_TRANSPORT)
     isaac_ros_managed_nitros
     isaac_ros_nitros_tensor_list_type)
   target_link_libraries(onnx_inference_node CUDA::cudart)
+  target_link_libraries(onnx_inference_node gpu_ros_managed::cuda)
   rclcpp_components_register_nodes(onnx_inference_node
-    "nvidia::isaac_ros::onnx_inference::TensorListBridgeNode")
+    "nvidia::isaac_ros::onnx_inference::TensorListBridgeNode"
+    "nvidia::isaac_ros::onnx_inference::NitrosToManagedTensorListNode"
+    "nvidia::isaac_ros::onnx_inference::ManagedToNitrosTensorListNode")
 endif()
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -187,7 +207,15 @@ if(BUILD_TESTING)
 
   if(BUILD_NITROS_TRANSPORT)
     find_package(launch_testing_ament_cmake REQUIRED)
+    ament_add_gtest(test_nitros_managed_tensor_list_adapter
+      test/test_nitros_managed_tensor_list_adapter.cpp)
+    target_link_libraries(test_nitros_managed_tensor_list_adapter onnx_inference_node CUDA::cudart)
+    ament_target_dependencies(test_nitros_managed_tensor_list_adapter
+      isaac_ros_nitros
+      isaac_ros_managed_nitros
+      isaac_ros_nitros_tensor_list_type)
     add_launch_test(test/isaac_ros_onnx_rtdetr_pol_test.py TIMEOUT "600")
+    add_launch_test(test/isaac_ros_onnx_rtdetr_managed_pol_test.py TIMEOUT "600")
   endif()
 endif()
 

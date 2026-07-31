@@ -7,6 +7,8 @@ COMPOSE_FILE="${ROOT_DIR}/docker-compose.yaml"
 ENV_FILE="${ROOT_DIR}/.env"
 EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64"
 EXPECTED_ORT="1.23.1"
+MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
+EXPECTED_MANAGED_COMMIT="ccd88c03467c6ca426210d42a920bc06b0540288"
 
 cd "${ROOT_DIR}"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
@@ -28,6 +30,17 @@ check_host() {
   command -v nvidia-smi >/dev/null
   nvidia-smi >/dev/null
   check_pins
+  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || {
+    echo "ERROR: gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}" >&2
+    exit 1
+  }
+  local managed_commit
+  managed_commit="$(git -C "${MANAGED_DIR}" rev-parse HEAD)"
+  echo "gpu_ros_managed commit: ${managed_commit}"
+  [[ "${managed_commit}" = "${EXPECTED_MANAGED_COMMIT}" ]] || {
+    echo "ERROR: gpu_ros_managed is not at the pinned commit." >&2
+    exit 1
+  }
   echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${EXPECTED_ORT}"
 }
 
@@ -65,27 +78,19 @@ verify_release_caches() {
         exit 1
       }
     done
+    source /opt/ros/jazzy/setup.bash
+    source install/setup.bash
+    ros2 pkg prefix gpu_ros_managed_core
+    ros2 pkg prefix gpu_ros_managed_cuda
+    ros2 pkg prefix gpu_ros_managed_tensor_list
+    ros2 pkg prefix isaac_ros_onnx_inference
   '
 }
 
 build_workspace() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
     source /opt/ros/jazzy/setup.bash
-    colcon build \
-      --symlink-install \
-      --base-paths \
-        src/amd_ros_object_detection/migrated_packages \
-        src/amd_ros_object_detection/isaac_ros_object_detection/isaac_ros_yolov8 \
-      --packages-select \
-        isaac_ros_onnx_inference \
-        isaac_ros_rtdetr_std \
-        isaac_ros_yolov8 \
-        isaac_ros_yolov8_std \
-        isaac_ros_detection_validation \
-      --cmake-args \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DORT_ENABLE_CUDA=ON \
-        -DBUILD_NITROS_TRANSPORT=ON
+    colcon build
   '
   verify_release_caches
 }
@@ -117,7 +122,11 @@ case "${1:-bootstrap}" in
     verify_release_caches
     ;;
   shell)
-    "${COMPOSE[@]}" exec dev bash
+    "${COMPOSE[@]}" exec dev bash -lc '
+      source /opt/ros/jazzy/setup.bash
+      if [[ -f install/setup.bash ]]; then source install/setup.bash; fi
+      exec bash
+    '
     ;;
   stop)
     "${COMPOSE[@]}" stop dev

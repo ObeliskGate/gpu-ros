@@ -43,8 +43,8 @@ INIT_WAIT_SEC = 10
 
 
 @pytest.mark.rostest
-def generate_test_description():
-    """Generate launch description for the ORT-in-NITROS-graph POL test."""
+def generate_rtdetr_pol_description(test_class, transport):
+    """Generate the shared C or Managed RT-DETR proof-of-life graph."""
     MockModelGenerator.generate(
         input_bindings=[
             MockModelGenerator.Binding('images', [-1, 3, 640, 640], torch.float32),
@@ -58,7 +58,7 @@ def generate_test_description():
         output_onnx_path=MODEL_ONNX_PATH
     )
 
-    ns = IsaacROSOnnxRtDetrPOLTest.generate_namespace()
+    ns = test_class.generate_namespace()
 
     resize_node = ComposableNode(
         name='resize_node',
@@ -141,7 +141,8 @@ def generate_test_description():
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )
 
-    # The only change vs upstream POL: ORT node (NITROS transport) replaces TensorRTNode.
+    # Config C replaces TensorRT directly. Managed keeps the official NITROS
+    # preprocessor/decoder and inserts explicit zero-payload-copy boundaries.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='isaac_ros_onnx_inference',
@@ -150,7 +151,7 @@ def generate_test_description():
         parameters=[{
             'model_file_path': MODEL_ONNX_PATH,
             'execution_provider': 'cuda',
-            'transport': 'nitros',
+            'transport': transport,
         }],
         remappings=[
             ('tensor_input', 'tensor_pub'),
@@ -165,6 +166,31 @@ def generate_test_description():
         namespace=ns
     )
 
+    inference_nodes = [onnx_node]
+    if transport == 'managed':
+        nitros_to_managed_node = ComposableNode(
+            name='nitros_to_managed', package='isaac_ros_onnx_inference',
+            plugin='nvidia::isaac_ros::onnx_inference::NitrosToManagedTensorListNode',
+            namespace=ns,
+            remappings=[('tensor_input', 'tensor_pub'),
+                        ('tensor_output', 'managed_tensor_input')])
+        onnx_node = ComposableNode(
+            name='onnx_inference', package='isaac_ros_onnx_inference',
+            plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode', namespace=ns,
+            parameters=[{
+                'model_file_path': MODEL_ONNX_PATH,
+                'execution_provider': 'cuda',
+                'transport': 'managed',
+            }],
+            remappings=[('tensor_input', 'managed_tensor_input'),
+                        ('tensor_output', 'managed_tensor_output')])
+        managed_to_nitros_node = ComposableNode(
+            name='managed_to_nitros', package='isaac_ros_onnx_inference',
+            plugin='nvidia::isaac_ros::onnx_inference::ManagedToNitrosTensorListNode',
+            namespace=ns,
+            remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')])
+        inference_nodes = [nitros_to_managed_node, onnx_node, managed_to_nitros_node]
+
     container = ComposableNodeContainer(
         name='rtdetr_container',
         namespace='rtdetr_container',
@@ -173,12 +199,17 @@ def generate_test_description():
         composable_node_descriptions=[
             resize_node, pad_node, image_format_node,
             image_to_tensor_node, interleave_to_planar_node, reshape_node,
-            rtdetr_preprocessor_node, onnx_node, rtdetr_decoder_node
+            rtdetr_preprocessor_node, *inference_nodes, rtdetr_decoder_node
         ],
         output='screen'
     )
 
-    return IsaacROSOnnxRtDetrPOLTest.generate_test_description([container])
+    return test_class.generate_test_description([container])
+
+
+def generate_test_description():
+    """Generate Config C's direct NITROS proof-of-life graph."""
+    return generate_rtdetr_pol_description(IsaacROSOnnxRtDetrPOLTest, 'nitros')
 
 
 class IsaacROSOnnxRtDetrPOLTest(IsaacROSBaseTest):
