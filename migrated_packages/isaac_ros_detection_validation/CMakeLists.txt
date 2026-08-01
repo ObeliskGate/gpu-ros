@@ -6,6 +6,7 @@ find_package(ament_cmake REQUIRED)
 install(PROGRAMS
   scripts/compare_detection2d_bags.py
   scripts/run_nvidia_fixed_input_capture.sh
+  scripts/run_nvidia_yolov8_transport_audit.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

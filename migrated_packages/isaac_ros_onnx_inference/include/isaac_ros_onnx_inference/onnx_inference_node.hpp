@@ -15,6 +15,7 @@
 #ifndef ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
 #define ISAAC_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -34,9 +35,12 @@ public:
 
 private:
   void OnTensors(gpu_ros_managed::ManagedTensorListView inputs);
+  void FinalizeOrtProfile(const char * reason) noexcept;
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorListIO> io_;
+  size_t ort_profile_frames_{0};
+  size_t inference_count_{0};
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference

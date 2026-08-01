@@ -44,7 +44,7 @@ WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
 APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
 ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-${WORKSPACE_ROOT}/assets}"
 INPUT_BAG="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
-OUTPUT_ROOT="${APP_ROOT}/migrated_packages/benchmark_results/phase2b_bags"
+OUTPUT_ROOT="${CAPTURE_OUTPUT_ROOT:-${APP_ROOT}/migrated_packages/benchmark_results/phase2b_bags}"
 OUTPUT_PATH="${OUTPUT_ROOT}/${OUTPUT_NAME}"
 LOG_ROOT="${OUTPUT_ROOT}/logs"
 LAUNCH_LOG="${LOG_ROOT}/${OUTPUT_NAME}.launch.log"
@@ -52,6 +52,11 @@ RECORD_LOG="${LOG_ROOT}/${OUTPUT_NAME}.record.log"
 PLAYBACK_RATE="${CAPTURE_PLAYBACK_RATE:-0.25}"
 DRAIN_SECONDS="${CAPTURE_DRAIN_SECONDS:-10}"
 MIN_MESSAGES="${CAPTURE_MIN_MESSAGES:-20}"
+ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
+ORT_PROFILE_FRAMES="${CAPTURE_ORT_PROFILE_FRAMES:-0}"
+NSYS_OUTPUT="${CAPTURE_NSYS_OUTPUT:-}"
+STOP_GRACE_SECONDS="${CAPTURE_STOP_GRACE_SECONDS:-10}"
+STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
 DETECTION_TOPIC=""
 CONFIDENCE_THRESHOLD="0.6"
 EXTRA_LAUNCH_ARGS=()
@@ -115,6 +120,38 @@ if [[ ! ${DRAIN_SECONDS} =~ ^[0-9]+$ || ! ${MIN_MESSAGES} =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+if [[ ! ${ORT_PROFILE_FRAMES} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: CAPTURE_ORT_PROFILE_FRAMES must be a non-negative integer." >&2
+  exit 2
+fi
+
+if [[ ! ${STOP_GRACE_SECONDS} =~ ^[0-9]+$ || ! ${STOP_TERM_SECONDS} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: CAPTURE_STOP_GRACE_SECONDS and CAPTURE_STOP_TERM_SECONDS must be integers." >&2
+  exit 2
+fi
+
+if ((ORT_PROFILE_FRAMES > 0)) && [[ -z ${ORT_PROFILE_PREFIX} ]]; then
+  echo "ERROR: CAPTURE_ORT_PROFILE_FRAMES requires CAPTURE_ORT_PROFILE_PREFIX." >&2
+  exit 2
+fi
+
+if [[ -n ${ORT_PROFILE_PREFIX} && ${LANE} != yolov8-c && ${LANE} != yolov8-managed ]]; then
+  echo "ERROR: bounded ORT profiling is currently supported only for YOLOv8 lanes." >&2
+  exit 2
+fi
+
+if [[ -n ${NSYS_OUTPUT} && ${NSYS_OUTPUT} == *.nsys-rep ]]; then
+  echo "ERROR: CAPTURE_NSYS_OUTPUT must be a prefix without the .nsys-rep suffix." >&2
+  exit 2
+fi
+
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  EXTRA_LAUNCH_ARGS+=(
+    "ort_profile_prefix:=${ORT_PROFILE_PREFIX}"
+    "ort_profile_frames:=${ORT_PROFILE_FRAMES}"
+  )
+fi
+
 if [[ ! -s ${MODEL_PATH} ]]; then
   echo "ERROR: model is missing or empty: ${MODEL_PATH}" >&2
   exit 1
@@ -126,6 +163,24 @@ if [[ ! -f ${INPUT_BAG}/metadata.yaml ]]; then
 fi
 
 mkdir -p "${OUTPUT_ROOT}" "${LOG_ROOT}"
+
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  mkdir -p "$(dirname -- "${ORT_PROFILE_PREFIX}")"
+fi
+
+if [[ -n ${NSYS_OUTPUT} ]]; then
+  if ! command -v nsys >/dev/null; then
+    echo "ERROR: CAPTURE_NSYS_OUTPUT requires NVIDIA Nsight Systems (nsys)." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname -- "${NSYS_OUTPUT}")"
+  for target in "${NSYS_OUTPUT}.nsys-rep" "${NSYS_OUTPUT}.qdstrm"; do
+    if [[ -e ${target} ]]; then
+      echo "ERROR: refusing to overwrite existing Nsight output: ${target}" >&2
+      exit 1
+    fi
+  done
+fi
 
 for target in "${OUTPUT_PATH}" "${LAUNCH_LOG}" "${RECORD_LOG}"; do
   if [[ -e ${target} ]]; then
@@ -172,7 +227,7 @@ stop_process() {
     kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
   fi
 
-  for ((attempt = 1; attempt <= 40; attempt++)); do
+  for ((attempt = 1; attempt <= STOP_GRACE_SECONDS * 4; attempt++)); do
     state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
     state="${state//[[:space:]]/}"
     if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
@@ -186,7 +241,7 @@ stop_process() {
     kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
   fi
 
-  for ((attempt = 1; attempt <= 20; attempt++)); do
+  for ((attempt = 1; attempt <= STOP_TERM_SECONDS * 4; attempt++)); do
     state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
     state="${state//[[:space:]]/}"
     if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
@@ -305,6 +360,16 @@ LAUNCH_COMMAND=(
   "confidence_threshold:=${CONFIDENCE_THRESHOLD}"
   "${EXTRA_LAUNCH_ARGS[@]}"
 )
+
+if [[ -n ${NSYS_OUTPUT} ]]; then
+  LAUNCH_COMMAND=(
+    nsys profile
+    --trace=cuda,nvtx
+    --sample=none
+    "--output=${NSYS_OUTPUT}"
+    "${LAUNCH_COMMAND[@]}"
+  )
+fi
 
 echo "Starting ${LANE} graph..."
 setsid bash -c \

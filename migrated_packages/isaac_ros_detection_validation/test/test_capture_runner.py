@@ -19,6 +19,9 @@ import subprocess
 SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_nvidia_fixed_input_capture.sh'
 )
+AUDIT_SCRIPT_PATH = (
+    Path(__file__).parents[1] / 'scripts' / 'run_nvidia_yolov8_transport_audit.sh'
+)
 
 
 def test_capture_runner_is_executable_and_has_valid_bash_syntax():
@@ -45,3 +48,29 @@ def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():
     )
     assert result.returncode == 2
     assert "unsupported lane 'unknown'" in result.stderr
+
+
+def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
+    assert AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
+    subprocess.run(['bash', '-n', str(AUDIT_SCRIPT_PATH)], check=True)
+
+
+def test_transport_audit_runner_help_does_not_require_ros_environment():
+    result = subprocess.run(
+        [str(AUDIT_SCRIPT_PATH), '--help'],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert '<audit-name>' in result.stdout
+
+
+def test_transport_audit_runner_rejects_an_invalid_name_before_starting_ros():
+    result = subprocess.run(
+        [str(AUDIT_SCRIPT_PATH), 'invalid/name'],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert 'audit-name may contain only' in result.stderr

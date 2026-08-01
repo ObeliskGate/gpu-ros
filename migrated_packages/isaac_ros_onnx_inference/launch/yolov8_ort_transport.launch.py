@@ -33,6 +33,8 @@ def launch_setup(context):
 
     model_file_path = LaunchConfiguration('model_file_path')
     execution_provider = LaunchConfiguration('execution_provider')
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
+    ort_profile_frames = LaunchConfiguration('ort_profile_frames')
     input_image_width = LaunchConfiguration('input_image_width')
     input_image_height = LaunchConfiguration('input_image_height')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
@@ -117,6 +119,8 @@ def launch_setup(context):
             parameters=[{
                 'model_file_path': model_file_path,
                 'execution_provider': execution_provider,
+                'ort_profile_prefix': ort_profile_prefix,
+                'ort_profile_frames': ort_profile_frames,
                 'transport': 'nitros',
             }],
             remappings=[
@@ -145,6 +149,8 @@ def launch_setup(context):
                 parameters=[{
                     'model_file_path': model_file_path,
                     'execution_provider': execution_provider,
+                    'ort_profile_prefix': ort_profile_prefix,
+                    'ort_profile_frames': ort_profile_frames,
                     'transport': 'managed',
                 }],
                 remappings=[
@@ -204,6 +210,8 @@ def generate_launch_description():
         DeclareLaunchArgument('transport', default_value='nitros'),
         DeclareLaunchArgument('model_file_path', default_value=''),
         DeclareLaunchArgument('execution_provider', default_value='cuda'),
+        DeclareLaunchArgument('ort_profile_prefix', default_value=''),
+        DeclareLaunchArgument('ort_profile_frames', default_value='0'),
         DeclareLaunchArgument('input_image_width', default_value='1280'),
         DeclareLaunchArgument('input_image_height', default_value='720'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.25'),

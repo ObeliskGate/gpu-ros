@@ -139,6 +139,7 @@ rclcpp_components_register_nodes(onnx_inference_node
   "nvidia::isaac_ros::onnx_inference::OnnxInferenceNode")
 
 install(PROGRAMS
+  scripts/compare_nsys_cuda_traces.py
   scripts/summarize_ort_profile.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -203,6 +204,9 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_summarize_ort_profile
     test/test_summarize_ort_profile.py
+  )
+  ament_add_pytest_test(test_compare_nsys_cuda_traces
+    test/test_compare_nsys_cuda_traces.py
   )
 
   if(BUILD_NITROS_TRANSPORT)
