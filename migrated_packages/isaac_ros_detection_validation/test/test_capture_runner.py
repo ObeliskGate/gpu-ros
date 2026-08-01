@@ -33,7 +33,7 @@ def test_capture_runner_help_does_not_require_ros_environment():
         capture_output=True,
         text=True,
     )
-    assert '<rtdetr-c|rtdetr-managed>' in result.stdout
+    assert '<rtdetr-c|rtdetr-managed|yolov8-c|yolov8-managed>' in result.stdout
 
 
 def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():

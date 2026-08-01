@@ -16,9 +16,9 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <rtdetr-c|rtdetr-managed> <output-name>"
+  echo "Usage: $0 <rtdetr-c|rtdetr-managed|yolov8-c|yolov8-managed> <output-name>"
   echo
-  echo "Record one fixed-input NVIDIA RT-DETR detection bag in a single terminal."
+  echo "Record one fixed-input NVIDIA detection bag in a single terminal."
   echo "The output name must not already exist."
 }
 
@@ -43,7 +43,6 @@ fi
 WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
 APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
 ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-${WORKSPACE_ROOT}/assets}"
-MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
 INPUT_BAG="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
 OUTPUT_ROOT="${APP_ROOT}/migrated_packages/benchmark_results/phase2b_bags"
 OUTPUT_PATH="${OUTPUT_ROOT}/${OUTPUT_NAME}"
@@ -54,22 +53,49 @@ PLAYBACK_RATE="${CAPTURE_PLAYBACK_RATE:-0.25}"
 DRAIN_SECONDS="${CAPTURE_DRAIN_SECONDS:-10}"
 MIN_MESSAGES="${CAPTURE_MIN_MESSAGES:-20}"
 DETECTION_TOPIC=""
+CONFIDENCE_THRESHOLD="0.6"
+EXTRA_LAUNCH_ARGS=()
 
 case "${LANE}" in
   rtdetr-c)
+    MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
     LAUNCH_PACKAGE="isaac_ros_rtdetr_std"
     LAUNCH_FILE="rtdetr_ort_nitros.launch.py"
+    EXTRA_LAUNCH_ARGS+=(execution_provider:=cuda)
     DETECTION_CANDIDATES=(
       /detections_output
       /rtdetr_container/detections_output
     )
     ;;
   rtdetr-managed)
+    MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
     LAUNCH_PACKAGE="isaac_ros_onnx_inference"
     LAUNCH_FILE="rtdetr_ort_managed.launch.py"
     DETECTION_CANDIDATES=(
       /detections_output
       /rtdetr_managed_container/detections_output
+    )
+    ;;
+  yolov8-c)
+    MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
+    LAUNCH_PACKAGE="isaac_ros_onnx_inference"
+    LAUNCH_FILE="yolov8_ort_transport.launch.py"
+    CONFIDENCE_THRESHOLD="0.25"
+    EXTRA_LAUNCH_ARGS+=(transport:=nitros execution_provider:=cuda)
+    DETECTION_CANDIDATES=(
+      /detections_output
+      /yolov8_container/detections_output
+    )
+    ;;
+  yolov8-managed)
+    MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
+    LAUNCH_PACKAGE="isaac_ros_onnx_inference"
+    LAUNCH_FILE="yolov8_ort_transport.launch.py"
+    CONFIDENCE_THRESHOLD="0.25"
+    EXTRA_LAUNCH_ARGS+=(transport:=managed execution_provider:=cuda)
+    DETECTION_CANDIDATES=(
+      /detections_output
+      /yolov8_container/detections_output
     )
     ;;
   *)
@@ -90,7 +116,7 @@ if [[ ! ${DRAIN_SECONDS} =~ ^[0-9]+$ || ! ${MIN_MESSAGES} =~ ^[0-9]+$ ]]; then
 fi
 
 if [[ ! -s ${MODEL_PATH} ]]; then
-  echo "ERROR: RT-DETR model is missing or empty: ${MODEL_PATH}" >&2
+  echo "ERROR: model is missing or empty: ${MODEL_PATH}" >&2
   exit 1
 fi
 
@@ -276,12 +302,9 @@ LAUNCH_COMMAND=(
   "model_file_path:=${MODEL_PATH}"
   input_image_width:=1280
   input_image_height:=720
-  confidence_threshold:=0.6
+  "confidence_threshold:=${CONFIDENCE_THRESHOLD}"
+  "${EXTRA_LAUNCH_ARGS[@]}"
 )
-
-if [[ ${LANE} == "rtdetr-c" ]]; then
-  LAUNCH_COMMAND+=(execution_provider:=cuda)
-fi
 
 echo "Starting ${LANE} graph..."
 setsid bash -c \
