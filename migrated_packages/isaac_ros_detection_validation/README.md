@@ -48,3 +48,26 @@ For peak-throughput benchmark sweeps, different graph configurations may emit
 different numbers of frames before the benchmark stops. Use
 `--ignore-unpaired-frames` for that case. Leave it off for strict cross-machine
 validation where both runs should cover the same input frames.
+
+## NVIDIA fixed-input RT-DETR capture
+
+The NVIDIA Phase 2B C/Managed comparison has a single-terminal capture runner.
+It starts the selected graph, waits for ROS discovery, records
+`/detections_output`, plays the complete `r2b_robotarm` input bag, shuts down
+cleanly, and requires at least 20 recorded messages. Existing output bags and
+logs are never overwritten.
+
+From the Isaac ROS workspace root:
+
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-c \
+  rtdetr_config_c_20260801
+
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-managed \
+  rtdetr_managed_20260801
+```
+
+Set `CAPTURE_PLAYBACK_RATE` to change the default `0.25` playback rate. Set
+`CAPTURE_DRAIN_SECONDS` or `CAPTURE_MIN_MESSAGES` only when diagnosing a run.

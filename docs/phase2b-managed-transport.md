@@ -88,7 +88,26 @@ and require stamp matching, at least 20 pairs, no unpaired frames, mean IoU
 at least 0.999, score delta at most `1e-4`, and class match rate 1.0:
 
 ```bash
-ros2 run isaac_ros_detection_validation compare_detection2d_bags.py --reference-bag <config-c-bag> --candidate-bag <managed-bag> --output-json migrated_packages/benchmark_results/rtdetr_c_vs_managed_validation.json --match-policy stamp --min-mean-iou 0.999 --max-mean-score-delta 0.0001 --min-frame-pass-rate 1.0 --min-paired-frames 20 --min-class-match-rate 1.0
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-c \
+  rtdetr_config_c_20260801
+
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-managed \
+  rtdetr_managed_20260801
+
+ros2 run \
+  isaac_ros_detection_validation \
+  compare_detection2d_bags.py \
+  --reference-bag <config-c-bag> \
+  --candidate-bag <managed-bag> \
+  --output-json migrated_packages/benchmark_results/rtdetr_c_vs_managed_validation.json \
+  --match-policy stamp \
+  --min-mean-iou 0.999 \
+  --max-mean-score-delta 0.0001 \
+  --min-frame-pass-rate 1.0 \
+  --min-paired-frames 20 \
+  --min-class-match-rate 1.0
 ```
 
 Historical Phase 1 results do not validate the revised C or Managed paths.
