@@ -11,7 +11,7 @@ COMMON_REF="v4.5-0"
 INTERFACES_DIR="${COMMON_DIR}/isaac_ros_tensor_list_interfaces"
 INTERFACES_PATCH="${ROOT_DIR}/docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch"
 MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
-EXPECTED_MANAGED_COMMIT="d89c0d76d9c4a398c1faa55104c3dc4273700176"
+EXPECTED_MANAGED_COMMIT="944091ac57aea60aeddc78405679ac084a79002a"
 
 cd "${ROOT_DIR}"
 
