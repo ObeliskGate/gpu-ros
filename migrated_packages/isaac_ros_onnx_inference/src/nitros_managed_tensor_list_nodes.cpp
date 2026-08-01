@@ -12,6 +12,7 @@
 #include "rclcpp_components/register_node_macro.hpp"
 
 #include "gpu_ros_managed_ros/managed_pub_sub.hpp"
+#include "gpu_ros_managed_tensor_list/type_adapter.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
 #include "isaac_ros_onnx_inference/nitros_managed_tensor_list_adapter.hpp"
