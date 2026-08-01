@@ -43,18 +43,6 @@ namespace nvidia::isaac_ros::onnx_inference
 namespace
 {
 namespace nitros = nvidia::isaac_ros::nitros;
-
-nitros::NitrosDataType OnnxToNitrosDtype(ONNXTensorElementDataType dtype)
-{
-  switch (dtype) {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-      return nitros::NitrosDataType::kFloat32;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-      return nitros::NitrosDataType::kInt64;
-    default:
-      throw std::runtime_error("TensorListBridge: unsupported dtype");
-  }
-}
 }  // namespace
 
 // Subscribes via the configured input transport and republishes over NITROS.

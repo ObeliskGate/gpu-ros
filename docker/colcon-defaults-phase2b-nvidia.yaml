@@ -7,6 +7,7 @@ build:
     - src/amd_ros_object_detection/migrated_packages
     - src/amd_ros_object_detection/isaac_ros_object_detection/isaac_ros_yolov8
   cmake-args:
+    - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
     - -DORT_ENABLE_CUDA=ON
     - -DORT_ENABLE_ROCM=OFF
