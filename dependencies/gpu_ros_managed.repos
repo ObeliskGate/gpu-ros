@@ -2,4 +2,4 @@ repositories:
   gpu_ros_managed:
     type: git
     url: git@github.com:ObeliskGate/gpu_ros_managed.git
-    version: 96c4bcf93dca522830efe7c5b6573daf3be482db
+    version: b8008934e629c3e2d4f0cc915afdf6d1c44fbbaa
