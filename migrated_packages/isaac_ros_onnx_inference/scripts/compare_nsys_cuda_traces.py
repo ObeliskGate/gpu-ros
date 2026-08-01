@@ -47,8 +47,15 @@ def parse_args():
 
 def load_events(path):
     """Load one nsys JSON report."""
-    with path.open(encoding='utf-8') as trace_file:
-        events = json.load(trace_file)
+    trace_text = path.read_text(encoding='utf-8')
+    if not trace_text.strip():
+        raise ValueError(f'{path}: report is empty')
+    try:
+        events = json.loads(trace_text)
+    except json.JSONDecodeError as exc:
+        first_line = trace_text.splitlines()[0][:120]
+        raise ValueError(
+            f'{path}: report is not pure JSON; first line: {first_line!r}') from exc
     if not isinstance(events, list):
         raise ValueError(f'{path}: top-level JSON value must be an array')
     return [event for event in events if isinstance(event, dict)]
