@@ -48,7 +48,7 @@ public:
     options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
     subscription_ = node->create_subscription<MessageT>(
       topic, qos,
-      [callback = std::move(callback)](std::shared_ptr<const MessageT> message) mutable {
+      [callback = std::move(callback)](std::shared_ptr<const MessageT> message) {
         callback(ViewT(std::move(message)));
       }, options);
   }
