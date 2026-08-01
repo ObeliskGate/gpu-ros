@@ -188,7 +188,8 @@ def generate_rtdetr_pol_description(test_class, transport):
             name='managed_to_nitros', package='isaac_ros_onnx_inference',
             plugin='nvidia::isaac_ros::onnx_inference::ManagedToNitrosTensorListNode',
             namespace=ns,
-            remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')])
+            remappings=[('tensor_input', 'managed_tensor_output'),
+                        ('tensor_output', 'tensor_sub')])
         inference_nodes = [nitros_to_managed_node, onnx_node, managed_to_nitros_node]
 
     container = ComposableNodeContainer(

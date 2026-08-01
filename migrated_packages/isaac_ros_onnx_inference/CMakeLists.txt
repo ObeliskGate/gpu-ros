@@ -209,7 +209,10 @@ if(BUILD_TESTING)
     find_package(launch_testing_ament_cmake REQUIRED)
     ament_add_gtest(test_nitros_managed_tensor_list_adapter
       test/test_nitros_managed_tensor_list_adapter.cpp)
-    target_link_libraries(test_nitros_managed_tensor_list_adapter onnx_inference_node CUDA::cudart)
+    target_link_libraries(test_nitros_managed_tensor_list_adapter
+      onnx_inference_node
+      gpu_ros_managed::cuda
+      CUDA::cudart)
     ament_target_dependencies(test_nitros_managed_tensor_list_adapter
       isaac_ros_nitros
       isaac_ros_managed_nitros

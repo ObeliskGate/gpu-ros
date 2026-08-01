@@ -1,12 +1,28 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
-#include <memory>
-#include <variant>
-#include <vector>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <memory>
+#include <thread>
+#include <variant>
+#include <vector>
+
+#include "gpu_ros_managed_cuda/cuda_backend.hpp"
+#include "isaac_ros_nitros/types/cuda_stream_pool.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 #include "isaac_ros_onnx_inference/nitros_managed_tensor_list_adapter.hpp"
@@ -24,6 +40,8 @@ TEST(NitrosManagedTensorListAdapter, RoundTripPreservesDevicePayloadPointer)
   }
 
   ASSERT_EQ(cudaSetDevice(0), cudaSuccess);
+  auto & nitros_stream_pool = nitros::CudaStreamPool::instance();
+  const size_t available_streams_before = nitros_stream_pool.available();
   cudaStream_t stream = nullptr;
   ASSERT_EQ(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking), cudaSuccess);
   void * device_memory = nullptr;
@@ -65,6 +83,15 @@ TEST(NitrosManagedTensorListAdapter, RoundTripPreservesDevicePayloadPointer)
     EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
   }
 
+  const auto cleanup_deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (nitros_stream_pool.available() != available_streams_before &&
+    std::chrono::steady_clock::now() < cleanup_deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  EXPECT_EQ(nitros_stream_pool.available(), available_streams_before);
+  EXPECT_TRUE(gpu_ros_managed::cuda::wait_for_pending_releases(std::chrono::seconds(5)));
   EXPECT_EQ(cudaFree(device_memory), cudaSuccess);
   EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }

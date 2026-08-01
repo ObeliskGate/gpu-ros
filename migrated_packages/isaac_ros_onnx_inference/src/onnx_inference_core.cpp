@@ -217,21 +217,23 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       const auto & buffer =
         std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
       const auto device = buffer->device_id();
+      const bool use_cuda_device_input =
+        device.backend == gpu_ros_managed::BackendKind::kCuda &&
+        execution_provider_ == ExecutionProvider::kCuda;
+      const bool use_hip_device_input =
+        device.backend == gpu_ros_managed::BackendKind::kHip &&
+        (execution_provider_ == ExecutionProvider::kMigraphx ||
+        execution_provider_ == ExecutionProvider::kRocm);
       if (device.ordinal != gpu_device_id_) {
         throw std::invalid_argument(
                 "Tensor '" + tensor.name() + "' device does not match the ORT session");
       }
-      if (device.backend == gpu_ros_managed::BackendKind::kCuda &&
-        execution_provider_ == ExecutionProvider::kCuda)
-      {
+      if (use_cuda_device_input) {
         leases.push_back(buffer->get_blocking_ready_lease());
         data = leases.back().data();
         memory_info = Ort::MemoryInfo(
           "Cuda", OrtArenaAllocator, device.ordinal, OrtMemTypeDefault);
-      } else if (device.backend == gpu_ros_managed::BackendKind::kHip &&
-        (execution_provider_ == ExecutionProvider::kMigraphx ||
-        execution_provider_ == ExecutionProvider::kRocm))
-      {
+      } else if (use_hip_device_input) {
         // ORT 1.23.1 MIGraphX external HIP pointer support is not assumed.
         // Keep this explicit staging inside the ORT adapter.
         staged_inputs.emplace_back(tensor.byte_size());

@@ -1,5 +1,17 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <algorithm>
 #include <chrono>
 #include <memory>
@@ -47,8 +59,9 @@ public:
     const size_t p95_index = std::min(
       sorted.size() - 1, static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1)));
     RCLCPP_INFO(
-      node_->get_logger(), "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms; payload copies=0",
-      boundary_.c_str(), sorted.size(), mean, sorted[p95_index]);
+      node_->get_logger(),
+          "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms; payload copies=0",
+          boundary_.c_str(), sorted.size(), mean, sorted[p95_index]);
     samples_ms_.clear();
   }
 
@@ -64,7 +77,8 @@ private:
 class NitrosToManagedTensorListNode : public rclcpp::Node
 {
 public:
-  explicit NitrosToManagedTensorListNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  explicit NitrosToManagedTensorListNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : rclcpp::Node("nitros_to_managed_tensor_list_node", options),
     gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
     adapter_(gpu_device_id_), timing_(this, "nitros_to_managed")
@@ -97,7 +111,8 @@ private:
 class ManagedToNitrosTensorListNode : public rclcpp::Node
 {
 public:
-  explicit ManagedToNitrosTensorListNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  explicit ManagedToNitrosTensorListNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : rclcpp::Node("managed_to_nitros_tensor_list_node", options),
     gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
     timing_(this, "managed_to_nitros")
