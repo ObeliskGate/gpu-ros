@@ -44,11 +44,11 @@ TEST(TypeAdapterProbe, RosToManagedFallbackProducesHostBuffer)
 {
   RosTensorList ros;
   Adapter::convert_to_ros_message(host_message(), ros);
-  ManagedTensorList managed({}, {});
+  ManagedTensorList managed(std_msgs::msg::Header{}, {});
   Adapter::convert_to_custom(ros, managed);
   ASSERT_EQ(managed.tensors().size(), 1U);
   EXPECT_TRUE(managed.tensors()[0].is_host());
-  EXPECT_EQ(managed.tensors()[0].strides, (std::vector<uint64_t>{16, 4}));
+  EXPECT_EQ(managed.tensors()[0].strides(), (std::vector<uint64_t>{16, 4}));
 }
 
 TEST(TypeAdapterProbe, NativeIntraProcessPreservesCustomObjectIdentity)

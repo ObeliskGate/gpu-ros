@@ -68,4 +68,8 @@ struct rclcpp::TypeAdapter<
     destination = custom_type(source.header, std::move(tensors));
   }
 };
+
+RCLCPP_USING_CUSTOM_TYPE_AS_ROS_MESSAGE_TYPE(
+  gpu_ros_managed::ManagedTensorList,
+  isaac_ros_tensor_list_interfaces::msg::TensorList);
 #endif
