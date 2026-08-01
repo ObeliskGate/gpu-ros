@@ -22,7 +22,8 @@ install(EXPORT gpu_ros_managed_tensor_listTargets
   FILE gpu_ros_managed_tensor_listTargets.cmake
   NAMESPACE gpu_ros_managed::
   DESTINATION share/gpu_ros_managed_tensor_list/cmake)
-ament_export_targets(gpu_ros_managed_tensor_listTargets HAS_LIBRARY_TARGET)
+ament_export_targets(gpu_ros_managed_tensor_listTargets HAS_LIBRARY_TARGET
+  NAMESPACE gpu_ros_managed::)
 ament_export_dependencies(gpu_ros_managed_core rclcpp std_msgs isaac_ros_tensor_list_interfaces)
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)

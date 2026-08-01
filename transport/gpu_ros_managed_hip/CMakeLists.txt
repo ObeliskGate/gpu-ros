@@ -22,7 +22,8 @@ if(hip_FOUND)
     NAMESPACE gpu_ros_managed::
     DESTINATION share/gpu_ros_managed_hip/cmake)
   if(ament_cmake_FOUND)
-    ament_export_targets(gpu_ros_managed_hipTargets HAS_LIBRARY_TARGET)
+    ament_export_targets(gpu_ros_managed_hipTargets HAS_LIBRARY_TARGET
+      NAMESPACE gpu_ros_managed::)
     ament_export_dependencies(gpu_ros_managed_core)
   endif()
 else()

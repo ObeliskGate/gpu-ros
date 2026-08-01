@@ -15,6 +15,6 @@ install(EXPORT gpu_ros_managed_rosTargets
   FILE gpu_ros_managed_rosTargets.cmake
   NAMESPACE gpu_ros_managed::
   DESTINATION share/gpu_ros_managed_ros/cmake)
-ament_export_targets(gpu_ros_managed_rosTargets)
+ament_export_targets(gpu_ros_managed_rosTargets NAMESPACE gpu_ros_managed::)
 ament_export_dependencies(rclcpp)
 ament_package()
