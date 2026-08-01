@@ -75,7 +75,9 @@ HipStream wrap_borrowed_stream(hipStream_t native, int id, std::shared_ptr<void>
 std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int id)
 {
   auto owner = ops()->allocate_device(id, bytes);
-  return detail::DeviceBufferFactory::make_fresh({BackendKind::kHip, id}, owner.get(), bytes, std::move(owner), ops());
+  void * pointer = owner.get();
+  return detail::DeviceBufferFactory::make_fresh(
+    {BackendKind::kHip, id}, pointer, bytes, std::move(owner), ops());
 }
 std::shared_ptr<DeviceBuffer> adopt_external(void * p, size_t n, int id, std::shared_ptr<void> owner)
 {return detail::DeviceBufferFactory::make_fresh({BackendKind::kHip, id}, p, n, std::move(owner), ops());}

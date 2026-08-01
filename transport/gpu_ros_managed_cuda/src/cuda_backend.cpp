@@ -110,8 +110,11 @@ CudaStream wrap_borrowed_stream(
 std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int device_id)
 {
   auto owner = ops()->allocate_device(device_id, bytes);
+  // Function argument evaluation order is not guaranteed.  Capture the
+  // allocation before moving its owner into the DeviceBuffer.
+  void * pointer = owner.get();
   return detail::DeviceBufferFactory::make_fresh(
-    {BackendKind::kCuda, device_id}, owner.get(), bytes, std::move(owner), ops());
+    {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops());
 }
 std::shared_ptr<DeviceBuffer> adopt_external(
   void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner)
