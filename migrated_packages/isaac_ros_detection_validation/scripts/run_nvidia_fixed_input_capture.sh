@@ -121,7 +121,7 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in ros2 awk sleep tail; do
+for command_name in ros2 awk ps setsid sleep tail; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
@@ -134,6 +134,8 @@ RECORD_PID=""
 stop_process() {
   local pid="$1"
   local label="$2"
+  local attempt
+  local state
 
   if [[ -z ${pid} ]]; then
     return
@@ -141,7 +143,35 @@ stop_process() {
 
   if kill -0 "${pid}" 2>/dev/null; then
     echo "Stopping ${label} (PID ${pid})..."
-    kill -INT "${pid}" 2>/dev/null || true
+    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
+  fi
+
+  for ((attempt = 1; attempt <= 40; attempt++)); do
+    state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
+    state="${state//[[:space:]]/}"
+    if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
+    echo "${label} did not stop after SIGINT; sending SIGTERM..."
+    kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+  fi
+
+  for ((attempt = 1; attempt <= 20; attempt++)); do
+    state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
+    state="${state//[[:space:]]/}"
+    if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+      break
+    fi
+    sleep 0.25
+  done
+
+  if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
+    echo "WARNING: ${label} ignored SIGTERM; sending SIGKILL." >&2
+    kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
   fi
   wait "${pid}" 2>/dev/null || true
 }
@@ -159,9 +189,6 @@ cleanup() {
   fi
   exit "${status}"
 }
-
-trap cleanup EXIT
-trap 'exit 130' INT TERM
 
 topic_count() {
   local topic="$1"
@@ -239,6 +266,9 @@ for candidate in "${DETECTION_CANDIDATES[@]}"; do
   fi
 done
 
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
 LAUNCH_COMMAND=(
   ros2 launch
   "${LAUNCH_PACKAGE}"
@@ -254,7 +284,10 @@ if [[ ${LANE} == "rtdetr-c" ]]; then
 fi
 
 echo "Starting ${LANE} graph..."
-"${LAUNCH_COMMAND[@]}" >"${LAUNCH_LOG}" 2>&1 &
+setsid bash -c \
+  'trap - INT TERM; exec "$@"' \
+  capture-child \
+  "${LAUNCH_COMMAND[@]}" >"${LAUNCH_LOG}" 2>&1 &
 LAUNCH_PID=$!
 
 if ! discover_detection_topic; then
@@ -278,7 +311,10 @@ if ! wait_for_topic_count \
 fi
 
 echo "Recording ${DETECTION_TOPIC} to ${OUTPUT_PATH}..."
-ros2 bag record \
+setsid bash -c \
+  'trap - INT TERM; exec "$@"' \
+  capture-child \
+  ros2 bag record \
   --output "${OUTPUT_PATH}" \
   "${DETECTION_TOPIC}" >"${RECORD_LOG}" 2>&1 &
 RECORD_PID=$!
