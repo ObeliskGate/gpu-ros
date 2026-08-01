@@ -12,7 +12,9 @@ target_compile_features(gpu_ros_managed_tensor_list PUBLIC cxx_std_17)
 target_include_directories(gpu_ros_managed_tensor_list PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_link_libraries(gpu_ros_managed_tensor_list PUBLIC gpu_ros_managed::core)
+# ament_target_dependencies() uses CMake's plain signature on Jazzy, so this
+# target must use that signature consistently.  The plain form is transitive.
+target_link_libraries(gpu_ros_managed_tensor_list gpu_ros_managed::core)
 ament_target_dependencies(gpu_ros_managed_tensor_list
   rclcpp std_msgs isaac_ros_tensor_list_interfaces)
 install(TARGETS gpu_ros_managed_tensor_list EXPORT gpu_ros_managed_tensor_listTargets
@@ -29,7 +31,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(gpu_ros_managed_ros REQUIRED)
   ament_add_gtest(type_adapter_probe test/type_adapter_probe.cpp)
-  target_link_libraries(type_adapter_probe PRIVATE gpu_ros_managed_tensor_list)
+  target_link_libraries(type_adapter_probe gpu_ros_managed_tensor_list)
   ament_target_dependencies(type_adapter_probe
     rclcpp gpu_ros_managed_ros isaac_ros_tensor_list_interfaces)
 endif()
