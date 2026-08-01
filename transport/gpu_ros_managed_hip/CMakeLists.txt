@@ -8,7 +8,9 @@ if(hip_FOUND)
   endif()
   add_library(gpu_ros_managed_hip src/hip_backend.cpp)
   add_library(gpu_ros_managed::hip ALIAS gpu_ros_managed_hip)
-  set_target_properties(gpu_ros_managed_hip PROPERTIES EXPORT_NAME hip)
+  set_target_properties(gpu_ros_managed_hip PROPERTIES
+    EXPORT_NAME hip
+    POSITION_INDEPENDENT_CODE ON)
   target_compile_features(gpu_ros_managed_hip PUBLIC cxx_std_17)
   target_include_directories(gpu_ros_managed_hip PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

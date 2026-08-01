@@ -5,7 +5,9 @@ add_library(gpu_ros_managed_core
   src/buffer.cpp
   src/fixed_device_memory_pool.cpp)
 add_library(gpu_ros_managed::core ALIAS gpu_ros_managed_core)
-set_target_properties(gpu_ros_managed_core PROPERTIES EXPORT_NAME core)
+set_target_properties(gpu_ros_managed_core PROPERTIES
+  EXPORT_NAME core
+  POSITION_INDEPENDENT_CODE ON)
 target_compile_features(gpu_ros_managed_core PUBLIC cxx_std_17)
 target_include_directories(gpu_ros_managed_core
   PUBLIC

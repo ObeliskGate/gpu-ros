@@ -7,7 +7,9 @@ find_package(std_msgs REQUIRED)
 find_package(isaac_ros_tensor_list_interfaces REQUIRED)
 add_library(gpu_ros_managed_tensor_list src/tensor_list.cpp)
 add_library(gpu_ros_managed::tensor_list ALIAS gpu_ros_managed_tensor_list)
-set_target_properties(gpu_ros_managed_tensor_list PROPERTIES EXPORT_NAME tensor_list)
+set_target_properties(gpu_ros_managed_tensor_list PROPERTIES
+  EXPORT_NAME tensor_list
+  POSITION_INDEPENDENT_CODE ON)
 target_compile_features(gpu_ros_managed_tensor_list PUBLIC cxx_std_17)
 target_include_directories(gpu_ros_managed_tensor_list PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -9,7 +9,9 @@ if(CUDAToolkit_FOUND)
   endif()
   add_library(gpu_ros_managed_cuda src/cuda_backend.cpp)
   add_library(gpu_ros_managed::cuda ALIAS gpu_ros_managed_cuda)
-  set_target_properties(gpu_ros_managed_cuda PROPERTIES EXPORT_NAME cuda)
+  set_target_properties(gpu_ros_managed_cuda PROPERTIES
+    EXPORT_NAME cuda
+    POSITION_INDEPENDENT_CODE ON)
   target_compile_features(gpu_ros_managed_cuda PUBLIC cxx_std_17)
   target_include_directories(gpu_ros_managed_cuda PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
