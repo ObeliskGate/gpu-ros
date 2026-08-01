@@ -8,7 +8,7 @@ ENV_FILE="${ROOT_DIR}/.env"
 EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64"
 EXPECTED_ORT="1.23.1"
 MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
-EXPECTED_MANAGED_COMMIT="cdec78c1d360f476ced8fc6d2c51bb967b70b190"
+EXPECTED_MANAGED_COMMIT="96c4bcf93dca522830efe7c5b6573daf3be482db"
 
 cd "${ROOT_DIR}"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
