@@ -75,13 +75,32 @@ def event_field(event, name, default=''):
 def byte_count(event):
     """Return a memory-operation byte count, or None for a kernel row."""
     value = event_field(event, 'Bytes', '')
+    factor = 1
+    if value in ('', None):
+        unit_factors = {
+            'B': 1,
+            'KB': 1000,
+            'KiB': 1024,
+            'MB': 1000 ** 2,
+            'MiB': 1024 ** 2,
+            'GB': 1000 ** 3,
+            'GiB': 1024 ** 3,
+        }
+        for key, candidate in event.items():
+            if not key.startswith('Bytes (') or not key.endswith(')'):
+                continue
+            unit = key[len('Bytes ('):-1]
+            if unit in unit_factors:
+                value = candidate
+                factor = unit_factors[unit]
+                break
     if value in ('', None):
         return None
     if isinstance(value, str):
         value = value.replace(',', '').strip()
         if not value:
             return None
-    return int(float(value))
+    return int(round(float(value) * factor))
 
 
 def summarize(events, payload_sizes):
@@ -101,11 +120,11 @@ def summarize(events, payload_sizes):
         source = str(event_field(event, 'SrcMemKd', ''))
         destination = str(event_field(event, 'DstMemKd', ''))
         direction = f'{source}->{destination}'
-        memory_totals[direction]['count'] += 1
-        memory_totals[direction]['bytes'] += size
         if 'memcpy' not in name.lower():
             continue
 
+        memory_totals[direction]['count'] += 1
+        memory_totals[direction]['bytes'] += size
         signature = (name, size, source, destination)
         memcopies[signature] += 1
         if size in payload_sizes:
@@ -198,12 +217,12 @@ def compare(
             'byte_delta': m_data['bytes'] - c_data['bytes'],
         })
 
+    bridge_zero_copy_pass = not managed_extra_memcopies and payload_copy_rate_pass
+    gpu_execution_control_pass = c_kernel_names == m_kernel_names
     result = {
-        'pass': (
-            c_kernel_names == m_kernel_names and
-            not managed_extra_memcopies and
-            payload_copy_rate_pass
-        ),
+        'pass': bridge_zero_copy_pass and gpu_execution_control_pass,
+        'bridge_zero_copy_pass': bridge_zero_copy_pass,
+        'gpu_execution_control_pass': gpu_execution_control_pass,
         'criteria': {
             'kernel_name_sets_match': c_kernel_names == m_kernel_names,
             'managed_has_no_extra_memcpy_signature': not managed_extra_memcopies,
@@ -264,6 +283,7 @@ def main():
     print(
         'Managed has no extra payload copy rate: '
         f"{result['criteria']['managed_has_no_extra_payload_copy_rate']}")
+    print(f"Managed bridge zero-copy: {result['bridge_zero_copy_pass']}")
     for delta in result['memcpy']['memory_total_deltas']:
         print(
             f"{delta['direction']}: count delta={delta['count_delta']}, "

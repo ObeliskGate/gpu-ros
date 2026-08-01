@@ -54,6 +54,7 @@ def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
     assert AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
     subprocess.run(['bash', '-n', str(AUDIT_SCRIPT_PATH)], check=True)
     assert AUDIT_SCRIPT_PATH.read_text().count('nsys stats \\\n  --quiet') == 2
+    assert AUDIT_SCRIPT_PATH.read_text().count('--format json:mem=B') == 2
 
 
 def test_transport_audit_runner_help_does_not_require_ros_environment():

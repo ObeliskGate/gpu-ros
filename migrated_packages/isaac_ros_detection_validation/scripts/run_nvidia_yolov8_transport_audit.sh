@@ -180,7 +180,7 @@ echo "Exporting CUDA trace tables..."
 nsys stats \
   --quiet \
   --report cuda_gpu_trace:base \
-  --format json \
+  --format json:mem=B \
   --output - \
   "${CONFIG_C_REP}" \
   >"${NSYS_ROOT}/config_c_cuda_gpu_trace.json"
@@ -188,7 +188,7 @@ nsys stats \
 nsys stats \
   --quiet \
   --report cuda_gpu_trace:base \
-  --format json \
+  --format json:mem=B \
   --output - \
   "${MANAGED_REP}" \
   >"${NSYS_ROOT}/managed_cuda_gpu_trace.json"

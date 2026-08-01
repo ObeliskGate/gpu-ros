@@ -39,6 +39,13 @@ def memcpy(name, size, source, destination):
     }
 
 
+def test_nsys_memory_units_are_converted_to_exact_bytes():
+    """Nsight's unit-qualified byte columns are recognized."""
+    assert TRACE_COMPARE.byte_count({'Bytes (B)': 4915200}) == 4915200
+    assert TRACE_COMPARE.byte_count({'Bytes (MB)': 4.9152}) == 4915200
+    assert TRACE_COMPARE.byte_count({'Bytes (MiB)': 1.5}) == 1572864
+
+
 def test_equal_kernel_and_memcpy_traces_pass():
     """Identical GPU work satisfies the transport audit."""
     events = [
@@ -50,6 +57,7 @@ def test_equal_kernel_and_memcpy_traces_pass():
         events, events, {2822400, 4915200}, 100, 100)
 
     assert result['pass'] is True
+    assert result['bridge_zero_copy_pass'] is True
     assert result['criteria']['kernel_name_sets_match'] is True
     assert result['memcpy']['managed_extra_signatures'] == []
 
@@ -66,6 +74,7 @@ def test_managed_only_payload_copy_fails():
         config_c, managed, {2822400, 4915200}, 100, 100)
 
     assert result['pass'] is False
+    assert result['bridge_zero_copy_pass'] is False
     assert result['criteria']['managed_has_no_extra_memcpy_signature'] is False
     assert result['payload_copy_counts']['deltas'][0]['delta'] == 1
 
@@ -116,4 +125,6 @@ def test_managed_only_kernel_fails():
     )
 
     assert result['pass'] is False
+    assert result['bridge_zero_copy_pass'] is True
+    assert result['gpu_execution_control_pass'] is False
     assert result['kernel_names']['extra_in_managed'] == ['unexpected_kernel']

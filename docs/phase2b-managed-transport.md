@@ -49,13 +49,58 @@ The NVIDIA and AMD compose files mount the sibling automatically. Set
 
 ## Current validation status
 
-- backend-neutral core: standalone compile and fake-backend lifecycle tests;
-- CUDA backend: compile-verified against the local CUDA SDK;
-- NITROS C lane: source-adapted to the fixed 4.5 API; container compile/runtime
-  remains pending on an NVIDIA Isaac ROS environment;
+- backend-neutral core: fake-backend lifecycle, event-failure, safe-orphan,
+  multi-reader, pool-destruction and pending-cleanup tests pass;
+- CUDA backend: non-default stream, device mismatch, external owner and session
+  lifetime tests pass on an NVIDIA A100;
+- NITROS C and Managed lanes: compile, POL, component loading, pointer identity,
+  fixed-input comparison and benchmark validation pass with Isaac ROS 4.5;
+- Managed bridge runtime audit: Nsight Systems reports no Managed-only memcpy
+  signature and no increase in input/output payload-copy rate. NITROS,
+  Managed and round-trip NITROS payload pointers are identical in the adapter
+  GTest;
 - HIP/MIGraphX: device input uses explicit D2H staging inside the ORT adapter
   until the ORT 1.23.1 external HIP pointer probe is completed;
 - native Managed HIP output is host-backed in this revision.
+
+## NVIDIA validation result (2026-08-01)
+
+The validated host was `boshen`, with an NVIDIA A100-SXM4-40GB, ROS 2 Jazzy,
+Isaac ROS 4.5 and a Release build. The fixed input was `r2b_robotarm`, hash
+`8eee68848ee1a95e21b1cd44d5d6ba71`.
+
+The final YOLOv8 bridge audit used Config C as the reference and Managed as the
+candidate. Config C produced 388 recorded detections and Managed produced 390,
+so memory-operation counts were normalized by the number of processed output
+frames. The byte-precision Nsight trace showed:
+
+- identical Device-to-Device memcpy count and bytes across the complete traces;
+- 388 versus 390 copies of the 2,822,400-byte Device-to-Host decoder output,
+  exactly one per recorded output frame;
+- 396 versus 396 copies of the 4,915,200-byte Device-to-Device input payload;
+- no Managed-only memcpy signature;
+- no increase in normalized payload-copy rate;
+- `bridge_zero_copy_pass: true`.
+
+The Device-to-Host output is an existing official YOLOv8 decoder behavior in
+both lanes. It is not a Managed bridge copy. The ORT profiles were retained as
+a control: both lanes assigned the same 175 nodes to CUDA, recorded 8,750 node
+events over the bounded profile, and observed no CPU fallback.
+
+The Managed benchmark logs also preserve callback/readiness timing. Across
+equal 500-frame reporting windows, the mean boundary costs were:
+
+- RT-DETR NITROS-to-Managed: 0.160 ms; Managed-to-NITROS: 0.059 ms;
+- YOLOv8 NITROS-to-Managed: 0.064 ms; Managed-to-NITROS: 0.050 ms.
+
+These timing values include callback, readiness and publish work. They are not
+tensor-copy timings.
+
+Two non-blocking limitations remain documented: fixed-input captures can
+differ by one or two boundary frames, and the ORT C/M component container can
+exit `-11` during post-report shutdown. Paired-frame numeric results and all
+benchmark reports are written before that shutdown failure. Neither limitation
+changes the pointer-identity or byte-precision zero-copy result.
 
 ## NVIDIA validation order
 
