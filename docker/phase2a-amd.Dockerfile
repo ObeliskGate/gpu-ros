@@ -205,7 +205,7 @@ ARG ORT_VERSION=1.23.1
 ARG ROS_DISTRO=jazzy
 ARG ROS2_BENCHMARK_REF=v4.5-0
 RUN mkdir -p /opt/ovg \
-    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-normalize-output-layout-v1"]}\n' \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-normalize-bound-output-layout-v2"]}\n' \
       "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
       "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
       > /opt/ovg/image-manifest.json

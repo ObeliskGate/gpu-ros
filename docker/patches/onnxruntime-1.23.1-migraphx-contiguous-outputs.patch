@@ -1,10 +1,10 @@
 Upstream-Status: Not submitted
 Applies-To: ONNX Runtime v1.23.1
 Reason: ORT tensors expose contiguous logical storage, but the MIGraphX EP can
-        bind packed outputs whose compiled graph shapes retain transposed
-        strides directly to ORT output buffers. Normalize those outputs using
-        only the installed MIGraphX public API and version the MXR cache
-        namespace so pre-patch programs are not reused.
+        bind packed #output_N parameters whose shapes retain transposed strides
+        directly to ORT output buffers. Normalize using those actual bound
+        parameter layouts and only the installed MIGraphX public API. Version
+        the MXR cache namespace so pre-patch programs are not reused.
 Risk: Non-standard packed outputs are staged through host memory after MIGraphX
       execution. Padded and broadcast output layouts fail explicitly. Validate
       provider placement and numeric output before using benchmark results.
@@ -93,11 +93,27 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  
      std::filesystem::path model_cache_file;
 -    auto mxr_filename_prefix = to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-" + make_hash(std::string_view(device_prop_.gcnArchName)) + "-";
-+    auto mxr_filename_prefix = "ovg-normalize-output-layout-v1-" + to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-" + make_hash(std::string_view(device_prop_.gcnArchName)) + "-";
++    auto mxr_filename_prefix = "ovg-normalize-bound-output-layout-v2-" + to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-" + make_hash(std::string_view(device_prop_.gcnArchName)) + "-";
  
      // Get model input names (only first layer)
      const Graph* cur_graph = &graph_body_viewer.GetGraph();
-@@ -1568,23 +1630,30 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1496,6 +1558,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+       migraphx::program_parameters m;
+       auto prog_output_shapes = prog.get_output_shapes();
+       std::vector<std::size_t> prog_output_indices;
++      std::unordered_map<std::size_t, migraphx::shape> bound_output_layouts;
+       if (param_shapes.size() > 0) {
+         for (auto&& name : param_shapes.names()) {
+           if (map_input_name_index.count(name) > 0) {
+@@ -1542,6 +1605,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+ 
+               // argument shape
+               auto mgx_arg_shape = param_shapes[name];
++              bound_output_layouts.emplace(output_index, mgx_arg_shape);
+               m.add(name, migraphx::argument(mgx_arg_shape, output_data));
+             }
+           }
+@@ -1568,23 +1632,34 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
          Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
          auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
  
@@ -128,9 +144,13 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
 +          const bool output_is_bound =
 +              std::find(prog_output_indices.begin(), prog_output_indices.end(), i) != prog_output_indices.end();
 +          if (output_is_bound) {
-+            if (!prog_output_shapes[i].standard()) {
++            const auto layout_it = bound_output_layouts.find(i);
++            ORT_ENFORCE(layout_it != bound_output_layouts.end(),
++                        "MIGraphX bound output layout is missing for output index ", i);
++            const auto& bound_layout = layout_it->second;
++            if (!bound_layout.standard()) {
 +              copy_migraphx_output_to_contiguous(
-+                  gpu_res, prog_output_shapes[i], gpu_res.data(),
++                  gpu_res, bound_layout, gpu_res.data(),
 +                  static_cast<hipStream_t>(rocm_stream));
 +            }
 +            continue;
