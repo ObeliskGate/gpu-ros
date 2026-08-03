@@ -125,9 +125,12 @@ ros2 run isaac_ros_detection_validation \
 ```
 
 The repository-owned ORT patches keep GridSample assigned to MIGraphX and
-materialize graph outputs into contiguous layout before ORT consumes them. The
-output-layout patch uses a versioned MXR filename prefix, so an existing
-pre-patch cache is ignored without deleting other cache entries.
+normalize packed, non-contiguous graph outputs before ORT consumes them. This
+correctness workaround uses the installed MIGraphX public API and stages only
+affected outputs through host memory; it is not a zero-copy path. Padded or
+broadcast output layouts fail explicitly. The output-layout patch also uses a
+versioned MXR filename prefix, so an existing pre-patch cache is ignored without
+deleting other cache entries.
 
 ## Scope boundary
 
