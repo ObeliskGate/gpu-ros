@@ -124,6 +124,10 @@ ros2 run isaac_ros_detection_validation \
   migraphx_probe
 ```
 
+The default first-output timeout is 900 seconds because the first MIGraphX
+compile on MI300X can take several minutes. Override it explicitly when
+diagnosing a different machine with `CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS`.
+
 The repository-owned ORT patches keep GridSample assigned to MIGraphX and
 normalize packed, non-contiguous graph outputs before ORT consumes them. This
 correctness workaround uses the installed MIGraphX public API and stages only

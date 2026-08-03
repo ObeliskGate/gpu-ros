@@ -26,6 +26,8 @@ usage() {
   echo "  CAPTURE_WARMUP_ONLY=0|1                 (default: 0)"
   echo "  CAPTURE_PLAYBACK_RATE=<positive number> (default: 0.25)"
   echo "  CAPTURE_MIN_MESSAGES=<integer>          (default: 20)"
+  echo "  CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=<integer> (default: 900)"
+  echo "  CAPTURE_GRAPH_READY_TIMEOUT_SECONDS=<integer>  (default: 900)"
   echo "  CAPTURE_OUTPUT_ROOT=<absolute path>"
 }
 
@@ -66,7 +68,7 @@ MIN_MESSAGES="${CAPTURE_MIN_MESSAGES:-20}"
 DRAIN_SECONDS="${CAPTURE_DRAIN_SECONDS:-10}"
 INPUT_READY_TIMEOUT_SECONDS="${CAPTURE_INPUT_READY_TIMEOUT_SECONDS:-120}"
 GRAPH_READY_TIMEOUT_SECONDS="${CAPTURE_GRAPH_READY_TIMEOUT_SECONDS:-900}"
-FIRST_OUTPUT_TIMEOUT_SECONDS="${CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS:-180}"
+FIRST_OUTPUT_TIMEOUT_SECONDS="${CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS:-900}"
 STOP_GRACE_SECONDS="${CAPTURE_STOP_GRACE_SECONDS:-10}"
 STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
 IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
@@ -167,47 +169,102 @@ LAUNCH_PID=""
 WARMUP_PID=""
 RECORD_PID=""
 
+child_pids() {
+  local parent_pid="$1"
+  ps -eo pid=,ppid= \
+    | awk -v parent="${parent_pid}" '$2 == parent {print $1}'
+}
+
+collect_descendants() {
+  local parent_pid="$1"
+  local child_pid
+  while IFS= read -r child_pid; do
+    [[ -n ${child_pid} ]] || continue
+    collect_descendants "${child_pid}"
+    printf '%s\n' "${child_pid}"
+  done < <(child_pids "${parent_pid}")
+}
+
+process_alive() {
+  local pid="$1"
+  local state
+  state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
+  state="${state//[[:space:]]/}"
+  [[ -n ${state} && ${state:0:1} != Z ]]
+}
+
+descendant_tree_alive() {
+  local descendant
+  for descendant in "${descendants[@]}"; do
+    if process_alive "${descendant}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 stop_process() {
   local pid="$1"
   local label="$2"
   local attempt
-  local state=""
+  local process_group=""
+  local descendants=()
 
   if [[ -z ${pid} ]]; then
     return
   fi
 
-  if kill -0 "${pid}" 2>/dev/null; then
-    echo "Stopping ${label} (PID ${pid})..."
-    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
+  process_alive "${pid}" || return
+  process_group="$(ps -o pgid= -p "${pid}" 2>/dev/null | tr -d ' ' || true)"
+  mapfile -t descendants < <(collect_descendants "${pid}")
+
+  echo "Stopping ${label} (PID ${pid}, PGID ${process_group:-unknown})..."
+
+  # setsid normally gives each capture child its own process group, but
+  # ros2 launch may create additional process groups for the component
+  # container. Signal the original group and the complete descendant tree.
+  if [[ ${process_group:-} =~ ^[0-9]+$ && ${process_group} != 1 ]]; then
+    kill -INT -- "-${process_group}" 2>/dev/null || true
   fi
+  for descendant in "${descendants[@]}"; do
+    kill -INT "${descendant}" 2>/dev/null || true
+  done
+  kill -INT "${pid}" 2>/dev/null || true
 
   for ((attempt = 1; attempt <= STOP_GRACE_SECONDS * 4; attempt++)); do
-    state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
-    state="${state//[[:space:]]/}"
-    if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+    if ! process_alive "${pid}" && ! descendant_tree_alive; then
       break
     fi
     sleep 0.25
   done
 
-  if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
+  if process_alive "${pid}" || descendant_tree_alive; then
     echo "${label} did not stop after SIGINT; sending SIGTERM..."
-    kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    if [[ ${process_group:-} =~ ^[0-9]+$ && ${process_group} != 1 ]]; then
+      kill -TERM -- "-${process_group}" 2>/dev/null || true
+    fi
+    for descendant in "${descendants[@]}"; do
+      kill -TERM "${descendant}" 2>/dev/null || true
+    done
+    kill -TERM "${pid}" 2>/dev/null || true
   fi
 
   for ((attempt = 1; attempt <= STOP_TERM_SECONDS * 4; attempt++)); do
-    state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
-    state="${state//[[:space:]]/}"
-    if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+    if ! process_alive "${pid}" && ! descendant_tree_alive; then
       break
     fi
     sleep 0.25
   done
 
-  if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
+  if process_alive "${pid}" || descendant_tree_alive; then
     echo "WARNING: ${label} ignored SIGTERM; sending SIGKILL." >&2
-    kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+    if [[ ${process_group:-} =~ ^[0-9]+$ && ${process_group} != 1 ]]; then
+      kill -KILL -- "-${process_group}" 2>/dev/null || true
+    fi
+    for descendant in "${descendants[@]}"; do
+      kill -KILL "${descendant}" 2>/dev/null || true
+    done
+    kill -KILL "${pid}" 2>/dev/null || true
   fi
   wait "${pid}" 2>/dev/null || true
 }
@@ -219,6 +276,7 @@ cleanup() {
   stop_process "${RECORD_PID}" "recorder"
   stop_process "${WARMUP_PID}" "warm-up player"
   stop_process "${LAUNCH_PID}" "graph"
+  wait_for_no_publishers "${DETECTION_TOPIC:-/detections_output}" 10 || true
   if [[ ${status} -ne 0 ]]; then
     echo "Capture failed. Inspect:"
     echo "  ${LAUNCH_LOG}"
@@ -234,6 +292,29 @@ topic_count() {
   local count_kind="$2"
   ros2 topic info "${topic}" 2>/dev/null |
     awk -v kind="${count_kind}" '$1 == kind && $2 == "count:" {print $3; exit}'
+}
+
+wait_for_no_publishers() {
+  local topic="$1"
+  local timeout_seconds="$2"
+  local attempts=$((timeout_seconds * 2))
+  local attempt
+  local count
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    count="$(topic_count "${topic}" "Publisher" || true)"
+    if [[ ! ${count:-0} =~ ^[0-9]+$ ]] || ((count == 0)); then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "WARNING: publisher remains on ${topic} after capture cleanup." >&2
+  ros2 topic info "${topic}" >&2 || true
+  ps -eo pid=,ppid=,pgid=,stat=,args= \
+    | awk '/ros2 launch isaac_ros_rtdetr_std|component_container_mt|ros2 bag play/ {print}' \
+    >&2 || true
+  return 1
 }
 
 wait_for_topic_count() {
