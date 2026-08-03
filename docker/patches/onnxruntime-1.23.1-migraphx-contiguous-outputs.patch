@@ -1,10 +1,10 @@
 Upstream-Status: Not submitted
 Applies-To: ONNX Runtime v1.23.1
 Reason: ORT tensors expose contiguous logical storage, but the MIGraphX EP can
-        bind packed outputs whose MIGraphX shapes retain transposed strides
-        directly to ORT output buffers. Normalize those outputs using only the
-        installed MIGraphX public API and version the MXR cache namespace so
-        pre-patch programs are not reused.
+        bind packed outputs whose compiled graph shapes retain transposed
+        strides directly to ORT output buffers. Normalize those outputs using
+        only the installed MIGraphX public API and version the MXR cache
+        namespace so pre-patch programs are not reused.
 Risk: Non-standard packed outputs are staged through host memory after MIGraphX
       execution. Padded and broadcast output layouts fail explicitly. Validate
       provider placement and numeric output before using benchmark results.
@@ -21,14 +21,15 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  #include <filesystem>
  #include <fstream>
  #include <functional>
-@@ -1246,6 +1248,65 @@ void calibrate_and_quantize(migraphx::program& prog,
+@@ -1246,6 +1248,66 @@ void calibrate_and_quantize(migraphx::program& prog,
  #endif
  }
  
 +void copy_migraphx_output_to_contiguous(const migraphx::argument& source,
++                                        const migraphx::shape& layout,
 +                                        void* destination,
 +                                        hipStream_t stream) {
-+  const auto shape = source.get_shape();
++  const auto& shape = layout;
 +  if (shape.standard()) {
 +    HIP_CALL_THROW(hipMemcpyWithStream(destination,
 +                                       source.data(),
@@ -87,7 +88,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  void compile_program(migraphx::program& prog,
                       const migraphx::target& t,
                       bool exhaustive_tune) {
-@@ -1287,7 +1348,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1287,7 +1349,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
      const Node& fused_node = fused_node_graph.fused_node;
  
      std::filesystem::path model_cache_file;
@@ -96,7 +97,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  
      // Get model input names (only first layer)
      const Graph* cur_graph = &graph_body_viewer.GetGraph();
-@@ -1568,23 +1629,29 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1568,23 +1630,30 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
          Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
          auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
  
@@ -127,9 +128,10 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
 +          const bool output_is_bound =
 +              std::find(prog_output_indices.begin(), prog_output_indices.end(), i) != prog_output_indices.end();
 +          if (output_is_bound) {
-+            if (!res_shape.standard()) {
++            if (!prog_output_shapes[i].standard()) {
 +              copy_migraphx_output_to_contiguous(
-+                  gpu_res, gpu_res.data(), static_cast<hipStream_t>(rocm_stream));
++                  gpu_res, prog_output_shapes[i], gpu_res.data(),
++                  static_cast<hipStream_t>(rocm_stream));
 +            }
 +            continue;
            }
@@ -139,6 +141,6 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
 +          auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
 +          void* output_data = output_tensor.GetTensorMutableRawData();
 +          copy_migraphx_output_to_contiguous(
-+              gpu_res, output_data, static_cast<hipStream_t>(rocm_stream));
++              gpu_res, res_shape, output_data, static_cast<hipStream_t>(rocm_stream));
          }
        }
