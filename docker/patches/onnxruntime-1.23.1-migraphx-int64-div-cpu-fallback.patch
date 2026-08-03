@@ -6,21 +6,22 @@ Reason: MIGraphX 2.14 converts unsupported int64 pointwise operations to
         int64 Div result. RT-DETR uses TopK_index / class_count as the query
         index for GatherElements, so losing integer-division semantics selects
         the wrong box coordinates while labels and scores remain correct.
-        Keep only int64 Div nodes on the CPU EP; the surrounding model remains
-        eligible for MIGraphX.
-Risk: Adds a small CPU fallback boundary for int64 Div. Provider placement and
-      numeric output must be audited before using benchmark results. Version
-      the MXR cache namespace so programs compiled before this workaround are
-      not reused.
+        Keep only the rank-2-or-higher query-index Div on the CPU EP. Scalar
+        shape Div nodes remain in their original partition because splitting
+        those encoder shape calculations creates invalid CPU Concat boundaries.
+Risk: Adds one small CPU fallback boundary for the RT-DETR query-index Div.
+      Provider placement and numeric output must be audited before using
+      benchmark results. Version the MXR cache namespace so programs compiled
+      before this workaround are not reused.
 
 diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 --- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 +++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
-@@ -848,6 +848,26 @@ static std::unique_ptr<ComputeCapability> GetCapabilityForNodeGroup(
+@@ -848,6 +848,28 @@ static std::unique_ptr<ComputeCapability> GetCapabilityForNodeGroup(
    return sub_graph;
  }
  
-+static bool IsInt64Div(const Node& node) {
++static bool IsInt64QueryDiv(const Node& node) {
 +  if (node.OpType() != "Div") {
 +    return false;
 +  }
@@ -36,21 +37,23 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
 +  }
 +
 +  const auto* type_proto = output_arg->TypeAsProto();
++  const auto* output_shape = output_arg->Shape();
 +  return type_proto != nullptr && type_proto->has_tensor_type() &&
-+         type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64;
++         type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
++         output_shape != nullptr && output_shape->dim_size() >= 2;
 +}
 +
  static std::vector<NodeIndex>
  GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                            /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
-@@ -1011,6 +1031,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
+@@ -1011,6 +1033,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                      "Xor"};
    std::vector<NodeIndex> unsupported_nodes_idx;
    for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
 +    const auto* node = graph_viewer.GetNode(node_idx);
 +    ORT_ENFORCE(node != nullptr, "Missing node for MIGraphX capability index ", node_idx);
-+    if (IsInt64Div(*node)) {
-+      LOGS(logger, VERBOSE) << "MIGraphX leaves int64 Div node on the CPU EP: " << node->Name();
++    if (IsInt64QueryDiv(*node)) {
++      LOGS(logger, VERBOSE) << "MIGraphX leaves rank >= 2 int64 Div node on the CPU EP: " << node->Name();
 +      unsupported_nodes_idx.push_back(node_idx);
 +      continue;
 +    }
@@ -58,7 +61,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
      if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
        // Collect inputs that are initializers
        graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
-@@ -1287,7 +1315,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1287,7 +1317,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
      const Node& fused_node = fused_node_graph.fused_node;
  
      std::filesystem::path model_cache_file;
