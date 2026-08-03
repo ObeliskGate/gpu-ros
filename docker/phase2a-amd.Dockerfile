@@ -52,12 +52,12 @@ COPY docker/patches/onnxruntime-1.23.1-migraphx-enable-gridsample.patch /tmp/
 RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch \
     && git apply /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch
 
-# MIGraphX outputs may retain non-standard strides while ORT exposes them as
-# contiguous tensors. Normalize packed output layouts through the public API
-# and version the MXR cache key.
-COPY docker/patches/onnxruntime-1.23.1-migraphx-contiguous-outputs.patch /tmp/
-RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-contiguous-outputs.patch \
-    && git apply /tmp/onnxruntime-1.23.1-migraphx-contiguous-outputs.patch
+# MIGraphX 2.14 can lose int64 division truncation while converting unsupported
+# GPU pointwise types through float. Keep only int64 Div on CPU so RT-DETR box
+# selection remains correct while the surrounding graph stays on MIGraphX.
+COPY docker/patches/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch /tmp/
+RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch \
+    && git apply /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch
 
 RUN CMAKE_TARGETS="$(printf '%s' "${AMD_GPU_TARGETS}" | tr ',' ';')" \
     && ./build.sh \
@@ -205,7 +205,7 @@ ARG ORT_VERSION=1.23.1
 ARG ROS_DISTRO=jazzy
 ARG ROS2_BENCHMARK_REF=v4.5-0
 RUN mkdir -p /opt/ovg \
-    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-normalize-bound-output-layout-v2"]}\n' \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
       "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
       "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
       > /opt/ovg/image-manifest.json
