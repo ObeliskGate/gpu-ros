@@ -145,6 +145,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ament-cmake-auto \
     ros-${ROS_DISTRO}-ament-cmake-gtest \
     ros-${ROS_DISTRO}-ament-cmake-python \
+    ros-${ROS_DISTRO}-ament-cmake-pytest \
     ros-${ROS_DISTRO}-ament-lint-auto \
     ros-${ROS_DISTRO}-ament-lint-common \
     ros-${ROS_DISTRO}-cv-bridge \
