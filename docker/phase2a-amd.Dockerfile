@@ -202,9 +202,10 @@ RUN mkdir -p /opt/ovg \
       "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
       > /opt/ovg/image-manifest.json
 
-COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
-RUN chmod +x /usr/local/bin/phase2a-amd-entrypoint.sh
+COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2-amd-entrypoint.sh
+RUN chmod +x /usr/local/bin/phase2-amd-entrypoint.sh \
+    && ln -s phase2-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
 
 WORKDIR /workspaces/amd_ros_object_detection
-ENTRYPOINT ["/usr/local/bin/phase2a-amd-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/phase2-amd-entrypoint.sh"]
 CMD ["bash"]
