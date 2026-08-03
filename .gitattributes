@@ -6,3 +6,6 @@
 *.bmp   binary
 *.onnx  binary
 *.plan  binary
+
+# Unified diffs require a single context marker on otherwise blank lines.
+docker/patches/*.patch whitespace=-blank-at-eol

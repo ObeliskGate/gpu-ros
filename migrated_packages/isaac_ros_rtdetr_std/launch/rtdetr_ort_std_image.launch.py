@@ -25,6 +25,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
+from launch_ros.parameter_descriptions import ParameterValue
 
 MODEL_INPUT_SIZE = 640
 
@@ -52,6 +53,12 @@ def generate_launch_description():
             default_value='640',
             description='Height seed used by RtDetrPreprocessor for orig_target_sizes'),
         DeclareLaunchArgument(
+            'use_max_dim_for_orig_size',
+            default_value='false',
+            description=(
+                'Use a square max-dimension orig_target_sizes value. The image-input '
+                'pipeline defaults false to preserve the source image aspect ratio.')),
+        DeclareLaunchArgument(
             'execution_provider',
             default_value='migraphx',
             description='ONNX Runtime execution provider (migraphx/rocm/cuda/cpu)'),
@@ -74,6 +81,7 @@ def generate_launch_description():
     namespace = LaunchConfiguration('namespace')
     input_image_width = LaunchConfiguration('input_image_width')
     input_image_height = LaunchConfiguration('input_image_height')
+    use_max_dim_for_orig_size = LaunchConfiguration('use_max_dim_for_orig_size')
     execution_provider = LaunchConfiguration('execution_provider')
     gpu_device_id = LaunchConfiguration('gpu_device_id')
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
@@ -98,6 +106,8 @@ def generate_launch_description():
         parameters=[{
             'image_width': input_image_width,
             'image_height': input_image_height,
+            'use_max_dim_for_orig_size': ParameterValue(
+                use_max_dim_for_orig_size, value_type=bool),
         }],
     )
 

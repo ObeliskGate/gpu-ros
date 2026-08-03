@@ -1,0 +1,64 @@
+Upstream-Status: Not submitted
+Applies-To: ONNX Runtime v1.23.1
+Reason: ORT tensors expose contiguous logical storage, but the MIGraphX EP can
+        bind compiled outputs whose MIGraphX shapes retain non-standard
+        strides directly to ORT output buffers. Multi-dimensional outputs can
+        then be consumed in physical rather than logical order. Add explicit
+        contiguous operations before compilation and version the MXR cache
+        namespace so pre-patch programs are not reused.
+Risk: Adds a layout materialization for non-standard MIGraphX graph outputs.
+      Validate provider placement and numeric output against the CPU/NVIDIA
+      reference before using benchmark results.
+
+diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+--- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
++++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
+@@ -17,6 +17,8 @@
+ #include <utility>
+ #include <vector>
+ 
++#include <migraphx/make_op.hpp>
++
+ #include "core/providers/shared_library/provider_api.h"
+ #define ORT_API_MANUAL_INIT
+ #include "core/session/onnxruntime_cxx_api.h"
+@@ -1246,10 +1248,30 @@ void calibrate_and_quantize(migraphx::program& prog,
+ #endif
+ }
+ 
++void make_outputs_contiguous(migraphx::program& prog) {
++  auto* module = prog.get_main_module();
++  auto outputs = module->get_returns();
++
++  // Ensure there is an explicit @return so new instructions can be inserted
++  // immediately before it without changing output order.
++  module->replace_return(outputs);
++  const auto return_instruction = std::prev(module->end());
++
++  std::vector<migraphx::instruction_ref> contiguous_outputs;
++  contiguous_outputs.reserve(outputs.size());
++  std::transform(outputs.begin(), outputs.end(), std::back_inserter(contiguous_outputs),
++                 [&](migraphx::instruction_ref output) {
++                   return module->insert_instruction(
++                       return_instruction, migraphx::make_op("contiguous"), output);
++                 });
++  module->replace_return(std::move(contiguous_outputs));
++}
++
+ void compile_program(migraphx::program& prog,
+                      const migraphx::target& t,
+                      bool exhaustive_tune) {
+   LOGS_DEFAULT(WARNING) << "Model Compile: Begin";
++  make_outputs_contiguous(prog);
+   migraphx::compile_options co;
+   co.set_fast_math(false);
+   co.set_exhaustive_tune_flag(exhaustive_tune);
+@@ -1287,7 +1309,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+     const Node& fused_node = fused_node_graph.fused_node;
+ 
+     std::filesystem::path model_cache_file;
+-    auto mxr_filename_prefix = to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-" + make_hash(std::string_view(device_prop_.gcnArchName)) + "-";
++    auto mxr_filename_prefix = "ovg-contiguous-outputs-v1-" + to_hex(MIGraphX_Version) + "-" + GenerateGraphId(graph_body_viewer) + "-" + make_hash(std::string_view(device_prop_.gcnArchName)) + "-";
+ 
+     // Get model input names (only first layer)
+     const Graph* cur_graph = &graph_body_viewer.GetGraph();

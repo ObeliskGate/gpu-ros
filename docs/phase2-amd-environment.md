@@ -91,9 +91,46 @@ sudo, root, or fakeroot on the compute node.
 validated OCI runtime image. Supply the image URI as its `OVG_AMD_IMAGE_URI`
 build argument; it is not required on the HPC node.
 
+## Phase 2A fixed-input capture
+
+The Phase 2A capture runner owns the graph, first-run MIGraphX warm-up, bag
+recorder, input playback, and process cleanup. Run it inside the container; do
+not start any of those processes in separate terminals:
+
+```bash
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  amd_phase2a_fixed
+```
+
+The bag is written below
+`/workspaces/ovg-results/phase2a-bags/amd_phase2a_fixed`. Logs, the exact
+command, and the first warm-up detection are written below the adjacent
+`logs/` directory. Output names are never overwritten.
+
+For a one-frame provider diagnostic without recording the complete dataset:
+
+```bash
+CAPTURE_EXECUTION_PROVIDER=cpu \
+CAPTURE_WARMUP_ONLY=1 \
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  cpu_probe
+
+CAPTURE_EXECUTION_PROVIDER=migraphx \
+CAPTURE_WARMUP_ONLY=1 \
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  migraphx_probe
+```
+
+The repository-owned ORT patches keep GridSample assigned to MIGraphX and
+materialize graph outputs into contiguous layout before ORT consumes them. The
+output-layout patch uses a versioned MXR filename prefix, so an existing
+pre-patch cache is ignored without deleting other cache entries.
+
 ## Scope boundary
 
-This environment change does not add AMD managed launch files, bridges, POLs,
-benchmarks, provider audits, capture, compare, or zero-copy behavior. Missing
-existing validation entrypoints are reported separately and are not fixed as
-part of environment setup.
+This work does not add AMD managed launch files, bridges, POLs, benchmarks,
+provider audits, or zero-copy behavior. The Phase 2A capture runner above was
+added only to make the existing numeric validation usable from one terminal.
