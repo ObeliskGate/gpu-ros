@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+"""Idempotent Phase 2 asset manager; uses only the Python standard library."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ASSETS_ROOT = Path(os.environ.get("OVG_ASSETS_ROOT", "/workspaces/ovg-assets"))
+CACHE_ROOT = Path(os.environ.get("OVG_CACHE_ROOT", "/workspaces/ovg-cache"))
+MANIFEST = ASSETS_ROOT / "manifest.json"
+MODEL_REL = Path("models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx")
+DATASET_REL = Path("datasets/r2bdataset2024_v1/r2b_robotarm")
+
+
+def digest(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
+def status() -> None:
+    model = ASSETS_ROOT / MODEL_REL
+    dataset = ASSETS_ROOT / DATASET_REL
+    print(f"assets root: {ASSETS_ROOT}")
+    print(f"model: {'present' if model.is_file() else 'missing'} {model}")
+    print(f"dataset: {'present' if dataset.is_dir() else 'missing'} {dataset}")
+    print(f"manifest: {'present' if MANIFEST.is_file() else 'missing'} {MANIFEST}")
+    print(
+        "compat model symlink: "
+        f"{'present' if (ASSETS_ROOT / 'models/sdetr').is_symlink() else 'missing'}"
+    )
+    print(
+        "compat dataset symlink: "
+        f"{'present' if (ASSETS_ROOT / 'datasets/r2b_dataset/r2b_robotarm').is_symlink() else 'missing'}"
+    )
+
+
+
+
+
+
+def write_manifest() -> None:
+    ASSETS_ROOT.mkdir(parents=True, exist_ok=True)
+    files = []
+    for path in sorted(ASSETS_ROOT.rglob("*")):
+        if path.is_file() and path.resolve() != MANIFEST.resolve():
+            files.append(
+                {
+                    "path": str(path.relative_to(ASSETS_ROOT)),
+                    "size": path.stat().st_size,
+                    "sha256": digest(path),
+                }
+            )
+    payload = {
+        "schema_version": 1,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "model_version": "nvidia/isaac/synthetica_detr:1.0.0_onnx",
+        "dataset_version": "nvidia/isaac/r2bdataset2024:1",
+        "files": files,
+    }
+    temporary = MANIFEST.with_suffix(".json.partial")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    temporary.replace(MANIFEST)
+
+
+def replace_symlink(path: Path, target: str) -> None:
+    if path.exists() and not path.is_symlink():
+        raise RuntimeError(f"refusing to replace existing directory with symlink: {path}")
+    path.unlink(missing_ok=True)
+    path.symlink_to(target)
+
+
+
+
+def verify() -> None:
+    if not MANIFEST.is_file():
+        raise RuntimeError("asset manifest is missing; supply a manifest with the separately licensed external assets")
+    data = json.loads(MANIFEST.read_text())
+    for entry in data.get("files", []):
+        path = ASSETS_ROOT / entry["path"]
+        if not path.is_file():
+            raise RuntimeError(f"missing asset file: {path}")
+        if path.stat().st_size != entry["size"] or digest(path) != entry["sha256"]:
+            raise RuntimeError(f"asset checksum mismatch: {path}")
+    print(f"verified {len(data.get('files', []))} asset files")
+    status()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", choices=('status', 'verify'))
+    args = parser.parse_args()
+    try:
+        {'status': status, 'verify': verify}[args.command]()
+    except (OSError, RuntimeError, urllib.error.URLError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

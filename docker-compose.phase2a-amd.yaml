@@ -1,5 +1,6 @@
 services:
   amd:
+    image: ${OVG_IMAGE_NAME:-ovg-phase2-amd:local}
     build:
       context: .
       dockerfile: docker/phase2a-amd.Dockerfile
@@ -7,13 +8,14 @@ services:
         AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}
         ORT_VERSION: ${ORT_VERSION:-1.23.1}
         ORT_BUILD_JOBS: ${ORT_BUILD_JOBS:-16}
-        AMD_GPU_TARGETS: ${AMD_GPU_TARGETS:-gfx942}
+        AMD_GPU_TARGETS: ${AMD_GPU_TARGETS:-}
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
     network_mode: host
     ipc: host
     shm_size: 8gb
     stdin_open: true
     tty: true
+    user: "${OVG_UID:-1000}:${OVG_GID:-1000}"
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
@@ -27,20 +29,24 @@ services:
       ONNXRUNTIME_ROOT: /opt/onnxruntime
       ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include
       ONNXRUNTIME_LIBRARY: /opt/onnxruntime/lib/libonnxruntime.so
-      ORT_MIGRAPHX_MODEL_CACHE_PATH: /workspaces/isaac_ros-dev/assets/cache/migraphx
+      OVG_WORKSPACE_ROOT: /workspaces/amd_ros_object_detection
+      OVG_ASSETS_ROOT: /workspaces/ovg-assets
+      OVG_CACHE_ROOT: /workspaces/ovg-cache
+      OVG_RESULTS_ROOT: /workspaces/ovg-results
       COLCON_DEFAULTS_FILE: /workspaces/amd_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml
-      ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
+      ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/ovg-assets
+      OVG_IMAGE_FINGERPRINT: ${OVG_IMAGE_FINGERPRINT:-unresolved}
+      OVG_RUNTIME_EFFECTIVE: ${OVG_RUNTIME_EFFECTIVE:-docker}
+      NGC_CLI_API_KEY: ${NGC_CLI_API_KEY:-}
+      NGC_CLI_ORG: ${NGC_CLI_ORG:-}
     volumes:
       - .:/workspaces/amd_ros_object_detection
-      - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/amd_ros_object_detection/src/gpu_ros_managed:ro
-      - assets:/workspaces/isaac_ros-dev/assets
-      - phase2a_build:/workspaces/amd_ros_object_detection/build
-      - phase2a_install:/workspaces/amd_ros_object_detection/install
-      - phase2a_log:/workspaces/amd_ros_object_detection/log
+      - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/amd_ros_object_detection/src/gpu_ros_managed
+      - ${OVG_ASSETS_DIR:-.ovg/assets}:/workspaces/ovg-assets
+      - ${OVG_CACHE_DIR:-.ovg/cache}:/workspaces/ovg-cache
+      - ${OVG_RESULTS_DIR:-.ovg/results}:/workspaces/ovg-results
+      - ${OVG_BUILD_DIR:-.ovg/build/unresolved}:/workspaces/amd_ros_object_detection/build
+      - ${OVG_INSTALL_DIR:-.ovg/install/unresolved}:/workspaces/amd_ros_object_detection/install
+      - ${OVG_LOG_DIR:-.ovg/log/unresolved}:/workspaces/amd_ros_object_detection/log
+      - ${OVG_HOME_DIR:-.ovg/home}:/home/ovg
     working_dir: /workspaces/amd_ros_object_detection
-
-volumes:
-  assets:
-  phase2a_build:
-  phase2a_install:
-  phase2a_log:

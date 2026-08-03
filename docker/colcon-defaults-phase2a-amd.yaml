@@ -4,7 +4,6 @@ build:
     - src/gpu_ros_managed/gpu_ros_managed_cuda
     - src/gpu_ros_managed/gpu_ros_managed_hip
     - src/gpu_ros_managed/gpu_ros_managed_ros
-    - third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release

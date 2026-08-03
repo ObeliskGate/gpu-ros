@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'echo "ERROR: phase2 command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+ASSETS_ROOT="${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}"
+CACHE_ROOT="${OVG_CACHE_ROOT:-/workspaces/ovg-cache}"
+RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
+ASSET_HELPER="${WORKSPACE_ROOT}/tools/phase2-assets"
+
+source_setups() {
+  if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+    # shellcheck disable=SC1090
+    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+  fi
+  if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
+    source /opt/ros2_benchmark/setup.bash
+  fi
+  if [[ -f /opt/ovg/tensor_list_interfaces/setup.bash ]]; then
+    source /opt/ovg/tensor_list_interfaces/setup.bash
+  fi
+  if [[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]]; then
+    source "${WORKSPACE_ROOT}/install/setup.bash"
+  fi
+}
+
+detect_gfx() {
+  if command -v rocminfo >/dev/null 2>&1; then
+    rocminfo 2>/dev/null \
+      | awk '$1 == "Name:" && $2 ~ /^gfx[0-9]/ {print $2}' \
+      | sort -u \
+      | paste -sd, -
+  fi
+}
+
+verify_manifest_targets() {
+  local expected=""
+  if [[ -f /opt/ovg/image-manifest.json ]]; then
+    expected="$(python3 - <<'PY'
+import json
+from pathlib import Path
+print(json.loads(Path('/opt/ovg/image-manifest.json').read_text()).get('gpu_targets', ''))
+PY
+)"
+  fi
+  [[ -z "${expected}" ]] && return 0
+  local actual="$(detect_gfx)"
+  local target
+  while IFS= read -r target; do
+    [[ -z "${target}" ]] && continue
+    tr ',' '\n' <<<"${expected}" | grep -Fxq "${target}" || {
+      echo "ERROR: runtime gfx ${target} is not included in image targets ${expected}" >&2
+      return 1
+    }
+  done < <(tr ',' '\n' <<<"${actual}")
+}
+
+show_env() {
+  source_setups
+  local ort="${ONNXRUNTIME_LIBRARY:-/opt/onnxruntime/lib/libonnxruntime.so}"
+  echo "runtime: ${OVG_RUNTIME_EFFECTIVE:-${OVG_RUNTIME:-unknown}}"
+  echo "ROS_DISTRO: ${ROS_DISTRO:-unknown}"
+  echo "ROCm: $(cat /opt/rocm/.info/version 2>/dev/null || echo unknown)"
+  echo "GPU gfx: $(detect_gfx || true)"
+  echo "/dev/kfd: $([[ -e /dev/kfd ]] && echo available || echo unavailable)"
+  echo "/dev/dri: $([[ -d /dev/dri ]] && find /dev/dri -maxdepth 1 -name 'renderD*' -printf '%f ' || true)"
+  echo "ONNXRUNTIME_ROOT: ${ONNXRUNTIME_ROOT:-unknown}"
+  echo "ORT library: ${ort} ($([[ -f "${ort}" ]] && echo present || echo missing))"
+  echo "MIGraphX provider: $(find "$(dirname "${ort}")" -maxdepth 1 -name '*migraphx*.so*' -printf '%f ' 2>/dev/null || true)"
+  echo "workspace: ${WORKSPACE_ROOT}"
+  echo "assets: ${ASSETS_ROOT}"
+  echo "cache: ${ORT_MIGRAPHX_MODEL_CACHE_PATH:-${CACHE_ROOT}/migraphx}"
+  echo "results: ${RESULTS_ROOT}"
+  echo "image manifest: $(cat /opt/ovg/image-manifest.json 2>/dev/null || echo unavailable)"
+  echo "application commit: $(git -C "${WORKSPACE_ROOT}" rev-parse HEAD 2>/dev/null || echo unavailable)"
+  echo "managed commit: $(git -C "${WORKSPACE_ROOT}/src/gpu_ros_managed" rev-parse HEAD 2>/dev/null || echo unavailable)"
+  echo "workspace build: $([[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]] && echo present || echo absent)"
+  if command -v ros2 >/dev/null 2>&1; then
+    echo "ROS packages:"
+    ros2 pkg list 2>/dev/null \
+      | grep -E '^(gpu_ros_managed_|isaac_ros_(onnx_inference|rtdetr_std))' \
+      | sort || true
+  fi
+}
+
+verify_env() {
+  show_env
+  [[ -e /dev/kfd ]] || { echo "ERROR: /dev/kfd is not accessible" >&2; return 1; }
+  [[ -d /dev/dri ]] || { echo "ERROR: /dev/dri is not accessible" >&2; return 1; }
+  [[ -n "$(detect_gfx)" ]] || { echo "ERROR: rocminfo reported no gfx target" >&2; return 1; }
+  verify_manifest_targets
+  local ort="${ONNXRUNTIME_LIBRARY:-/opt/onnxruntime/lib/libonnxruntime.so}"
+  [[ -f "${ort}" ]] || { echo "ERROR: ONNX Runtime library is missing: ${ort}" >&2; return 1; }
+  find "$(dirname "${ort}")" -maxdepth 1 -name '*migraphx*.so*' -print -quit \
+    | grep -q . || { echo "ERROR: MIGraphX provider library is missing" >&2; return 1; }
+}
+
+cache_status() {
+  local cache="${ORT_MIGRAPHX_MODEL_CACHE_PATH:-${CACHE_ROOT}/migraphx}"
+  mkdir -p "${cache}"
+  echo "MIGraphX cache: ${cache}"
+  find "${CACHE_ROOT}/migraphx" -mindepth 1 -maxdepth 2 -type d -print 2>/dev/null | sort || true
+}
+
+cache_clean() {
+  [[ "${1:-}" == migraphx ]] || { echo "usage: phase2 cache clean migraphx" >&2; return 2; }
+  local cache="${CACHE_ROOT}/migraphx"
+  mkdir -p "${cache}"
+  rm -rf -- "${cache}"/*
+  echo "cleared MIGraphX cache entries under ${cache}"
+}
+
+build_workspace() {
+  source_setups
+  cd "${WORKSPACE_ROOT}"
+  echo "+ colcon build --merge-install"
+  colcon build --merge-install
+}
+
+main() {
+  local group="${1:-env}"
+  case "${group}" in
+    env) [[ "${2:-}" == --verify ]] && verify_env || show_env ;;
+    assets)
+      case "${2:-status}" in
+        status|verify) "${ASSET_HELPER}" "${2:-status}" ;;
+        *) echo "usage: phase2 assets {status|verify}" >&2; return 2 ;;
+      esac ;;
+    cache)
+      case "${2:-status}" in
+        status) cache_status ;;
+        clean) cache_clean "${3:-}" ;;
+        *) echo "usage: phase2 cache {status|clean migraphx}" >&2; return 2 ;;
+      esac ;;
+    build) build_workspace ;;
+    *) echo "this helper only provides env, assets, cache and build" >&2; return 2 ;;
+  esac
+}
+
+main "$@"

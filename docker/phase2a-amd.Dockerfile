@@ -19,7 +19,7 @@ FROM rocm-migraphx AS onnxruntime-builder
 
 ARG ORT_VERSION=1.23.1
 ARG ORT_BUILD_JOBS=16
-ARG AMD_GPU_TARGETS=gfx942
+ARG AMD_GPU_TARGETS
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -52,7 +52,8 @@ COPY docker/patches/onnxruntime-1.23.1-migraphx-enable-gridsample.patch /tmp/
 RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch \
     && git apply /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch
 
-RUN ./build.sh \
+RUN CMAKE_TARGETS="$(printf '%s' "${AMD_GPU_TARGETS}" | tr ',' ';')" \
+    && ./build.sh \
       --config Release \
       --parallel "${ORT_BUILD_JOBS}" \
       --build_shared_lib \
@@ -61,8 +62,8 @@ RUN ./build.sh \
       --use_migraphx \
       --migraphx_home /opt/rocm \
       --cmake_extra_defines \
-        GPU_TARGETS="${AMD_GPU_TARGETS}" \
-        CMAKE_HIP_ARCHITECTURES="${AMD_GPU_TARGETS}"
+        GPU_TARGETS="${CMAKE_TARGETS}" \
+        CMAKE_HIP_ARCHITECTURES="${CMAKE_TARGETS}"
 
 # ORT does not publish a standalone C++ MIGraphX archive. Assemble the same
 # include/lib layout consumed by the ROS package from the source build.
@@ -100,10 +101,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     software-properties-common \
     sudo \
+    unzip \
     wget \
     && locale-gen en_US en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
+# Keep the NGC client in the runtime image so asset preparation is a single
+# idempotent container command. Authentication is supplied at runtime.
 COPY --from=onnxruntime-builder /opt/onnxruntime /opt/onnxruntime
 RUN echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf \
     && ldconfig \
@@ -186,6 +190,17 @@ RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
 FROM ros-runtime-base AS runtime
 
 COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
+
+ARG AMD_BASE_IMAGE
+ARG AMD_GPU_TARGETS
+ARG ORT_VERSION=1.23.1
+ARG ROS_DISTRO=jazzy
+ARG ROS2_BENCHMARK_REF=v4.5-0
+RUN mkdir -p /opt/ovg \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s"}\n' \
+      "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
+      "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
+      > /opt/ovg/image-manifest.json
 
 COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
 RUN chmod +x /usr/local/bin/phase2a-amd-entrypoint.sh
