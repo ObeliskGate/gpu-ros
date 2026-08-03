@@ -8,19 +8,25 @@ CACHE_ROOT="${OVG_CACHE_ROOT:-/workspaces/ovg-cache}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
 ASSET_HELPER="${WORKSPACE_ROOT}/tools/phase2-assets"
 
+source_setup() {
+  set +u
+  # shellcheck disable=SC1090
+  source "$1"
+  set -u
+}
+
 source_setups() {
   if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
-    # shellcheck disable=SC1090
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
+    source_setup "/opt/ros/${ROS_DISTRO}/setup.bash"
   fi
   if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
-    source /opt/ros2_benchmark/setup.bash
+    source_setup /opt/ros2_benchmark/setup.bash
   fi
   if [[ -f /opt/ovg/tensor_list_interfaces/setup.bash ]]; then
-    source /opt/ovg/tensor_list_interfaces/setup.bash
+    source_setup /opt/ovg/tensor_list_interfaces/setup.bash
   fi
   if [[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]]; then
-    source "${WORKSPACE_ROOT}/install/setup.bash"
+    source_setup "${WORKSPACE_ROOT}/install/setup.bash"
   fi
 }
 

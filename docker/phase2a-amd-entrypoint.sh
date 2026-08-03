@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+source_setup() {
+  set +u
   # shellcheck disable=SC1090
-  source "/opt/ros/${ROS_DISTRO}/setup.bash"
+  source "$1"
+  set -u
+}
+
+if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+  source_setup "/opt/ros/${ROS_DISTRO}/setup.bash"
 fi
 
 if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
-  # shellcheck disable=SC1091
-  source /opt/ros2_benchmark/setup.bash
+  source_setup /opt/ros2_benchmark/setup.bash
 fi
 export PATH="/workspaces/amd_ros_object_detection/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
@@ -24,8 +29,7 @@ elif [[ -n "${OVG_CACHE_ROOT:-}" ]]; then
 fi
 
 if [[ -f "/workspaces/amd_ros_object_detection/install/setup.bash" ]]; then
-  # shellcheck disable=SC1091
-  source "/workspaces/amd_ros_object_detection/install/setup.bash"
+  source_setup "/workspaces/amd_ros_object_detection/install/setup.bash"
 fi
 
 exec "$@"
