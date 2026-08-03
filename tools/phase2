@@ -120,7 +120,12 @@ build_workspace() {
 main() {
   local group="${1:-env}"
   case "${group}" in
-    env) [[ "${2:-}" == --verify ]] && verify_env || show_env ;;
+    env)
+      case "${2:-}" in
+        '') show_env ;;
+        --verify) verify_env ;;
+        *) echo "usage: phase2 env [--verify]" >&2; return 2 ;;
+      esac ;;
     assets)
       case "${2:-status}" in
         status|verify) "${ASSET_HELPER}" "${2:-status}" ;;
