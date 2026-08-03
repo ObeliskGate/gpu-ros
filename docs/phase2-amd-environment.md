@@ -103,6 +103,11 @@ ros2 run isaac_ros_detection_validation \
   amd_phase2a_fixed
 ```
 
+The runner uses the same RT-DETR size contract as the NVIDIA Config C fixed-input
+capture: a 1280x720 source with `use_max_dim_for_orig_size=true`, which supplies
+`orig_target_sizes=[1280,1280]`. This setting is intentional for numerical
+comparison with the archived Config C bag.
+
 The bag is written below
 `/workspaces/ovg-results/phase2a-bags/amd_phase2a_fixed`. Logs, the exact
 command, and the first warm-up detection are written below the adjacent

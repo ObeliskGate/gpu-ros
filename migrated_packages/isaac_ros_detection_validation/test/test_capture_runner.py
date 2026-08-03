@@ -79,6 +79,13 @@ def test_amd_capture_runner_rejects_an_invalid_name_before_starting_ros():
     assert 'output-name may contain only' in result.stderr
 
 
+def test_amd_capture_runner_matches_nvidia_config_c_orig_target_size():
+    script = AMD_SCRIPT_PATH.read_text()
+    assert 'input_image_width:=1280' in script
+    assert 'input_image_height:=720' in script
+    assert 'use_max_dim_for_orig_size:=true' in script
+
+
 def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
     assert AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
     subprocess.run(['bash', '-n', str(AUDIT_SCRIPT_PATH)], check=True)

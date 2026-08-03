@@ -400,7 +400,9 @@ LAUNCH_COMMAND=(
   "image_topic:=${IMAGE_TOPIC}"
   input_image_width:=1280
   input_image_height:=720
-  use_max_dim_for_orig_size:=false
+  # Match the NVIDIA Config C reference capture. With a 1280x720 source this
+  # makes orig_target_sizes [1280, 1280], as in the upstream RT-DETR node.
+  use_max_dim_for_orig_size:=true
   "execution_provider:=${EXECUTION_PROVIDER}"
   confidence_threshold:=0.6
 )
