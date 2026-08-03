@@ -16,7 +16,7 @@ Risk: Adds a small CPU fallback boundary for int64 Div. Provider placement and
 diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 --- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 +++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
-@@ -848,6 +848,21 @@ static std::unique_ptr<ComputeCapability> GetCapabilityForNodeGroup(
+@@ -848,6 +848,26 @@ static std::unique_ptr<ComputeCapability> GetCapabilityForNodeGroup(
    return sub_graph;
  }
  
@@ -26,11 +26,16 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
 +  }
 +
 +  const auto& outputs = node.OutputDefs();
-+  if (outputs.empty() || outputs.front() == nullptr) {
++  if (outputs.empty()) {
 +    return false;
 +  }
 +
-+  const auto* type_proto = outputs.front()->TypeAsProto();
++  const auto* output_arg = outputs[0];
++  if (output_arg == nullptr) {
++    return false;
++  }
++
++  const auto* type_proto = output_arg->TypeAsProto();
 +  return type_proto != nullptr && type_proto->has_tensor_type() &&
 +         type_proto->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64;
 +}
@@ -38,7 +43,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  static std::vector<NodeIndex>
  GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                            /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
-@@ -1011,6 +1026,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
+@@ -1011,6 +1031,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                      "Xor"};
    std::vector<NodeIndex> unsupported_nodes_idx;
    for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -53,7 +58,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
      if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
        // Collect inputs that are initializers
        graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
-@@ -1287,7 +1310,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1287,7 +1315,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
      const Node& fused_node = fused_node_graph.fused_node;
  
      std::filesystem::path model_cache_file;
