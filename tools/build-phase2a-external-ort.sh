@@ -105,8 +105,12 @@ INSTALL_ROOT="${INSTALL_PARENT}/${fingerprint}"
 
 [[ ! -e "${INSTALL_ROOT}" ]] || die \
   "refusing to overwrite existing external ORT install: ${INSTALL_ROOT}"
-[[ ! -e "${BUILD_ROOT}" ]] || die \
-  "refusing to reuse existing external ORT build directory: ${BUILD_ROOT}"
+if [[ -e "${BUILD_ROOT}" ]]; then
+  die "refusing to reuse existing external ORT build directory: ${BUILD_ROOT}
+If the previous build failed, remove only that fingerprint directory and rerun:
+  rm -rf -- ${BUILD_ROOT}
+Keep ${SOURCE_ROOT} and any completed install directory; they are not part of this cleanup."
+fi
 mkdir -p "${BUILD_PARENT}" "${BUILD_ROOT}" "${INSTALL_PARENT}"
 
 echo "ORT source commit: ${source_commit}"

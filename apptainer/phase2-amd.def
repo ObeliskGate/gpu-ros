@@ -1,4 +1,6 @@
-Bootstrap: docker
+# The input is the Docker `save` archive, not a registry reference.  The
+# docker-archive bootstrap agent keeps the SIF build entirely offline.
+Bootstrap: docker-archive
 From: {{ OVG_AMD_IMAGE_URI }}
 
 # This definition is for a build machine that can convert the validated OCI

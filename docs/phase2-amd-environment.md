@@ -58,6 +58,25 @@ The managed RT-DETR launch is a separate CUDA/NITROS path; it is not the AMD
 Phase 2A graph.  Keep `execution_provider:=migraphx` explicit for AMD and do
 not rely on a CPU fallback.
 
+For the Phase 2A throughput benchmark, run the benchmark graph from the same
+container shell after `phase2 env --verify`, `phase2 assets verify`, and the
+external-ORT `colcon` build have passed:
+
+```bash
+export R2B_RESULT_FILE=phase2a_amd_external_<docker-host-gfx>_docker.json
+export MIGRAPHX_WARMUP_TIMEOUT_SEC=900
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
+```
+
+This graph owns the one-frame MIGraphX warm-up and then runs the ROS 2
+Benchmark throughput sweep for the standard ROS 2 + MIGraphX path.  Treat the
+`Ran 1 test ... OK` result and the generated JSON under
+`migrated_packages/benchmark_results/` as the benchmark result; a trailing
+`NO TESTS RAN` line from `launch_test` shutdown is not a second benchmark
+failure.  Copy the JSON and launch logs to `/workspaces/ovg-results` for the
+run record instead of committing them.
+
 ## Shortest environment workflow
 
 Docker:
@@ -198,6 +217,16 @@ MIGraphX provider library, `.ovg-ort-fingerprint`, and `build-info.txt`.
 build command.  Image IDs and SIF hashes belong in the surrounding run record,
 not in the ORT fingerprint.
 
+If CMake or compilation fails before installation, the failed fingerprint build
+directory is intentionally left in place for inspection.  Remove only that
+exact `build/<ort-fingerprint>` directory before retrying; do not remove the
+pristine source checkout or an existing install:
+
+```bash
+rm -rf -- /workspaces/ovg-ort/build/<ort-fingerprint>
+./tools/build-phase2a-external-ort.sh
+```
+
 After the builder prints its install path, export that exact container path in
 the host shell and isolate the colcon workspace by the same ORT fingerprint:
 
@@ -243,15 +272,20 @@ manifest; it never silently selects a target.
 
 ## Apptainer image
 
-The Docker GPU host must also have a working Apptainer before this gate starts:
+The same-host Docker plus Apptainer gate is optional.  If the Docker GPU host
+does not provide Apptainer, build the SIF on the designated Apptainer build
+environment (the MI350X allocation may serve this role), record that build
+host separately, and continue with the SIF runtime test there.  This split
+does not constitute same-host Docker/SIF proof.
+
+Check Apptainer on the selected SIF build environment before starting:
 
 ```bash
 apptainer version
 ```
 
-Do not move the SIF build to the cluster or another temporary machine. After
-Docker external-ORT verification passes, save the exact image and archive hash
-on that same machine:
+After Docker external-ORT verification passes, save the exact image and
+archive hash:
 
 ```bash
 image_id="$(docker image inspect --format '{{.Id}}' ovg-phase2-amd:local)"
@@ -271,7 +305,7 @@ path:
 ```bash
 apptainer build \
   --build-arg \
-  OVG_AMD_IMAGE_URI="docker-archive:///absolute/path/phase2-amd-dev-${image_id12}.docker.tar" \
+  OVG_AMD_IMAGE_URI="/absolute/path/phase2-amd-dev-${image_id12}.docker.tar" \
   phase2-amd-dev.partial.sif \
   apptainer/phase2-amd.def
 sha256sum phase2-amd-dev.partial.sif \
@@ -284,8 +318,10 @@ Confirm that the manifest's `gpu_targets` is the same de-duplicated union
 passed to Docker. Name and archive the final SIF using the image ID, target set,
 and SIF SHA; keep those facts separate from the ORT fingerprint.
 
-Run the candidate SIF on the same Docker GPU host before copying anything to
-the cluster. Reuse the Docker-built external ORT install:
+Run the candidate SIF on the selected Apptainer environment before using it for
+the MI350X run. Reuse the Docker-built external ORT install for this first SIF
+check when the target is the same; the MI350X run later builds a new ORT
+install for its actual gfx:
 
 ```bash
 export OVG_RUNTIME=apptainer
@@ -299,8 +335,8 @@ export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<docker-host-ort-fingerprint>
 At minimum repeat `phase2 env --verify`, the MIGraphX POL, the fixed-input
 capture, the provider profile, and the `/proc/<pid>/maps` check for the three
 external ORT libraries. Generate the NVIDIA Config C comparison JSON from this
-SIF candidate as well. Only when both Docker and same-host SIF runs pass may
-the artifacts be copied to `/work1`.
+SIF candidate as well. Keep the Docker validation record and the SIF build/run
+record separate, including the SIF build host.
 
 HPC nodes consume a prebuilt SIF through `OVG_APPTAINER_SIF`, or pull one time
 from `OVG_APPTAINER_IMAGE_URI` when networking and the registry permit it. The
@@ -393,9 +429,11 @@ deleting other cache entries.
 
 ## MI350X allocation gate
 
-Copy the validated SIF and SHA, Docker archive and SHA, image manifest, both
-repository checkouts, pristine ORT source, assets, the NVIDIA reference bag,
-and the Docker/SIF run records to persistent `/work1`. In the allocation:
+Copy the Docker archive and SHA, repository checkouts, pristine ORT source,
+assets, the NVIDIA reference bag, and the Docker run record to persistent
+`/work1`. If the SIF was not built on the Docker host, build it in the selected
+Apptainer environment first, record its SHA and manifest, then run it in the
+MI350X allocation:
 
 ```bash
 sha256sum --check phase2-amd-dev-*.sha256
