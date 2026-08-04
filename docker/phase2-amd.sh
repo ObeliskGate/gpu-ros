@@ -209,6 +209,7 @@ ensure_sif() {
 
 apptainer_args() {
   APPTAINER_ARGS=(
+    --rocm
     --cleanenv
     --pwd "${OVG_WORKSPACE_ROOT}"
     --bind "${ROOT_DIR}:${OVG_WORKSPACE_ROOT}"
