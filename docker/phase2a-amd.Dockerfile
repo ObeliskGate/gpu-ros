@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
+    libgmock-dev \
+    libgtest-dev \
     ninja-build \
     patch \
     python3 \
@@ -206,6 +208,8 @@ COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
 # the host/SIF bind mounts rather than being hidden in an image layer.
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgmock-dev \
+    libgtest-dev \
     ninja-build \
     patch \
     python3-dev \

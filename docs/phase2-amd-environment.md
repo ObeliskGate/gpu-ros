@@ -143,7 +143,11 @@ The runtime image contains a fixed `/opt/onnxruntime` fallback.  For
 development and reproducible AMD validation, keep the ORT checkout, patches,
 build tree, install and colcon workspace outside the image.  The runtime image
 contains the compiler, CMake, Ninja and Python packaging dependencies needed by
-the builder.
+the builder, including GTest/GMock development targets required by ORT's unit
+test target generation.  The ORT command uses `--skip_tests` to skip executing
+the ORT test binaries; it does not disable unit-test target generation.  Those
+test binaries remain in the external build tree and are not copied into the
+external install or SIF runtime library set.
 
 From a MI350X allocation, first run only this environment audit and save the
 output; then run the same command on the AMD Docker GPU host:
