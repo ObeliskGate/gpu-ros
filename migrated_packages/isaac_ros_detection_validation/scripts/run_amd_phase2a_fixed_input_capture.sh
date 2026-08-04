@@ -18,7 +18,8 @@ set -euo pipefail
 usage() {
   echo "Usage: $0 <output-name>"
   echo
-  echo "Launch, warm up, play the fixed r2b input and record AMD Phase 2A in one terminal."
+  echo "Launch, warm up and play the fixed r2b input in one terminal."
+  echo "By default detection output is recorded; CAPTURE_RECORD=0 enables profile-only playback."
   echo "The output name and its log files must not already exist."
   echo
   echo "Environment overrides:"
@@ -28,6 +29,8 @@ usage() {
   echo "  CAPTURE_MIN_MESSAGES=<integer>          (default: 20)"
   echo "  CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=<integer> (default: 900)"
   echo "  CAPTURE_GRAPH_READY_TIMEOUT_SECONDS=<integer>  (default: 900)"
+  echo "  CAPTURE_ORT_PROFILE_PREFIX=<absolute path prefix> (default: disabled)"
+  echo "  CAPTURE_RECORD=0|1                        (default: 1)"
   echo "  CAPTURE_OUTPUT_ROOT=<absolute path>"
 }
 
@@ -72,6 +75,8 @@ FIRST_OUTPUT_TIMEOUT_SECONDS="${CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS:-900}"
 STOP_GRACE_SECONDS="${CAPTURE_STOP_GRACE_SECONDS:-10}"
 STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
 IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
+ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
+RECORD_OUTPUT="${CAPTURE_RECORD:-1}"
 DETECTION_TOPIC=""
 DETECTION_CANDIDATES=(
   /detections_output
@@ -88,6 +93,11 @@ esac
 
 if [[ ${WARMUP_ONLY} != 0 && ${WARMUP_ONLY} != 1 ]]; then
   echo "ERROR: CAPTURE_WARMUP_ONLY must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ ${RECORD_OUTPUT} != 0 && ${RECORD_OUTPUT} != 1 ]]; then
+  echo "ERROR: CAPTURE_RECORD must be 0 or 1." >&2
   exit 2
 fi
 
@@ -123,15 +133,23 @@ if [[ ! -f ${INPUT_BAG}/metadata.yaml ]]; then
 fi
 
 mkdir -p "${OUTPUT_ROOT}" "${LOG_ROOT}"
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  mkdir -p "$(dirname "${ORT_PROFILE_PREFIX}")"
+fi
 
-for target in \
-  "${OUTPUT_PATH}" \
+TARGET_PATHS=(
   "${LAUNCH_LOG}" \
   "${RECORD_LOG}" \
   "${PLAYBACK_LOG}" \
   "${WARMUP_LOG}" \
   "${WARMUP_OUTPUT}" \
-  "${COMMAND_LOG}"; do
+  "${COMMAND_LOG}"
+)
+if [[ ${RECORD_OUTPUT} == 1 ]]; then
+  TARGET_PATHS+=("${OUTPUT_PATH}")
+fi
+
+for target in "${TARGET_PATHS[@]}"; do
   if [[ -e ${target} ]]; then
     echo "ERROR: refusing to overwrite existing path: ${target}" >&2
     exit 1
@@ -406,12 +424,17 @@ LAUNCH_COMMAND=(
   "execution_provider:=${EXECUTION_PROVIDER}"
   confidence_threshold:=0.6
 )
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  LAUNCH_COMMAND+=("ort_profile_prefix:=${ORT_PROFILE_PREFIX}")
+fi
 
 {
   echo "execution_provider=${EXECUTION_PROVIDER}"
   echo "input_bag=${INPUT_BAG}"
   echo "model_path=${MODEL_PATH}"
   echo "output_path=${OUTPUT_PATH}"
+  echo "record_output=${RECORD_OUTPUT}"
+  echo "ort_profile_prefix=${ORT_PROFILE_PREFIX}"
   print_command "${LAUNCH_COMMAND[@]}"
 } >"${COMMAND_LOG}"
 
@@ -486,6 +509,48 @@ if [[ ${WARMUP_ONLY} == 1 ]]; then
   exit 0
 fi
 
+PLAYBACK_COMMAND=(
+  ros2 bag play
+  "${INPUT_BAG}"
+  --rate "${PLAYBACK_RATE}"
+  --topics "${IMAGE_TOPIC}"
+)
+
+if [[ ${RECORD_OUTPUT} == 0 ]]; then
+  echo "Profile-only mode: playing the complete fixed input without recording output..."
+  print_command "${PLAYBACK_COMMAND[@]}"
+  print_command "${PLAYBACK_COMMAND[@]}" >>"${COMMAND_LOG}"
+  "${PLAYBACK_COMMAND[@]}" >"${PLAYBACK_LOG}" 2>&1
+
+  echo "Playback completed. Draining the graph for ${DRAIN_SECONDS} seconds..."
+  sleep "${DRAIN_SECONDS}"
+  stop_process "${LAUNCH_PID}" "graph"
+  LAUNCH_PID=""
+
+  if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+    PROFILE_DIR="$(dirname "${ORT_PROFILE_PREFIX}")"
+    PROFILE_BASENAME="$(basename "${ORT_PROFILE_PREFIX}")"
+    PROFILE_JSON="$(
+      find "${PROFILE_DIR}" \
+        -maxdepth 1 \
+        -type f \
+        -name "${PROFILE_BASENAME}*.json" \
+        -size +0c \
+        -print \
+        | head -n 1
+    )"
+    if [[ -z ${PROFILE_JSON} ]]; then
+      echo "ERROR: ORT profile was requested but no non-empty profile was produced." >&2
+      exit 1
+    fi
+    echo "ORT profile: ${PROFILE_JSON}"
+  fi
+
+  trap - EXIT INT TERM
+  echo "PASS: profile-only playback completed for ${EXECUTION_PROVIDER}."
+  exit 0
+fi
+
 RECORD_COMMAND=(
   ros2 bag record
   --output "${OUTPUT_PATH}"
@@ -509,12 +574,6 @@ if ! wait_for_topic_count \
   exit 1
 fi
 
-PLAYBACK_COMMAND=(
-  ros2 bag play
-  "${INPUT_BAG}"
-  --rate "${PLAYBACK_RATE}"
-  --topics "${IMAGE_TOPIC}"
-)
 echo "Playing the complete fixed input once at rate ${PLAYBACK_RATE}..."
 print_command "${PLAYBACK_COMMAND[@]}"
 print_command "${PLAYBACK_COMMAND[@]}" >>"${COMMAND_LOG}"
