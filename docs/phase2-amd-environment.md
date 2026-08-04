@@ -55,8 +55,10 @@ ros2 launch isaac_ros_rtdetr_std rtdetr_ort_std_image.launch.py \
 ```
 
 The managed RT-DETR launch is a separate CUDA/NITROS path; it is not the AMD
-Phase 2A graph.  Keep `execution_provider:=migraphx` explicit for AMD and do
-not rely on a CPU fallback.
+Phase 2A graph.  Keep `execution_provider:=migraphx` explicit for AMD.  The
+current pinned AMD profile intentionally leaves two known model nodes on the
+CPU because of an existing MIGraphX GPU bug; this is a documented exception,
+not permission to accept an unrestricted CPU fallback.
 
 For the Phase 2A throughput benchmark, run the benchmark graph from the same
 container shell after `phase2 env --verify`, `phase2 assets verify`, and the
@@ -345,8 +347,10 @@ from `OVG_APPTAINER_IMAGE_URI` when networking and the registry permit it. The
 host launcher binds the application checkout, sibling checkout, assets, cache,
 results, external ORT state, and fingerprinted build directories. It does not
 require Docker, sudo, root, or fakeroot on the compute node.
-The default device bind exposes `/dev/kfd` and `/dev/dri`; keep this mode and do
-not add Apptainer's `--rocm` flag.
+The Apptainer launcher uses `--rocm` for ROCm device and host-driver-library
+passthrough.  Do not add a second manual bind for `/dev/kfd` or `/dev/dri`:
+that can replace the working ROCm device mapping with an unusable
+`nobody:nogroup` mapping on root-mapped installations.
 
 `apptainer/phase2-amd.def` is a build-machine definition for converting a
 validated OCI runtime image. Supply the image URI as its `OVG_AMD_IMAGE_URI`
@@ -415,6 +419,22 @@ CAPTURE_ORT_PROFILE_PREFIX=/workspaces/ovg-results/profiles/amd-migraphx \
 ros2 run isaac_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   amd_migraphx_profile
+```
+
+For AMD Phase 2A, do not add `--require-no-cpu-nodes` to the profile
+summarizer.  The pinned RT-DETR/MIGraphX profile is expected to contain two
+known CPU-executed model nodes because of an existing MIGraphX GPU bug.  The
+audit must still show `MIGraphXExecutionProvider` kernel events and must record
+the names of exactly those two expected CPU nodes.  Any additional
+`CPUExecutionProvider` node, or a profile with no MIGraphX events, is a
+failure requiring investigation.
+
+Summarize the generated profile with:
+
+```bash
+ros2 run isaac_ros_onnx_inference summarize_ort_profile.py \
+  /workspaces/ovg-results/profiles/amd-migraphx*.json \
+  --expected-provider MIGraphXExecutionProvider
 ```
 
 The default first-output timeout is 900 seconds because the first MIGraphX
