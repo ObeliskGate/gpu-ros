@@ -107,11 +107,11 @@ changes the pointer-identity or byte-precision zero-copy result.
 Inside the Phase 2B NVIDIA container, build and run tests first:
 
 ```bash
-colcon build
+colcon build --merge-install
 source install/setup.bash
-colcon test --packages-select gpu_ros_managed_core gpu_ros_managed_cuda gpu_ros_managed_tensor_list --event-handlers console_direct+
+colcon test --merge-install --packages-select gpu_ros_managed_core gpu_ros_managed_cuda gpu_ros_managed_tensor_list --event-handlers console_direct+
 colcon test-result --verbose
-colcon test --packages-select isaac_ros_onnx_inference --event-handlers console_direct+
+colcon test --merge-install --packages-select isaac_ros_onnx_inference --event-handlers console_direct+
 colcon test-result --verbose
 launch_test src/amd_ros_object_detection/migrated_packages/isaac_ros_onnx_inference/test/isaac_ros_onnx_rtdetr_pol_test.py
 launch_test src/amd_ros_object_detection/migrated_packages/isaac_ros_onnx_inference/test/isaac_ros_onnx_rtdetr_managed_pol_test.py

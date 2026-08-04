@@ -16,6 +16,7 @@
 
 import pathlib
 import time
+import unittest
 
 import launch
 from launch_ros.actions import ComposableNodeContainer
@@ -142,17 +143,17 @@ def generate_test_description():
     ])
 
 
-class TestRtDetrMigraphxProofOfLife:
+class TestRtDetrMigraphxProofOfLife(unittest.TestCase):
     """Verify one image traverses the complete Phase 2a target graph."""
 
     @classmethod
-    def setup_class(cls):
+    def setUpClass(cls):
         """Create the ROS test client."""
         rclpy.init()
         cls.node = rclpy.create_node('rtdetr_migraphx_pol_test_client')
 
     @classmethod
-    def teardown_class(cls):
+    def tearDownClass(cls):
         """Destroy test resources and the generated model."""
         cls.node.destroy_node()
         rclpy.shutdown()
