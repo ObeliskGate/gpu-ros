@@ -8,6 +8,49 @@ source_setup() {
   set -u
 }
 
+validate_external_ort() {
+  local root="${OVG_ORT_ROOT%/}"
+  [[ -n "${root}" ]] || return 0
+  [[ -d "${root}" ]] || {
+    echo "ERROR: OVG_ORT_ROOT does not exist: ${root}" >&2
+    return 1
+  }
+  [[ -f "${root}/include/onnxruntime_cxx_api.h" ]] || {
+    echo "ERROR: external ORT install is incomplete (missing C++ headers): ${root}" >&2
+    return 1
+  }
+  local required_library
+  for required_library in \
+    libonnxruntime.so \
+    libonnxruntime_providers_shared.so \
+    libonnxruntime_providers_migraphx.so; do
+    [[ -e "${root}/lib/${required_library}" ]] || {
+      echo "ERROR: external ORT install is incomplete (missing ${required_library}): ${root}" >&2
+      return 1
+    }
+  done
+  [[ -f "${root}/.ovg-ort-fingerprint" ]] || {
+    echo "ERROR: external ORT install is missing .ovg-ort-fingerprint: ${root}" >&2
+    return 1
+  }
+  local expected_fingerprint="${root##*/}"
+  local recorded_fingerprint
+  recorded_fingerprint="$(tr -d '\r\n' < "${root}/.ovg-ort-fingerprint")"
+  [[ "${recorded_fingerprint}" == "${expected_fingerprint}" ]] || {
+    echo "ERROR: external ORT fingerprint marker does not match install path: ${root}" >&2
+    return 1
+  }
+
+  export ONNXRUNTIME_ROOT="${root}"
+  export ONNXRUNTIME_INCLUDE_DIR="${root}/include"
+  export ONNXRUNTIME_LIBRARY="${root}/lib/libonnxruntime.so"
+  export LD_LIBRARY_PATH="${root}/lib:${LD_LIBRARY_PATH:-}"
+}
+
+if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+  validate_external_ort
+fi
+
 if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
   source_setup "/opt/ros/${ROS_DISTRO}/setup.bash"
 fi

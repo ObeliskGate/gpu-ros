@@ -12,7 +12,6 @@ build:
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=ON
-    - -DONNXRUNTIME_ROOT=/opt/onnxruntime
     - -DBUILD_MIGRAPHX_POL_TEST=ON
     - -DBUILD_TESTING=ON
   symlink-install: true

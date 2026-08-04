@@ -26,6 +26,8 @@ services:
       - seccomp=unconfined
     environment:
       ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+      OVG_ORT_ROOT: ${OVG_ORT_ROOT:-}
+      OVG_ORT_STATE_ROOT: /workspaces/ovg-ort
       ONNXRUNTIME_ROOT: /opt/onnxruntime
       ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include
       ONNXRUNTIME_LIBRARY: /opt/onnxruntime/lib/libonnxruntime.so
@@ -48,5 +50,6 @@ services:
       - ${OVG_BUILD_DIR:-.ovg/build/unresolved}:/workspaces/amd_ros_object_detection/build
       - ${OVG_INSTALL_DIR:-.ovg/install/unresolved}:/workspaces/amd_ros_object_detection/install
       - ${OVG_LOG_DIR:-.ovg/log/unresolved}:/workspaces/amd_ros_object_detection/log
+      - ${OVG_ORT_DIR:-.ovg/ort}:/workspaces/ovg-ort
       - ${OVG_HOME_DIR:-.ovg/home}:/home/ovg
     working_dir: /workspaces/amd_ros_object_detection

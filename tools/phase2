@@ -71,6 +71,8 @@ show_env() {
   echo "/dev/kfd: $([[ -e /dev/kfd ]] && echo available || echo unavailable)"
   echo "/dev/dri: $([[ -d /dev/dri ]] && find /dev/dri -maxdepth 1 -name 'renderD*' -printf '%f ' || true)"
   echo "ONNXRUNTIME_ROOT: ${ONNXRUNTIME_ROOT:-unknown}"
+  echo "OVG_ORT_ROOT: ${OVG_ORT_ROOT:-builtin /opt/onnxruntime}"
+  echo "OVG_WORKSPACE_FINGERPRINT: ${OVG_WORKSPACE_FINGERPRINT:-unknown}"
   echo "ORT library: ${ort} ($([[ -f "${ort}" ]] && echo present || echo missing))"
   echo "MIGraphX provider: $(find "$(dirname "${ort}")" -maxdepth 1 -name '*migraphx*.so*' -printf '%f ' 2>/dev/null || true)"
   echo "workspace: ${WORKSPACE_ROOT}"

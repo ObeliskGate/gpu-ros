@@ -9,6 +9,11 @@ STATE_ROOT="${OVG_STATE_ROOT:-${ROOT_DIR}/.ovg}"
 if [[ "${STATE_ROOT}" != /* ]]; then
   STATE_ROOT="${ROOT_DIR}/${STATE_ROOT}"
 fi
+ORT_STATE_HOST="${OVG_ORT_STATE_HOST:-${OVG_ORT_DIR:-${STATE_ROOT}/ort}}"
+if [[ "${ORT_STATE_HOST}" != /* ]]; then
+  ORT_STATE_HOST="${ROOT_DIR}/${ORT_STATE_HOST}"
+fi
+ORT_CONTAINER_ROOT="/workspaces/ovg-ort"
 IMAGE_NAME="${OVG_IMAGE_NAME:-ovg-phase2-amd:local}"
 APPTAINER_SIF="${OVG_APPTAINER_SIF:-${STATE_ROOT}phase2-amd-dev-<image-id>.sif}"
 if [[ "${APPTAINER_SIF}" != /* ]]; then
@@ -22,6 +27,7 @@ export OVG_WORKSPACE_ROOT="/workspaces/amd_ros_object_detection"
 export OVG_ASSETS_ROOT="/workspaces/ovg-assets"
 export OVG_CACHE_ROOT="/workspaces/ovg-cache"
 export OVG_RESULTS_ROOT="/workspaces/ovg-results"
+export OVG_ORT_STATE_ROOT="${ORT_CONTAINER_ROOT}"
 export OVG_IMAGE_NAME="${IMAGE_NAME}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -33,7 +39,10 @@ Usage: docker/phase2-amd.sh {bootstrap|build|up|colcon|verify|shell|stop|down}
 Environment:
   OVG_RUNTIME=docker|apptainer       Select runtime explicitly.
   OVG_STATE_ROOT=/path               Persistent host state root.
-  AMD_GPU_TARGETS=gfx942,gfx950      Build targets; comma or semicolon separated.
+  AMD_GPU_TARGETS=gfx...,gfx...      Build targets; comma or semicolon separated.
+  OVG_ORT_ROOT=/workspaces/ovg-ort/install/<fingerprint>
+                                      Exact external ORT install; empty uses /opt/onnxruntime.
+  OVG_ORT_STATE_HOST=/path            Host directory bound at /workspaces/ovg-ort.
   OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif  SIF used by Apptainer.
   OVG_APPTAINER_IMAGE_URI=...        Optional URI for one-time SIF pull.
   OVG_APPTAINER_INSTANCE=1           Opt into an Apptainer instance for up/stop.
@@ -55,7 +64,8 @@ prepare_state() {
     "${STATE_ROOT}/cache" \
     "${STATE_ROOT}/results" \
     "${STATE_ROOT}/images" \
-    "${STATE_ROOT}/home"
+    "${STATE_ROOT}/home" \
+    "${ORT_STATE_HOST}"
 }
 
 normalise_targets() {
@@ -111,16 +121,19 @@ select_runtime() {
 }
 
 compose_env() {
-  local fingerprint="${1}"
+  local image_fingerprint="${1}"
+  local workspace_fingerprint="${2}"
   export GPU_ROS_MANAGED_DIR="${MANAGED_DIR}"
   export OVG_ASSETS_DIR="${STATE_ROOT}/assets"
   export OVG_CACHE_DIR="${STATE_ROOT}/cache"
   export OVG_RESULTS_DIR="${STATE_ROOT}/results"
-  export OVG_BUILD_DIR="${STATE_ROOT}/build/${fingerprint}"
-  export OVG_INSTALL_DIR="${STATE_ROOT}/install/${fingerprint}"
-  export OVG_LOG_DIR="${STATE_ROOT}/log/${fingerprint}"
+  export OVG_ORT_DIR="${ORT_STATE_HOST}"
+  export OVG_BUILD_DIR="${STATE_ROOT}/build/${workspace_fingerprint}"
+  export OVG_INSTALL_DIR="${STATE_ROOT}/install/${workspace_fingerprint}"
+  export OVG_LOG_DIR="${STATE_ROOT}/log/${workspace_fingerprint}"
   export OVG_HOME_DIR="${STATE_ROOT}/home"
-  export OVG_IMAGE_FINGERPRINT="${fingerprint}"
+  export OVG_IMAGE_FINGERPRINT="${image_fingerprint}"
+  export OVG_WORKSPACE_FINGERPRINT="${workspace_fingerprint}"
   export OVG_UID="$(id -u)"
   export OVG_GID="$(id -g)"
   mkdir -p "${OVG_BUILD_DIR}" "${OVG_INSTALL_DIR}" "${OVG_LOG_DIR}"
@@ -137,14 +150,34 @@ apptainer_fingerprint() {
   sha256sum "${APPTAINER_SIF}" | awk '{print $1}'
 }
 
+external_ort_fingerprint() {
+  local root="${OVG_ORT_ROOT:-}"
+  [[ -n "${root}" ]] || return 1
+  root="${root%/}"
+  local prefix="${ORT_CONTAINER_ROOT}/install/"
+  [[ "${root}" == "${prefix}"* ]] || die \
+    "OVG_ORT_ROOT must point below ${prefix}: ${root}"
+  local fingerprint="${root#"${prefix}"}"
+  [[ -n "${fingerprint}" && "${fingerprint}" != */* ]] || die \
+    "OVG_ORT_ROOT does not contain an ORT fingerprint: ${root}"
+  [[ "${fingerprint}" =~ ^[A-Za-z0-9._+,=-]+$ ]] || die \
+    "OVG_ORT_ROOT contains an unsafe ORT fingerprint: ${fingerprint}"
+  printf '%s\n' "${fingerprint}"
+}
+
 set_fingerprint() {
-  local fingerprint
+  local image_fingerprint
   if [[ "${RUNTIME}" == docker ]]; then
-    fingerprint="$(docker_fingerprint)" || die "Docker image ${IMAGE_NAME} is not available"
+    image_fingerprint="$(docker_fingerprint)" || die "Docker image ${IMAGE_NAME} is not available"
   else
-    fingerprint="$(apptainer_fingerprint)" || die "Apptainer SIF is not available: ${APPTAINER_SIF}"
+    image_fingerprint="$(apptainer_fingerprint)" || die "Apptainer SIF is not available: ${APPTAINER_SIF}"
   fi
-  compose_env "${fingerprint:0:32}"
+  image_fingerprint="${image_fingerprint:0:32}"
+  local workspace_fingerprint="${image_fingerprint}"
+  if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+    workspace_fingerprint="$(external_ort_fingerprint)"
+  fi
+  compose_env "${image_fingerprint}" "${workspace_fingerprint}"
 }
 
 compose() {
@@ -186,13 +219,17 @@ apptainer_args() {
     --bind "${OVG_BUILD_DIR}:${OVG_WORKSPACE_ROOT}/build"
     --bind "${OVG_INSTALL_DIR}:${OVG_WORKSPACE_ROOT}/install"
     --bind "${OVG_LOG_DIR}:${OVG_WORKSPACE_ROOT}/log"
+    --bind "${ORT_STATE_HOST}:${ORT_CONTAINER_ROOT}"
     --bind "${STATE_ROOT}/home:/home/ovg"
     --env "HOME=/home/ovg"
     --env "OVG_WORKSPACE_ROOT=${OVG_WORKSPACE_ROOT}"
     --env "OVG_ASSETS_ROOT=${OVG_ASSETS_ROOT}"
     --env "OVG_CACHE_ROOT=${OVG_CACHE_ROOT}"
     --env "OVG_RESULTS_ROOT=${OVG_RESULTS_ROOT}"
+    --env "OVG_ORT_STATE_ROOT=${ORT_CONTAINER_ROOT}"
+    --env "OVG_ORT_ROOT=${OVG_ORT_ROOT:-}"
     --env "OVG_IMAGE_FINGERPRINT=${OVG_IMAGE_FINGERPRINT}"
+    --env "OVG_WORKSPACE_FINGERPRINT=${OVG_WORKSPACE_FINGERPRINT}"
     --env "OVG_RUNTIME_EFFECTIVE=apptainer"
     --env "ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT=${OVG_ASSETS_ROOT}"
     --env "NGC_CLI_API_KEY=${NGC_CLI_API_KEY:-}"
@@ -215,7 +252,7 @@ apptainer_exec() {
 }
 
 docker_exec() {
-  compose exec -T amd "$@"
+  compose exec -T amd /usr/local/bin/phase2-amd-entrypoint.sh "$@"
 }
 
 run_phase2() {

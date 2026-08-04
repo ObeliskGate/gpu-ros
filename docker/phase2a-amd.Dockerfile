@@ -93,6 +93,7 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ORT_VERSION=${ORT_VERSION}
+ENV OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
 ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
 ENV ONNXRUNTIME_INCLUDE_DIR=/opt/onnxruntime/include
 ENV ONNXRUNTIME_LIBRARY=/opt/onnxruntime/lib/libonnxruntime.so
@@ -198,6 +199,20 @@ RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
 FROM ros-runtime-base AS runtime
 
 COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
+
+# The runtime is also the external ONNX Runtime development environment.  Keep
+# the build toolchain needed by tools/build-phase2a-external-ort.sh in the
+# final image so that source, patches, build trees and installs can remain on
+# the host/SIF bind mounts rather than being hidden in an image layer.
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ninja-build \
+    patch \
+    python3-dev \
+    python3-packaging \
+    python3-setuptools \
+    python3-wheel \
+    && rm -rf /var/lib/apt/lists/*
 
 ARG AMD_BASE_IMAGE
 ARG AMD_GPU_TARGETS
