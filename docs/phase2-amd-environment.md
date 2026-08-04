@@ -300,10 +300,12 @@ sha256sum "phase2-amd-dev-${image_id12}.docker.tar" \
 
 Build a candidate SIF from that archive and the repository definition, then
 record its hash and manifest. `OVG_AMD_IMAGE_URI` must be an absolute archive
-path:
+path. On the shared build node, keep SquashFS resource use bounded with one
+processor and a 1 GiB memory limit:
 
 ```bash
 apptainer build \
+  --mksquashfs-args "-processors 1 -mem 1G" \
   --build-arg \
   OVG_AMD_IMAGE_URI="/absolute/path/phase2-amd-dev-${image_id12}.docker.tar" \
   phase2-amd-dev.partial.sif \
