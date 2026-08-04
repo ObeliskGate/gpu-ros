@@ -107,7 +107,7 @@ INSTALL_ROOT="${INSTALL_PARENT}/${fingerprint}"
   "refusing to overwrite existing external ORT install: ${INSTALL_ROOT}"
 [[ ! -e "${BUILD_ROOT}" ]] || die \
   "refusing to reuse existing external ORT build directory: ${BUILD_ROOT}"
-mkdir -p "${BUILD_PARENT}" "${INSTALL_PARENT}"
+mkdir -p "${BUILD_PARENT}" "${BUILD_ROOT}" "${INSTALL_PARENT}"
 
 echo "ORT source commit: ${source_commit}"
 echo "ORT patch set: ${patchset_sha12}"
