@@ -236,8 +236,6 @@ apptainer_args() {
     --env "NGC_CLI_API_KEY=${NGC_CLI_API_KEY:-}"
     --env "NGC_CLI_ORG=${NGC_CLI_ORG:-}"
   )
-  [[ -e /dev/kfd ]] && APPTAINER_ARGS+=(--bind /dev/kfd)
-  [[ -d /dev/dri ]] && APPTAINER_ARGS+=(--bind /dev/dri)
 }
 
 apptainer_exec() {
