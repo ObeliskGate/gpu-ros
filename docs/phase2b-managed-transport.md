@@ -1,160 +1,130 @@
-# Phase 2B managed transport
+# Phase 2B: Managed Device TensorList Transport
 
-The application consumes the independent `gpu_ros_managed` sibling
-repository. NVIDIA Isaac ROS NITROS `v4.5-0`, commit
-`82310fce298d3d9db26945a3a988d5c471d14973`, is the fixed behavior reference.
+## Ownership and scope
 
-Ownership is:
+The reusable transport and ownership layer lives in the required sibling
+repository gpu_ros_managed. This application owns the detection graph, model
+preprocessing/decoding, ORT provider selection, I/O Binding, synchronization,
+and Phase 2A standard ROS 2 path.
 
-```text
-shared ROS/NITROS/Managed message
-  -> ManagedTensorListView
-  -> OnnxInferenceCore
-  -> ReadHandle or BlockingReadyLease
-  -> Ort::Value
-  -> synchronous Run/output synchronization
-  -> lease destruction
-  -> message/buffer release
-```
+gpu_ros_managed owns device allocation ownership, ready events, reader leases,
+deferred release, TensorList views, ROS transport, CUDA/HIP backends, and
+component wiring.
 
-Existing `std` and `nitros` topic names, components, parameters, and Phase
-A/B/C/D launch/test entry points are unchanged. Select the new path with
-`transport:=managed`.
+The common lifetime contract is:
 
-The NVIDIA RT-DETR graph is deliberately a transport comparison, not a
-replacement for the vendor graph:
+~~~text
+shared message -> ManagedTensorListView -> OnnxInferenceCore
+  -> ReadHandle or BlockingReadyLease -> Ort::Value
+  -> synchronized Run -> lease destruction -> message/buffer release
+~~~
 
-```text
+Select the adapter with transport=managed. The inference core must not depend
+on ROS message types, NITROS/GXF types, or model-specific decoder types.
+
+## NVIDIA comparison graph
+
+The NVIDIA Managed graph compares transport; it does not replace the official
+pipeline:
+
+~~~text
 official NITROS preprocessor
   -> NitrosToManagedTensorListNode
   -> OnnxInferenceNode(transport=managed, execution_provider=cuda)
   -> ManagedToNitrosTensorListNode
   -> official NITROS decoder
-```
+~~~
 
-Each boundary waits for the upstream completion contract and transfers the
-existing device allocation owner. It makes zero tensor-payload copies. Set
-`nitros_to_managed.enable_timing:=true` and
-`managed_to_nitros.enable_timing:=true` to record their callback/readiness
-cost independently; each report states `payload copies=0`.
+Both bridges must wait for upstream readiness, preserve the existing device
+allocation owner, preserve stream/event ordering, and add no tensor-payload
+copy. Callback timing is diagnostic only and is enabled with
+enable_timing=true on the bridge nodes.
 
-From the workspace `src` directory, import the pinned sibling with:
+## Zero-copy meaning
 
-```bash
-vcs import < amd_ros_object_detection/dependencies/gpu_ros_managed.repos
-```
+Zero-copy means that the Managed transport boundary adds no tensor-payload
+copy. It does not mean the complete application has no memcpy: preprocessing,
+provider kernels, decoders, CPU fallback, and serialization may copy.
 
-The NVIDIA and AMD compose files mount the sibling automatically. Set
-`GPU_ROS_MANAGED_DIR` if it is not located next to this repository.
+A zero-copy result requires pointer identity, equivalent input and graph,
+frame-normalized system-level copy counts, no Managed-only payload-copy
+signature, detection-output equivalence, and explained provider placement.
 
-## Current validation status
+## Backend-specific build and tests
 
-- backend-neutral core: fake-backend lifecycle, event-failure, safe-orphan,
-  multi-reader, pool-destruction and pending-cleanup tests pass;
-- CUDA backend: non-default stream, device mismatch, external owner and session
-  lifetime tests pass on an NVIDIA A100;
-- NITROS C and Managed lanes: compile, POL, component loading, pointer identity,
-  fixed-input comparison and benchmark validation pass with Isaac ROS 4.5;
-- Managed bridge runtime audit: Nsight Systems reports no Managed-only memcpy
-  signature and no increase in input/output payload-copy rate. NITROS,
-  Managed and round-trip NITROS payload pointers are identical in the adapter
-  GTest;
-- HIP/MIGraphX: device input uses explicit D2H staging inside the ORT adapter
-  until the ORT 1.23.1 external HIP pointer probe is completed;
-- native Managed HIP output is host-backed in this revision.
+NVIDIA uses the CUDA profile: CUDA and NITROS enabled, ROCm and MIGraphX
+disabled. AMD builds the managed HIP backend for its ownership tests, while
+the application profile keeps ORT CUDA, ORT ROCm, and NITROS disabled and uses
+MIGraphX only. Do not run CUDA and HIP backend tests as one cross-platform
+command.
 
-## NVIDIA validation result (2026-08-01)
+NVIDIA test command:
 
-The validated host was `boshen`, with an NVIDIA A100-SXM4-40GB, ROS 2 Jazzy,
-Isaac ROS 4.5 and a Release build. The fixed input was `r2b_robotarm`, hash
-`8eee68848ee1a95e21b1cd44d5d6ba71`.
+~~~bash
+colcon test \
+  --merge-install \
+  --packages-select \
+    gpu_ros_managed_core \
+    gpu_ros_managed_cuda \
+    gpu_ros_managed_ros \
+    gpu_ros_managed_tensor_list \
+    isaac_ros_onnx_inference \
+  --event-handlers console_direct+
+~~~
 
-The final YOLOv8 bridge audit used Config C as the reference and Managed as the
-candidate. Config C produced 388 recorded detections and Managed produced 390,
-so memory-operation counts were normalized by the number of processed output
-frames. The byte-precision Nsight trace showed:
+AMD test command:
 
-- identical Device-to-Device memcpy count and bytes across the complete traces;
-- 388 versus 390 copies of the 2,822,400-byte Device-to-Host decoder output,
-  exactly one per recorded output frame;
-- 396 versus 396 copies of the 4,915,200-byte Device-to-Device input payload;
-- no Managed-only memcpy signature;
-- no increase in normalized payload-copy rate;
-- `bridge_zero_copy_pass: true`.
+~~~bash
+colcon test \
+  --merge-install \
+  --packages-select \
+    gpu_ros_managed_core \
+    gpu_ros_managed_hip \
+    gpu_ros_managed_ros \
+    gpu_ros_managed_tensor_list \
+    isaac_ros_onnx_inference \
+  --event-handlers console_direct+
+~~~
 
-The Device-to-Host output is an existing official YOLOv8 decoder behavior in
-both lanes. It is not a Managed bridge copy. The ORT profiles were retained as
-a control: both lanes assigned the same 175 nodes to CUDA, recorded 8,750 node
-events over the bounded profile, and observed no CPU fallback.
+Run colcon test-result --all --verbose after either command.
 
-The Managed benchmark logs also preserve callback/readiness timing. Across
-equal 500-frame reporting windows, the mean boundary costs were:
+Before transport benchmarking, run the backend-neutral lifecycle, event
+failure, safe-orphan, non-default-stream, multi-reader, pool-destruction,
+pending-cleanup, external-owner, device-mismatch, session-lifetime, and
+pointer-identity tests.
 
-- RT-DETR NITROS-to-Managed: 0.160 ms; Managed-to-NITROS: 0.059 ms;
-- YOLOv8 NITROS-to-Managed: 0.064 ms; Managed-to-NITROS: 0.050 ms.
+The existing NVIDIA validation entry points are documented in
+migrated_packages/isaac_ros_detection_validation/README.md. Run the
+proof-of-life test, transport probe, fixed-input comparison, and benchmark
+only after the package tests pass.
 
-These timing values include callback, readiness and publish work. They are not
-tensor-copy timings.
+## Numeric and system audits
 
-Two non-blocking limitations remain documented: fixed-input captures can
-differ by one or two boundary frames, and the ORT C/M component container can
-exit `-11` during post-report shutdown. Paired-frame numeric results and all
-benchmark reports are written before that shutdown failure. Neither limitation
-changes the pointer-identity or byte-precision zero-copy result.
+Managed and reference lanes must use equivalent input. Detection comparison
+must report paired/unpaired frames, class match, box IoU, score delta, and
+frame pass rate. Throughput alone is not a correctness result.
 
-## NVIDIA validation order
+Pointer identity proves allocation identity at the tested boundary; it does
+not prove that the whole application has no other copy. Nsight Systems or the
+platform profiler must compare H2D, D2H, and D2D counts and bytes per output
+frame, payload sizes, frame counts, and Managed-only signatures.
 
-Inside the Phase 2B NVIDIA container, build and run tests first:
+ORT profiles are provider-placement controls, not replacements for system
+copy traces. Bridge timing reports callback/readiness/publish cost, not copy
+latency.
 
-```bash
-colcon build --merge-install
-source install/setup.bash
-colcon test --merge-install --packages-select gpu_ros_managed_core gpu_ros_managed_cuda gpu_ros_managed_tensor_list --event-handlers console_direct+
-colcon test-result --verbose
-colcon test --merge-install --packages-select isaac_ros_onnx_inference --event-handlers console_direct+
-colcon test-result --verbose
-launch_test src/amd_ros_object_detection/migrated_packages/isaac_ros_onnx_inference/test/isaac_ros_onnx_rtdetr_pol_test.py
-launch_test src/amd_ros_object_detection/migrated_packages/isaac_ros_onnx_inference/test/isaac_ros_onnx_rtdetr_managed_pol_test.py
-launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_transport_probe.py
-```
+## Current AMD limitation
 
-Only after the probe and POL tests pass, run the precision-aligned A, C, and M
-graphs once each. The benchmark framework owns its five measured iterations,
-warm-up, throughput search, and fixed-rate trial:
+AMD Managed inference is not end-to-end zero-copy in the current revision:
 
-```bash
-launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_a_fp32_graph.py
-launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_c_graph.py
-launch_test src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_managed_graph.py
-```
+1. A HIP DeviceBuffer input is copied to host inside the ORT adapter for
+   MIGraphX and ROCm EP paths.
+2. Managed device output is implemented only for CUDA EP.
+3. MIGraphX output uses host-backed storage.
+4. Native Managed HIP device output is not available.
 
-For a fixed-input C/M comparison, record both Detection2DArray topics to bags
-and require stamp matching, at least 20 pairs, no unpaired frames, mean IoU
-at least 0.999, score delta at most `1e-4`, and class match rate 1.0:
+Do not describe AMD Managed inference as device-to-device zero-copy. These
+limitations do not affect the independent Phase 2A standard ROS 2 path.
 
-```bash
-./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
-  rtdetr-c \
-  rtdetr_config_c_20260801
-
-./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
-  rtdetr-managed \
-  rtdetr_managed_20260801
-
-ros2 run \
-  isaac_ros_detection_validation \
-  compare_detection2d_bags.py \
-  --reference-bag <config-c-bag> \
-  --candidate-bag <managed-bag> \
-  --output-json migrated_packages/benchmark_results/rtdetr_c_vs_managed_validation.json \
-  --match-policy stamp \
-  --min-mean-iou 0.999 \
-  --max-mean-score-delta 0.0001 \
-  --min-frame-pass-rate 1.0 \
-  --min-paired-frames 20 \
-  --min-class-match-rate 1.0
-```
-
-Historical Phase 1 results do not validate the revised C or Managed paths.
-Zero-copy claims require current pointer-identity, copy-count, stream-ordering,
-and detection-validation results.
+Concrete hardware, dates, benchmark values, copy audits, timings, and
+shutdown limitations belong in phase2b-results.md.

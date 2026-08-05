@@ -85,10 +85,6 @@ CPU. The CPU nodes were ORT CPU-preferred optimization, shape, and bookkeeping
 placements rather than evidence of whole-model fallback. Node count is not a
 measure of compute share.
 
-On AMD, MIGraphX claimed one fused RT-DETR subgraph and no CPU fallback was
-observed. This difference reflects provider partitioning policy. It is not, by
-itself, an explanation for the CUDA-versus-MIGraphX performance difference.
-
 Provider auditing remains separate from formal benchmarking. ORT profiling and
 bridge timing are opt-in and disabled in the final benchmark graphs.
 

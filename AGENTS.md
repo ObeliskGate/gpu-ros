@@ -89,7 +89,8 @@ Each `*-benchmark` package transitively pulls in the corresponding graph impleme
 
 ### Reproduction Procedure
 
-See [`docs/run-benchmark.md`](docs/run-benchmark.md) for the actual commands and gotchas.
+See [`docs/phase0-benchmark-reproduction.md`](docs/phase0-benchmark-reproduction.md)
+for the actual commands and gotchas.
 
 ### Running Benchmarks
 
