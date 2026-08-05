@@ -39,7 +39,7 @@ summary is
 
 ### Status
 
-**Completed for the two graphs in scope of Phase 1 migration.** Baseline reproduced on NVIDIA A100-SXM4-40GB (Jetstream2):
+**Completed for the two graphs in scope of Phase 1 migration.** Baseline reproduced on NVIDIA A100-SXM4-40GB:
 
 | Graph | Ours (A100) | NVIDIA published (RTX 5090) | Status |
 |-------|-------------|------------------------------|--------|
@@ -107,7 +107,7 @@ launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_grounding_dino_benchmar
 
 ### Success Criteria
 
-- All three benchmarks run to completion without errors
+- Both in-scope benchmarks, RT-DETR and Grounding DINO, run to completion without errors
 - Measured FPS is within ±15% of NVIDIA's published numbers (accounting for GPU hardware differences)
 - Results JSON files are saved for future comparison against our ported pipeline
 
@@ -138,8 +138,8 @@ Phase 2a does **not** reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmark
 
 - Use the existing official `isaac_ros_tensor_list_interfaces/msg/TensorList`; do not add a custom TensorList message in this repository.
 - ONNX Runtime must be discoverable through `ONNXRUNTIME_ROOT`, or through explicit `ONNXRUNTIME_INCLUDE_DIR` and `ONNXRUNTIME_LIBRARY` CMake parameters.
-- Build AMD/CPU standard ROS2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present.
-- Build MIGraphX support explicitly with `-DORT_ENABLE_MIGRAPHX=ON`. If `execution_provider:=migraphx` is requested without that build flag, the node must fail clearly instead of silently falling back to CPU.
+- Build the AMD Phase 2a profile with `-DBUILD_NITROS_TRANSPORT=OFF`, `-DORT_ENABLE_CUDA=OFF`, `-DORT_ENABLE_ROCM=OFF`, `-DORT_ENABLE_MIGRAPHX=ON`, and `-DBUILD_MIGRAPHX_POL_TEST=ON`.
+- Build AMD/CPU standard ROS2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present. If `execution_provider:=migraphx` is requested without `-DORT_ENABLE_MIGRAPHX=ON`, the node must fail clearly instead of silently falling back to CPU.
 
 ### Benchmark And Validation
 

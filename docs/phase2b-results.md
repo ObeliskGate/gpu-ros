@@ -20,8 +20,9 @@ RT-DETR was benchmarked at application commit
 6dd1154d6873e4c0f0ed0fdeaab5806425d5c40d. YOLOv8 was benchmarked at
 6f1b4ea51853831fc15d9ee3fa8b224805d165b3; its transport audit used
 917979dc14fd03667ea019449d512c0990c69b9f. The legacy archive did not retain
-an image digest or external ORT fingerprint; future formal runs must record
-both.
+an image digest or external ORT fingerprint. Future formal runs must record
+the image digest and exact ONNX Runtime library identity; record the external
+ORT fingerprint when external ORT mode is used.
 
 ## Throughput
 

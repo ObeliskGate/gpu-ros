@@ -29,11 +29,13 @@ export OVG_RUNTIME=docker
 export OVG_STATE_ROOT=<persistent-host-state-directory>
 export GPU_ROS_MANAGED_DIR=<host-path-to-gpu_ros_managed>
 
-./docker/phase2-amd.sh bootstrap
-./docker/phase2-amd.sh verify
-./docker/phase2-amd.sh colcon
-./docker/phase2-amd.sh shell
+OVG_PREPARE_ASSETS=1 ./docker/phase2-amd.sh bootstrap
 ~~~
+
+Commands invoking the launcher run on the host. `OVG_ORT_ROOT` is a
+container-side path, but it must be exported in the host shell before
+`verify`, `colcon`, or `shell`; the launcher passes it into the runtime and
+uses its fingerprint for workspace isolation.
 
 Inside the runtime, verify the device, selected ORT, and workspace:
 
@@ -75,10 +77,9 @@ rocminfo \
 Set AMD_GPU_TARGETS to the sorted, deduplicated target set used for the image.
 The image manifest is not a substitute for a real-device validation.
 
-Prepare and verify assets:
+After entering the runtime, verify assets:
 
 ~~~bash
-OVG_PREPARE_ASSETS=1 ./docker/phase2-amd.sh bootstrap
 phase2 assets status
 phase2 assets verify
 ~~~
@@ -104,14 +105,28 @@ validation should use a repository-owned external ORT 1.23.1 build:
 /workspaces/ovg-ort/install/<ort-fingerprint>
 ~~~
 
-Prepare a clean recursive v1.23.1 checkout, then run:
+Prepare a clean recursive v1.23.1 checkout. Build it inside the runtime, then
+select the resulting install from the host:
 
 ~~~bash
+# Host
+./docker/phase2-amd.sh shell
+
+# Runtime
 export AMD_GPU_TARGETS=<actual-gfx>
 export OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
-export ORT_BUILD_JOBS="$(nproc)"
+export ORT_BUILD_JOBS="${SLURM_CPUS_PER_TASK:-$(nproc)}"
 ./tools/build-phase2a-external-ort.sh
+
+exit
+
+# Host
 export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<ort-fingerprint>
+./docker/phase2-amd.sh verify
+./docker/phase2-amd.sh colcon
+./docker/phase2-amd.sh shell
+phase2 env --verify
+phase2 assets verify
 ~~~
 
 The ordered patch series contains MIGraphX Linux build compatibility,
