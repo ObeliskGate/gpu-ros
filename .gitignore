@@ -19,3 +19,6 @@ __pycache__/
 /migrated_packages/benchmark_results/build/
 /migrated_packages/benchmark_results/install/
 /migrated_packages/benchmark_results/log/
+
+# Project-local Codex skill installed outside Git
+/.agents/skills/amd-hpcfund-slurm/
