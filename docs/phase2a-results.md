@@ -32,7 +32,8 @@ performance result.
 | Isaac ROS | 4.5 |
 | ONNX Runtime | 1.23.1, external MIGraphX build |
 | Build | Release |
-| Application revision | `9fd3f79cfec8e2e530009d4a0a25d5742e877b2f` |
+| RT-DETR MI350X application revision | `9fd3f79cfec8e2e530009d4a0a25d5742e877b2f` |
+| YOLOv8 MI350X application revision | `635e285f2546535bd02cd3eda0ab47cc1b3aaa89` |
 | `gpu_ros_managed` revision | `d33381358f2259b9ad16e8847b5a6dccd0357ebc` |
 | External ORT fingerprint | `d9b2048791ef-66fb994b0374-gfx950` |
 | Input dataset | `r2bdataset2024_v1/r2b_robotarm` |
@@ -81,8 +82,14 @@ single hardware trend.
 ### Numeric validation
 
 The final comparison used the NVIDIA Config C reference bag and the MI350X
-fixed-input candidate bag. Stamp matching was used because the two recordings
-did not share the same wall-clock timestamps. The comparison passed:
+fixed-input candidate bag. The recordings were made at different wall-clock
+times but preserved matching source header stamps, so stamp matching was used.
+The seven unpaired candidate frames are a capture-boundary discrepancy; they
+remain in the overall frame denominator but do not affect the 390 paired
+frames. The comparator passes when there are at least 20 paired frames, mean
+IoU is at least 0.80, mean score delta is at most 0.20, overall frame pass rate
+is at least 0.70, and mean class match rate is 1.0. This comparison met those
+criteria:
 
 | Metric | Result |
 | --- | ---: |

@@ -206,7 +206,7 @@ Image → YoloV8ImageEncoderNode → OnnxInferenceNode(transport=std, EP=MIGraph
 | `isaac_ros_detectnet` | Deferred | Full GXF graph remains outside the current migration scope |
 | `gxf_isaac_detectnet` | Deferred | Pure GXF component remains outside the current migration scope |
 
-## Key Dependencies to Replace
+## Replacements Used by the Migrated Paths
 
 - `isaac_ros_nitros` / `isaac_ros_managed_nitros`: standard ROS 2 subscriber
 - `isaac_ros_nitros_tensor_list_type`: `isaac_ros_tensor_list_interfaces/msg/TensorList`
@@ -225,8 +225,6 @@ Image → YoloV8ImageEncoderNode → OnnxInferenceNode(transport=std, EP=MIGraph
 ## Development Notes
 
 - The upstream `isaac_ros_object_detection` repo is kept as-is in `./isaac_ros_object_detection/` for reference.
-- New migrated packages will be created alongside or in a separate directory.
-- Use FP32 for initial ONNX Runtime validation to ensure correctness; add FP16 later only when a comparison requires it.
 - YOLOv8 model files are user-provided external assets. Do not instruct maintainers to download or export them. The canonical ONNX identity and SHA-256 are documented in `docs/phase2a-experiment.md`.
 
 ## Profiling Plan

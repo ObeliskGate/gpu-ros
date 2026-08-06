@@ -247,6 +247,9 @@ colcon test-result --all --verbose
 
 launch_test \
   migrated_packages/isaac_ros_rtdetr_std/test/isaac_ros_std_rtdetr_pol_test.py
+
+launch_test \
+  migrated_packages/isaac_ros_yolov8_std/test/isaac_ros_yolov8_migraphx_pol_test.py
 ~~~
 
 The standard YOLOv8 unit tests run with the package test set. The generated
@@ -275,6 +278,13 @@ CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=900 \
 ros2 run isaac_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   migraphx_probe
+
+CAPTURE_EXECUTION_PROVIDER=migraphx \
+CAPTURE_WARMUP_ONLY=1 \
+CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=900 \
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  yolov8 yolov8_migraphx_probe
 
 ros2 run isaac_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
