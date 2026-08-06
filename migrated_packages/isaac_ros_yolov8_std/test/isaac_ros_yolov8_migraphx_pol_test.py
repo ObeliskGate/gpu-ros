@@ -104,7 +104,7 @@ def generate_test_description():
 
 
 class IsaacROSYoloV8MigraphxPOLTest(IsaacROSBaseTest):
-    '''Check message flow and header propagation with the real YOLOv8 asset.'''
+    """Check message flow and header propagation with the real YOLOv8 asset."""
 
     def test_graph_publishes_detection_array(self):
         received_messages = {}
