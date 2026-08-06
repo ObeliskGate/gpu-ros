@@ -105,20 +105,23 @@ TEST(YoloV8ImageEncoderTest, ConvertsBgrToRgb)
   EXPECT_FLOAT_EQ(values.at(2), 1.0F / 255.0F);
 }
 
-TEST(YoloV8ImageEncoderTest, UsesBottomRightPadding)
+TEST(YoloV8ImageEncoderTest, UsesLinearResizeAndBottomPadding)
 {
   const auto image = MakeImage(
-    sensor_msgs::image_encodings::RGB8, 2, 1, 6, {10U, 20U, 30U, 40U, 50U, 60U});
+    sensor_msgs::image_encodings::RGB8, 2, 1, 6,
+    {10U, 20U, 30U, 40U, 50U, 60U});
 
   const auto output = EncodeYoloV8Image(image, Config(4, 4));
   const auto values = TensorValues(output.tensors.front());
 
   ASSERT_EQ(values.size(), 48U);
   EXPECT_FLOAT_EQ(values.at(0), 10.0F / 255.0F);
-  EXPECT_FLOAT_EQ(values.at(1), 10.0F / 255.0F);
-  EXPECT_FLOAT_EQ(values.at(2), 40.0F / 255.0F);
+  EXPECT_FLOAT_EQ(values.at(1), 17.0F / 255.0F);
+  EXPECT_FLOAT_EQ(values.at(2), 32.0F / 255.0F);
   EXPECT_FLOAT_EQ(values.at(3), 40.0F / 255.0F);
-  EXPECT_FLOAT_EQ(values.at(4), 0.0F);
+  EXPECT_FLOAT_EQ(values.at(4), 10.0F / 255.0F);
+  EXPECT_FLOAT_EQ(values.at(5), 17.0F / 255.0F);
+  EXPECT_FLOAT_EQ(values.at(8), 0.0F);
   EXPECT_FLOAT_EQ(values.at(12), 0.0F);
 }
 

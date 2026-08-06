@@ -26,81 +26,81 @@ from launch_ros.descriptions import ComposableNode
 
 MODEL_INPUT_SIZE = 640
 DEFAULT_MODEL_PATH = os.path.join(
-    os.environ.get("OVG_ASSETS_ROOT", "/workspaces/ovg-assets"),
-    "models",
-    "yolov8",
-    "yolov8s.onnx",
+    os.environ.get('OVG_ASSETS_ROOT', '/workspaces/ovg-assets'),
+    'models',
+    'yolov8',
+    'yolov8s.onnx',
 )
 
 
 def _missing_model_error(model_path: str) -> RuntimeError:
     return RuntimeError(
-        "YOLOv8 ONNX asset is missing:\n"
-        f"{model_path}\n"
-        "Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8."
+        'YOLOv8 ONNX asset is missing:\n'
+        f'{model_path}\n'
+        'Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8.'
     )
 
 
 def _launch_setup(context):
-    model_file_path = LaunchConfiguration("model_file_path").perform(context)
+    model_file_path = LaunchConfiguration('model_file_path').perform(context)
     resolved_model_path = str(Path(model_file_path).expanduser().resolve(strict=False))
     if not os.path.isfile(resolved_model_path) or os.path.getsize(resolved_model_path) == 0:
         raise _missing_model_error(resolved_model_path)
 
-    image_topic = LaunchConfiguration("image_topic").perform(context)
-    namespace = LaunchConfiguration("namespace").perform(context)
-    execution_provider = LaunchConfiguration("execution_provider").perform(context)
-    ort_profile_prefix = LaunchConfiguration("ort_profile_prefix").perform(context)
-    confidence_threshold = LaunchConfiguration("confidence_threshold").perform(context)
-    nms_threshold = LaunchConfiguration("nms_threshold").perform(context)
+    image_topic = LaunchConfiguration('image_topic').perform(context)
+    namespace = LaunchConfiguration('namespace').perform(context)
+    execution_provider = LaunchConfiguration('execution_provider').perform(context)
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
+    confidence_threshold = LaunchConfiguration('confidence_threshold').perform(context)
+    nms_threshold = LaunchConfiguration('nms_threshold').perform(context)
 
     image_encoder_node = ComposableNode(
-        name="yolov8_image_encoder",
-        package="isaac_ros_yolov8_std",
-        plugin="nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode",
+        name='yolov8_image_encoder',
+        package='isaac_ros_yolov8_std',
+        plugin='nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode',
         parameters=[{
-            "tensor_name": "images",
-            "output_width": MODEL_INPUT_SIZE,
-            "output_height": MODEL_INPUT_SIZE,
+            'tensor_name': 'images',
+            'output_width': MODEL_INPUT_SIZE,
+            'output_height': MODEL_INPUT_SIZE,
         }],
-        remappings=[("image", image_topic)],
+        remappings=[('image', image_topic)],
     )
 
     onnx_node = ComposableNode(
-        name="onnx_inference",
-        package="isaac_ros_onnx_inference",
-        plugin="nvidia::isaac_ros::onnx_inference::OnnxInferenceNode",
+        name='onnx_inference',
+        package='isaac_ros_onnx_inference',
+        plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
         parameters=[{
-            "model_file_path": resolved_model_path,
-            "execution_provider": execution_provider,
-            "ort_profile_prefix": ort_profile_prefix,
-            "transport": "std",
+            'model_file_path': resolved_model_path,
+            'execution_provider': execution_provider,
+            'ort_profile_prefix': ort_profile_prefix,
+            'transport': 'std',
         }],
         remappings=[
-            ("tensor_input", "encoded_tensor"),
-            ("tensor_output", "tensor_sub"),
+            ('tensor_input', 'encoded_tensor'),
+            ('tensor_output', 'tensor_sub'),
         ],
     )
 
     decoder_node = ComposableNode(
-        name="yolov8_decoder",
-        package="isaac_ros_yolov8_std",
-        plugin="nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode",
+        name='yolov8_decoder',
+        package='isaac_ros_yolov8_std',
+        plugin='nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode',
         parameters=[{
-            "tensor_name": "output0",
-            "confidence_threshold": confidence_threshold,
-            "nms_threshold": nms_threshold,
-            "num_classes": 80,
+            'tensor_name': 'output0',
+            'confidence_threshold': confidence_threshold,
+            'nms_threshold': nms_threshold,
+            'num_classes': 80,
         }],
     )
 
     container = ComposableNodeContainer(
-        name="yolov8_phase2a_container",
+        name='yolov8_phase2a_container',
         namespace=namespace,
-        package="rclcpp_components",
-        executable="component_container_mt",
+        package='rclcpp_components',
+        executable='component_container_mt',
         composable_node_descriptions=[image_encoder_node, onnx_node, decoder_node],
-        output="screen",
+        output='screen',
     )
     return [container]
 
@@ -108,39 +108,39 @@ def _launch_setup(context):
 def generate_launch_description():
     launch_args = [
         DeclareLaunchArgument(
-            "model_file_path",
+            'model_file_path',
             default_value=DEFAULT_MODEL_PATH,
-            description="Absolute path to the user-provided YOLOv8s ONNX file",
+            description='Absolute path to the user-provided YOLOv8s ONNX file',
         ),
         DeclareLaunchArgument(
-            "image_topic",
-            default_value="image",
-            description="Input sensor_msgs/Image topic, relative or absolute",
+            'image_topic',
+            default_value='image',
+            description='Input sensor_msgs/Image topic, relative or absolute',
         ),
         DeclareLaunchArgument(
-            "namespace",
-            default_value="yolov8",
-            description="Namespace for the composable pipeline",
+            'namespace',
+            default_value='yolov8',
+            description='Namespace for the composable pipeline',
         ),
         DeclareLaunchArgument(
-            "execution_provider",
-            default_value="migraphx",
-            description="ONNX Runtime execution provider (migraphx/rocm/cpu)",
+            'execution_provider',
+            default_value='migraphx',
+            description='ONNX Runtime execution provider (migraphx/rocm/cpu)',
         ),
         DeclareLaunchArgument(
-            "ort_profile_prefix",
-            default_value="",
-            description="Enable ORT profiling and write JSON using this path prefix",
+            'ort_profile_prefix',
+            default_value='',
+            description='Enable ORT profiling and write JSON using this path prefix',
         ),
         DeclareLaunchArgument(
-            "confidence_threshold",
-            default_value="0.25",
-            description="Minimum score for a bounding box to be published",
+            'confidence_threshold',
+            default_value='0.25',
+            description='Minimum score for a bounding box to be published',
         ),
         DeclareLaunchArgument(
-            "nms_threshold",
-            default_value="0.45",
-            description="IoU threshold used by YOLOv8 decoder NMS",
+            'nms_threshold',
+            default_value='0.45',
+            description='IoU threshold used by YOLOv8 decoder NMS',
         ),
     ]
     return launch.LaunchDescription(launch_args + [OpaqueFunction(function=_launch_setup)])
