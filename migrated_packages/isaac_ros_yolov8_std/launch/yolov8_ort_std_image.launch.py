@@ -51,8 +51,10 @@ def _launch_setup(context):
     namespace = LaunchConfiguration('namespace').perform(context)
     execution_provider = LaunchConfiguration('execution_provider').perform(context)
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
-    confidence_threshold = LaunchConfiguration('confidence_threshold').perform(context)
-    nms_threshold = LaunchConfiguration('nms_threshold').perform(context)
+    confidence_threshold = float(
+        LaunchConfiguration('confidence_threshold').perform(context))
+    nms_threshold = float(
+        LaunchConfiguration('nms_threshold').perform(context))
 
     image_encoder_node = ComposableNode(
         name='yolov8_image_encoder',
