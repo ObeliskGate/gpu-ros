@@ -17,8 +17,9 @@ set -euo pipefail
 
 usage() {
   echo "Usage: $0 <output-name>"
+  echo "       $0 yolov8 <output-name>"
   echo
-  echo "Launch, warm up and record AMD Phase 2A in one terminal."
+  echo "Launch, warm up and record the AMD Phase 2A RT-DETR or YOLOv8 graph in one terminal."
   echo "By default detection output is recorded; CAPTURE_RECORD=0 enables profile-only playback."
   echo "The output name and its log files must not already exist."
   echo
@@ -39,12 +40,17 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   exit 0
 fi
 
-if [[ $# -ne 1 ]]; then
+PIPELINE="rtdetr"
+if [[ $# -eq 1 ]]; then
+  OUTPUT_NAME="$1"
+elif [[ $# -eq 2 && $1 == "yolov8" ]]; then
+  PIPELINE="yolov8"
+  OUTPUT_NAME="$2"
+else
   usage >&2
   exit 2
 fi
 
-OUTPUT_NAME="$1"
 if [[ ! ${OUTPUT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   echo "ERROR: output-name may contain only letters, numbers, '.', '_' and '-'." >&2
   exit 2
@@ -54,7 +60,6 @@ WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
 INPUT_BAG="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
-MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx}"
 OUTPUT_ROOT="${CAPTURE_OUTPUT_ROOT:-${RESULTS_ROOT}/phase2a-bags}"
 OUTPUT_PATH="${OUTPUT_ROOT}/${OUTPUT_NAME}"
 LOG_ROOT="${OUTPUT_ROOT}/logs"
@@ -78,10 +83,26 @@ IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
 ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
 RECORD_OUTPUT="${CAPTURE_RECORD:-1}"
 DETECTION_TOPIC=""
-DETECTION_CANDIDATES=(
-  /detections_output
-  /rtdetr/detections_output
-)
+
+if [[ ${PIPELINE} == "yolov8" ]]; then
+  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
+  GRAPH_PACKAGE="isaac_ros_yolov8_std"
+  GRAPH_LAUNCH_FILE="yolov8_ort_std_image.launch.py"
+  GRAPH_NAMESPACE="${CAPTURE_NAMESPACE:-yolov8}"
+  DETECTION_CANDIDATES=(
+    /detections_output
+    "/${GRAPH_NAMESPACE}/detections_output"
+  )
+else
+  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx}"
+  GRAPH_PACKAGE="isaac_ros_rtdetr_std"
+  GRAPH_LAUNCH_FILE="rtdetr_ort_std_image.launch.py"
+  GRAPH_NAMESPACE="${CAPTURE_NAMESPACE:-rtdetr}"
+  DETECTION_CANDIDATES=(
+    /detections_output
+    /rtdetr/detections_output
+  )
+fi
 
 case "${EXECUTION_PROVIDER}" in
   migraphx | cpu) ;;
@@ -123,7 +144,13 @@ for value_name in \
 done
 
 if [[ ! -s ${MODEL_PATH} ]]; then
-  echo "ERROR: model is missing or empty: ${MODEL_PATH}" >&2
+  if [[ ${PIPELINE} == "yolov8" ]]; then
+    echo "YOLOv8 ONNX asset is missing:" >&2
+    echo "${MODEL_PATH}" >&2
+    echo "Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8." >&2
+  else
+    echo "ERROR: model is missing or empty: ${MODEL_PATH}" >&2
+  fi
   exit 1
 fi
 
@@ -330,7 +357,7 @@ wait_for_no_publishers() {
   echo "WARNING: publisher remains on ${topic} after capture cleanup." >&2
   ros2 topic info "${topic}" >&2 || true
   ps -eo pid=,ppid=,pgid=,stat=,args= \
-    | awk '/ros2 launch isaac_ros_rtdetr_std|component_container_mt|ros2 bag play/ {print}' \
+    | awk '/ros2 launch isaac_ros_rtdetr_std|ros2 launch isaac_ros_yolov8_std|component_container_mt|ros2 bag play/ {print}' \
     >&2 || true
   return 1
 }
@@ -410,28 +437,46 @@ done
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-LAUNCH_COMMAND=(
-  ros2 launch
-  isaac_ros_rtdetr_std
-  rtdetr_ort_std_image.launch.py
-  "model_file_path:=${MODEL_PATH}"
-  "image_topic:=${IMAGE_TOPIC}"
-  input_image_width:=1280
-  input_image_height:=720
-  # Match the NVIDIA Config C reference capture. With a 1280x720 source this
-  # makes orig_target_sizes [1280, 1280], as in the upstream RT-DETR node.
-  use_max_dim_for_orig_size:=true
-  "execution_provider:=${EXECUTION_PROVIDER}"
-  confidence_threshold:=0.6
-)
+if [[ ${PIPELINE} == "yolov8" ]]; then
+  LAUNCH_COMMAND=(
+    ros2 launch
+    "${GRAPH_PACKAGE}"
+    "${GRAPH_LAUNCH_FILE}"
+    "model_file_path:=${MODEL_PATH}"
+    "image_topic:=${IMAGE_TOPIC}"
+    "namespace:=${GRAPH_NAMESPACE}"
+    "execution_provider:=${EXECUTION_PROVIDER}"
+    "confidence_threshold:=0.25"
+    "nms_threshold:=0.45"
+  )
+else
+  LAUNCH_COMMAND=(
+    ros2 launch
+    "${GRAPH_PACKAGE}"
+    "${GRAPH_LAUNCH_FILE}"
+    "model_file_path:=${MODEL_PATH}"
+    "image_topic:=${IMAGE_TOPIC}"
+    input_image_width:=1280
+    input_image_height:=720
+    # Match the NVIDIA Config C reference capture. With a 1280x720 source this
+    # makes orig_target_sizes [1280, 1280], as in the upstream RT-DETR node.
+    use_max_dim_for_orig_size:=true
+    "execution_provider:=${EXECUTION_PROVIDER}"
+    confidence_threshold:=0.6
+  )
+fi
 if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   LAUNCH_COMMAND+=("ort_profile_prefix:=${ORT_PROFILE_PREFIX}")
 fi
 
 {
+  echo "pipeline=${PIPELINE}"
   echo "execution_provider=${EXECUTION_PROVIDER}"
   echo "input_bag=${INPUT_BAG}"
   echo "model_path=${MODEL_PATH}"
+  echo "graph_package=${GRAPH_PACKAGE}"
+  echo "graph_launch_file=${GRAPH_LAUNCH_FILE}"
+  echo "graph_namespace=${GRAPH_NAMESPACE}"
   echo "output_path=${OUTPUT_PATH}"
   echo "record_output=${RECORD_OUTPUT}"
   echo "ort_profile_prefix=${ORT_PROFILE_PREFIX}"

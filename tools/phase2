@@ -86,7 +86,7 @@ show_env() {
   if command -v ros2 >/dev/null 2>&1; then
     echo "ROS packages:"
     ros2 pkg list 2>/dev/null \
-      | grep -E '^(gpu_ros_managed_|isaac_ros_(onnx_inference|rtdetr_std))' \
+      | grep -E '^(gpu_ros_managed_|isaac_ros_(onnx_inference|rtdetr_std|yolov8_std))' \
       | sort || true
   fi
 }
@@ -136,8 +136,12 @@ main() {
       esac ;;
     assets)
       case "${2:-status}" in
-        status|verify) "${ASSET_HELPER}" "${2:-status}" ;;
-        *) echo "usage: phase2 assets {status|verify}" >&2; return 2 ;;
+        status|verify|import-yolov8|verify-yolov8)
+          "${ASSET_HELPER}" "${2:-status}" ;;
+        *)
+          echo "usage: phase2 assets {status|verify|import-yolov8|verify-yolov8}" >&2
+          return 2
+          ;;
       esac ;;
     cache)
       case "${2:-status}" in

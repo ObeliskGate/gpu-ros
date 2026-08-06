@@ -2,7 +2,7 @@
 <package format="3">
   <name>isaac_ros_yolov8_std</name>
   <version>0.1.0</version>
-  <description>YOLOv8 decoder node using standard ROS2 TensorList messages</description>
+  <description>YOLOv8 image encoder and decoder using standard ROS2 TensorList messages</description>
 
   <maintainer email="maintainer@example.com">Maintainer</maintainer>
   <license>Apache-2.0</license>
@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
+  <depend>sensor_msgs</depend>
   <depend>vision_msgs</depend>
   <depend>isaac_ros_tensor_list_interfaces</depend>
   <depend>libopencv-dev</depend>

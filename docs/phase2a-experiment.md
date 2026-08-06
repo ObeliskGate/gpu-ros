@@ -91,6 +91,35 @@ The canonical AMD paths are:
 /workspaces/ovg-assets/datasets/r2bdataset2024_v1/r2b_robotarm
 ~~~
 
+### Optional YOLOv8 asset
+
+The repository neither contains nor downloads YOLOv8 weights and never runs
+an Ultralytics export. A user must provide a local ONNX file and is
+responsible for its source, applicable license, and lawful use:
+
+~~~bash
+export OVG_YOLOV8_ONNX_SOURCE=/path/to/user-provided/yolov8s.onnx
+phase2 assets import-yolov8
+phase2 assets verify-yolov8
+~~~
+
+`phase2 assets` and the default `phase2 assets verify` manage and
+verify only the required RT-DETR/R2B assets; YOLOv8 is optional. Compatibility
+is identified by the recorded SHA-256
+`d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c` and the
+following contract: YOLOv8s, Ultralytics 8.4.67, COCO 80 classes, opset 17,
+static input `[1,3,640,640]` named `images`, and output `[1,84,8400]` named
+`output0` without built-in NMS. An export recipe cannot guarantee identical
+model bytes, so the SHA-256 check is authoritative.
+
+The standard YOLOv8 launch, canonical-model MIGraphX POL, AMD fixed-input
+capture, and AMD benchmark fail before graph startup when this asset is
+missing. The fixed-input runner retains its RT-DETR invocation and adds:
+
+~~~bash
+run_amd_phase2a_fixed_input_capture.sh yolov8 <output-name>
+~~~
+
 The NVIDIA and AMD asset layouts are intentionally different launcher
 contracts; they identify the same model and dataset content.
 
@@ -151,6 +180,8 @@ ORT_ENABLE_CUDA=OFF
 ORT_ENABLE_ROCM=OFF
 ORT_ENABLE_MIGRAPHX=ON
 BUILD_MIGRAPHX_POL_TEST=ON
+BUILD_NVIDIA_YOLOV8_POL_TEST=OFF
+BUILD_YOLOV8_MIGRAPHX_POL_TEST=OFF
 BUILD_TESTING=ON
 ~~~
 
@@ -190,6 +221,7 @@ colcon test \
     gpu_ros_managed_tensor_list \
     isaac_ros_onnx_inference \
     isaac_ros_rtdetr_std \
+    isaac_ros_yolov8_std \
     isaac_ros_detection_validation \
   --event-handlers console_direct+
 
@@ -228,7 +260,9 @@ ros2 run isaac_ros_detection_validation \
 
 The runner explicitly uses 1280x720, use_max_dim_for_orig_size=true, and
 confidence_threshold=0.6. It checks only /detections_output and
-/rtdetr/detections_output. Do not start a second graph, player, or recorder.
+/rtdetr/detections_output for RT-DETR; the YOLOv8 lane checks
+/detections_output and /yolov8/detections_output. Do not start a second graph,
+player, or recorder.
 
 ## Validation
 

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from pathlib import Path
+import os
 import subprocess
 
 
@@ -84,6 +85,22 @@ def test_amd_capture_runner_matches_nvidia_config_c_orig_target_size():
     assert 'input_image_width:=1280' in script
     assert 'input_image_height:=720' in script
     assert 'use_max_dim_for_orig_size:=true' in script
+
+
+def test_amd_yolov8_capture_fails_before_ros_when_asset_is_missing(tmp_path):
+    environment = os.environ.copy()
+    environment['OVG_ASSETS_ROOT'] = str(tmp_path / 'assets')
+    environment['CAPTURE_INPUT_BAG'] = str(tmp_path / 'missing-bag')
+    result = subprocess.run(
+        [str(AMD_SCRIPT_PATH), 'yolov8', 'missing-model'],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    assert result.returncode == 1
+    assert 'YOLOv8 ONNX asset is missing:' in result.stderr
+    assert 'Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8.' in result.stderr
 
 
 def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
