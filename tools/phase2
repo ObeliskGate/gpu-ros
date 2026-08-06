@@ -40,6 +40,10 @@ detect_gfx() {
 }
 
 verify_manifest_targets() {
+  if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+    verify_external_ort_targets
+    return
+  fi
   local expected=""
   if [[ -f /opt/ovg/image-manifest.json ]]; then
     expected="$(python3 - <<'PY'
@@ -61,6 +65,32 @@ PY
   done < <(tr ',' '\n' <<<"${actual}")
 }
 
+verify_external_ort_targets() {
+  local root="${OVG_ORT_ROOT%/}"
+  local build_info="${root}/build-info.txt"
+  [[ -f "${build_info}" ]] || {
+    echo "ERROR: external ORT build-info.txt is missing: ${build_info}" >&2
+    return 1
+  }
+
+  local expected
+  expected="$(awk -F= '$1 == "gpu_targets" {print $2; exit}' "${build_info}")"
+  [[ -n "${expected}" ]] || {
+    echo "ERROR: external ORT build-info.txt has no gpu_targets: ${build_info}" >&2
+    return 1
+  }
+
+  local actual="$(detect_gfx)"
+  local target
+  while IFS= read -r target; do
+    [[ -z "${target}" ]] && continue
+    tr ',;' '\n' <<<"${expected}" | grep -Fxq "${target}" || {
+      echo "ERROR: runtime gfx ${target} is not included in external ORT targets ${expected}" >&2
+      return 1
+    }
+  done < <(tr ',;' '\n' <<<"${actual}")
+}
+
 show_env() {
   source_setups
   local ort="${ONNXRUNTIME_LIBRARY:-/opt/onnxruntime/lib/libonnxruntime.so}"
@@ -72,6 +102,10 @@ show_env() {
   echo "/dev/dri: $([[ -d /dev/dri ]] && find /dev/dri -maxdepth 1 -name 'renderD*' -printf '%f ' || true)"
   echo "ONNXRUNTIME_ROOT: ${ONNXRUNTIME_ROOT:-unknown}"
   echo "OVG_ORT_ROOT: ${OVG_ORT_ROOT:-builtin /opt/onnxruntime}"
+  if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+    echo "external ORT fingerprint: $(cat "${OVG_ORT_ROOT%/}/.ovg-ort-fingerprint" 2>/dev/null || echo unknown)"
+    echo "external ORT GPU targets: $(awk -F= '$1 == "gpu_targets" {print $2; exit}' "${OVG_ORT_ROOT%/}/build-info.txt" 2>/dev/null || echo unknown)"
+  fi
   echo "OVG_WORKSPACE_FINGERPRINT: ${OVG_WORKSPACE_FINGERPRINT:-unknown}"
   echo "ORT library: ${ort} ($([[ -f "${ort}" ]] && echo present || echo missing))"
   echo "MIGraphX provider: $(find "$(dirname "${ort}")" -maxdepth 1 -name '*migraphx*.so*' -printf '%f ' 2>/dev/null || true)"
