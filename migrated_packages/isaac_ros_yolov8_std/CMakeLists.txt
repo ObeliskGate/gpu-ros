@@ -13,12 +13,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn)
 ament_auto_find_build_dependencies()
 
 ament_auto_add_library(yolov8_image_encoder_core SHARED src/yolov8_image_encoder.cpp)
 target_include_directories(yolov8_image_encoder_core PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(yolov8_image_encoder_core ${OpenCV_LIBRARIES})
+target_link_libraries(yolov8_image_encoder_core PUBLIC ${OpenCV_LIBRARIES})
 
 ament_auto_add_library(yolov8_image_encoder_node SHARED src/yolov8_image_encoder_node.cpp)
 target_link_libraries(yolov8_image_encoder_node yolov8_image_encoder_core)
@@ -27,7 +27,7 @@ rclcpp_components_register_nodes(yolov8_image_encoder_node
 
 ament_auto_add_library(yolov8_decoder_core SHARED src/yolov8_decoder.cpp)
 target_include_directories(yolov8_decoder_core PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(yolov8_decoder_core ${OpenCV_LIBRARIES})
+target_link_libraries(yolov8_decoder_core PUBLIC ${OpenCV_LIBRARIES})
 
 ament_auto_add_library(yolov8_decoder_node SHARED src/yolov8_decoder_node.cpp)
 target_link_libraries(yolov8_decoder_node yolov8_decoder_core)
