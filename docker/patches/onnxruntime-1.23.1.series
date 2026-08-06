@@ -1,0 +1,6 @@
+# Ordered patch set for external ONNX Runtime 1.23.1 MIGraphX builds.
+# Keep this file in repository order; the fingerprint includes this file and
+# every patch listed below.
+onnxruntime-1.23.1-migraphx-linux-unused-helper.patch
+onnxruntime-1.23.1-migraphx-enable-gridsample.patch
+onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch

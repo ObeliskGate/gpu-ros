@@ -23,6 +23,11 @@
 #include <utility>
 #include <vector>
 
+#include "gpu_ros_managed_core/detail/backend_ops.hpp"
+#ifdef GPU_ROS_MANAGED_CUDA
+#include "gpu_ros_managed_cuda/cuda_backend.hpp"
+#endif
+
 namespace nvidia::isaac_ros::onnx_inference
 {
 
@@ -47,22 +52,6 @@ OrtLoggingLevel GetOrtLoggingLevel()
           "ISAAC_ROS_ORT_LOG_LEVEL must be verbose, info, warning, error, or fatal");
 }
 
-size_t ElementCount(const std::vector<int64_t> & shape)
-{
-  size_t n = 1;
-  for (auto d : shape) {
-    if (d < 0) {
-      throw std::invalid_argument("Tensor shape contains a negative dimension");
-    }
-    const size_t dimension = static_cast<size_t>(d);
-    if (dimension != 0 && n > std::numeric_limits<size_t>::max() / dimension) {
-      throw std::overflow_error("Tensor element count overflows size_t");
-    }
-    n *= dimension;
-  }
-  return n;
-}
-
 size_t DtypeSize(ONNXTensorElementDataType dtype)
 {
   switch (dtype) {
@@ -76,40 +65,17 @@ size_t DtypeSize(ONNXTensorElementDataType dtype)
   }
 }
 
-size_t RequiredBytes(const TensorView & tensor)
+ONNXTensorElementDataType ToOnnxDtype(gpu_ros_managed::TensorDataType dtype)
 {
-  const size_t element_count = ElementCount(tensor.shape);
-  const size_t element_size = DtypeSize(tensor.dtype);
-  if (element_count > std::numeric_limits<size_t>::max() / element_size) {
-    throw std::overflow_error("Tensor byte size overflows size_t: " + tensor.name);
-  }
-  return element_count * element_size;
-}
-
-void ValidateTensorView(
-  const TensorView & tensor,
-  ExecutionProvider execution_provider,
-  int gpu_device_id)
-{
-  const size_t required_bytes = RequiredBytes(tensor);
-  if (tensor.byte_size < required_bytes) {
-    throw std::invalid_argument(
-            "Tensor '" + tensor.name + "' has " + std::to_string(tensor.byte_size) +
-            " bytes, but its shape and dtype require " + std::to_string(required_bytes));
-  }
-  if (required_bytes != 0 && tensor.data == nullptr) {
-    throw std::invalid_argument("Tensor '" + tensor.name + "' has a null data pointer");
-  }
-  if (tensor.memory_kind == TensorMemoryKind::kCudaDevice) {
-    if (execution_provider != ExecutionProvider::kCuda) {
-      throw std::invalid_argument("CUDA device input requires the CUDA execution provider");
-    }
-    if (tensor.device_id != gpu_device_id) {
+  switch (dtype) {
+    case gpu_ros_managed::TensorDataType::kFloat32:
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    case gpu_ros_managed::TensorDataType::kInt64:
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+    default:
       throw std::invalid_argument(
-              "Tensor '" + tensor.name + "' is on CUDA device " +
-              std::to_string(tensor.device_id) + ", but the session uses device " +
-              std::to_string(gpu_device_id));
-    }
+              "Unsupported managed input dtype " +
+              std::to_string(static_cast<int32_t>(dtype)));
   }
 }
 
@@ -217,31 +183,73 @@ std::string OnnxInferenceCore::EndProfiling()
   return profile_path ? profile_path.get() : std::string{};
 }
 
-std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
-  const std::vector<TensorView> & inputs,
-  TensorMemoryKind output_memory_kind)
+std::vector<OutputTensor> OnnxInferenceCore::RunInference(
+  gpu_ros_managed::ManagedTensorListView inputs,
+  OutputPlacement output_placement)
 {
-  if (output_memory_kind == TensorMemoryKind::kCudaDevice &&
+  if (output_placement == OutputPlacement::kDevice &&
     execution_provider_ != ExecutionProvider::kCuda)
   {
-    throw std::invalid_argument("CUDA device output requires the CUDA execution provider");
+    throw std::invalid_argument(
+            "Managed device output is currently implemented only for the CUDA EP; "
+            "MIGraphX external HIP output remains runtime-probe gated");
   }
 
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char *> input_name_ptrs;
-  ort_inputs.reserve(inputs.size());
-  input_name_ptrs.reserve(inputs.size());
+  std::vector<gpu_ros_managed::BlockingReadyLease> leases;
+  std::vector<std::vector<uint8_t>> staged_inputs;
+  ort_inputs.reserve(inputs.tensors().size());
+  input_name_ptrs.reserve(inputs.tensors().size());
+  leases.reserve(inputs.tensors().size());
+  staged_inputs.reserve(inputs.tensors().size());
 
-  for (const auto & t : inputs) {
-    ValidateTensorView(t, execution_provider_, gpu_device_id_);
-    input_name_ptrs.push_back(t.name.c_str());
-    auto memory_info = t.memory_kind == TensorMemoryKind::kCudaDevice ?
-      Ort::MemoryInfo("Cuda", OrtArenaAllocator, t.device_id, OrtMemTypeDefault) :
-      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  for (const auto & tensor : inputs.tensors()) {
+    input_name_ptrs.push_back(tensor.name().c_str());
+    const void * data = nullptr;
+    Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(
+      OrtArenaAllocator, OrtMemTypeDefault);
+    if (const auto * host =
+      std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage()))
+    {
+      data = host->data();
+    } else {
+      const auto & buffer =
+        std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
+      const auto device = buffer->device_id();
+      const bool use_cuda_device_input =
+        device.backend == gpu_ros_managed::BackendKind::kCuda &&
+        execution_provider_ == ExecutionProvider::kCuda;
+      const bool use_hip_device_input =
+        device.backend == gpu_ros_managed::BackendKind::kHip &&
+        (execution_provider_ == ExecutionProvider::kMigraphx ||
+        execution_provider_ == ExecutionProvider::kRocm);
+      if (device.ordinal != gpu_device_id_) {
+        throw std::invalid_argument(
+                "Tensor '" + tensor.name() + "' device does not match the ORT session");
+      }
+      if (use_cuda_device_input) {
+        leases.push_back(buffer->get_blocking_ready_lease());
+        data = leases.back().data();
+        memory_info = Ort::MemoryInfo(
+          "Cuda", OrtArenaAllocator, device.ordinal, OrtMemTypeDefault);
+      } else if (use_hip_device_input) {
+        // ORT 1.23.1 MIGraphX external HIP pointer support is not assumed.
+        // Keep this explicit staging inside the ORT adapter.
+        staged_inputs.emplace_back(tensor.byte_size());
+        gpu_ros_managed::detail::DeviceBufferFactory::copy_to_host_blocking(
+          *buffer, staged_inputs.back().data(), staged_inputs.back().size());
+        data = staged_inputs.back().data();
+      } else {
+        throw std::invalid_argument(
+                "Managed device input backend does not match the configured execution provider");
+      }
+    }
+    const auto dtype = ToOnnxDtype(tensor.data_type());
     ort_inputs.push_back(
       Ort::Value::CreateTensor(
-        memory_info, const_cast<void *>(t.data), RequiredBytes(t),
-        t.shape.data(), t.shape.size(), t.dtype));
+        memory_info, const_cast<void *>(data), tensor.byte_size(),
+        tensor.shape().data(), tensor.shape().size(), dtype));
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -251,7 +259,7 @@ std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
   }
 
   std::vector<Ort::Value> ort_outputs;
-  if (output_memory_kind == TensorMemoryKind::kCudaDevice) {
+  if (output_placement == OutputPlacement::kDevice) {
     Ort::MemoryInfo cuda_memory_info(
       "Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault);
     Ort::IoBinding binding(*session_);
@@ -282,11 +290,11 @@ std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
     throw std::runtime_error("ONNX Runtime returned an unexpected number of outputs");
   }
 
-  std::vector<OwnedTensor> results;
+  std::vector<OutputTensor> results;
   results.reserve(ort_outputs.size());
   for (size_t i = 0; i < ort_outputs.size(); ++i) {
     auto type_info = ort_outputs[i].GetTensorTypeAndShapeInfo();
-    OwnedTensor tensor;
+    OutputTensor tensor;
     tensor.name = output_names_[i];
     tensor.dtype = type_info.GetElementType();
     tensor.shape = type_info.GetShape();
@@ -297,7 +305,7 @@ std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
     }
     const size_t byte_count = element_count * element_size;
 
-    if (output_memory_kind == TensorMemoryKind::kCudaDevice) {
+    if (output_placement == OutputPlacement::kDevice) {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
       if (memory_info.GetAllocatorName() != "Cuda" ||
         memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
@@ -308,8 +316,14 @@ std::vector<OwnedTensor> OnnxInferenceCore::RunInference(
                 "' was not allocated on the requested CUDA device");
       }
       auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
-      tensor.storage = DeviceTensorBuffer{
-        owner->GetTensorMutableRawData(), byte_count, gpu_device_id_, std::move(owner)};
+#ifdef GPU_ROS_MANAGED_CUDA
+      tensor.storage = gpu_ros_managed::cuda::adopt_synchronized_external(
+        owner->GetTensorMutableRawData(), byte_count, gpu_device_id_,
+        std::static_pointer_cast<void>(owner));
+#else
+      throw std::runtime_error(
+              "CUDA device output requested but gpu_ros_managed_cuda is unavailable");
+#endif
     } else {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
       if (memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_CPU) {

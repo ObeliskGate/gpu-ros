@@ -48,3 +48,51 @@ For peak-throughput benchmark sweeps, different graph configurations may emit
 different numbers of frames before the benchmark stops. Use
 `--ignore-unpaired-frames` for that case. Leave it off for strict cross-machine
 validation where both runs should cover the same input frames.
+
+## NVIDIA fixed-input capture
+
+The NVIDIA Phase 2B C/Managed comparison has a single-terminal capture runner.
+It starts the selected graph, waits for ROS discovery, records
+`/detections_output`, plays the complete `r2b_robotarm` input bag, shuts down
+cleanly, and requires at least 20 recorded messages. Existing output bags and
+logs are never overwritten.
+
+From the Isaac ROS workspace root:
+
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-c \
+  rtdetr_config_c_20260801
+
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  rtdetr-managed \
+  rtdetr_managed_20260801
+```
+
+Set `CAPTURE_PLAYBACK_RATE` to change the default `0.25` playback rate. Set
+`CAPTURE_DRAIN_SECONDS` or `CAPTURE_MIN_MESSAGES` only when diagnosing a run.
+
+The runner also accepts `yolov8-c` and `yolov8-managed` lanes.
+
+## NVIDIA YOLOv8 transport audit
+
+The transport audit runs Config C and Managed against the same fixed input and
+keeps the bags, bounded ONNX Runtime profiles, full Nsight Systems reports and
+machine-readable comparisons in one directory. It checks all of the following:
+
+- NITROS/Managed payload-pointer identity and CUDA I/O Binding tests pass.
+- C and M assign the same ONNX nodes to the same execution providers.
+- C and M expose the same CUDA kernel-name set.
+- M introduces no new CUDA memcpy signature or tensor-payload copy rate.
+
+Run it from the Isaac ROS workspace root after building and sourcing the
+workspace:
+
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_yolov8_transport_audit.sh \
+  yolov8_transport_audit_20260801
+```
+
+The official YOLOv8 decoder's device-to-host output copy is expected in both
+lanes. The audit reports that copy separately; its presence does not imply a
+Managed bridge payload copy.

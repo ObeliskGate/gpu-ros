@@ -24,6 +24,7 @@ std::unique_ptr<ITensorListIO> CreateStdTensorListIO(rclcpp::Node * node);
 #ifdef BUILD_NITROS_TRANSPORT
 std::unique_ptr<ITensorListIO> CreateNitrosTensorListIO(rclcpp::Node * node);
 #endif
+std::unique_ptr<ITensorListIO> CreateManagedTensorListIO(rclcpp::Node * node);
 
 std::unique_ptr<ITensorListIO> CreateTensorListIO(
   rclcpp::Node * node, const std::string & transport)
@@ -38,6 +39,9 @@ std::unique_ptr<ITensorListIO> CreateTensorListIO(
     throw std::runtime_error(
             "transport=nitros requested but built without BUILD_NITROS_TRANSPORT.");
 #endif
+  }
+  if (transport == "managed") {
+    return CreateManagedTensorListIO(node);
   }
   throw std::invalid_argument("Unknown transport: " + transport);
 }

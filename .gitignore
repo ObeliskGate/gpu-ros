@@ -13,6 +13,7 @@ __pycache__/
 /install/
 /log/
 /third_party/
+/.ovg/
 
 # colcon artifacts accidentally created under benchmark_results
 /migrated_packages/benchmark_results/build/

@@ -5,11 +5,15 @@ find_package(ament_cmake REQUIRED)
 
 install(PROGRAMS
   scripts/compare_detection2d_bags.py
+  scripts/run_amd_phase2a_fixed_input_capture.sh
+  scripts/run_nvidia_fixed_input_capture.sh
+  scripts/run_nvidia_yolov8_transport_audit.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_capture_runner test/test_capture_runner.py)
   ament_add_pytest_test(test_compare_detection2d_bags test/test_compare_detection2d_bags.py)
 endif()
 

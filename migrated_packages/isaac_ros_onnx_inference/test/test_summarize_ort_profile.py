@@ -86,3 +86,64 @@ def test_ignores_non_provider_events(tmp_path):
 
     assert report['provider_kernel_events_found'] is False
     assert report['providers'] == {}
+
+
+def test_provider_layout_comparison_ignores_event_counts(tmp_path):
+    """Equivalent provider placement matches even when sample counts differ."""
+    first = tmp_path / 'first.json'
+    second = tmp_path / 'second.json'
+    cuda_event = {
+        'cat': 'Node',
+        'name': 'conv_kernel_time',
+        'dur': 3.0,
+        'args': {
+            'provider': 'CUDAExecutionProvider',
+            'op_name': 'Conv',
+        },
+    }
+    write_profile(first, [cuda_event])
+    write_profile(second, [cuda_event, cuda_event])
+
+    comparison = PROFILE_SUMMARY.compare_provider_layouts([
+        PROFILE_SUMMARY.summarize_profile(first),
+        PROFILE_SUMMARY.summarize_profile(second),
+    ])
+
+    assert comparison['match'] is True
+    assert comparison['differences'] == []
+
+
+def test_provider_layout_comparison_reports_extra_cpu_node(tmp_path):
+    """A candidate-only CPU fallback node makes the layouts differ."""
+    first = tmp_path / 'first.json'
+    second = tmp_path / 'second.json'
+    cuda_event = {
+        'cat': 'Node',
+        'name': 'conv_kernel_time',
+        'dur': 3.0,
+        'args': {
+            'provider': 'CUDAExecutionProvider',
+            'op_name': 'Conv',
+        },
+    }
+    cpu_event = {
+        'cat': 'Node',
+        'name': 'shape_kernel_time',
+        'dur': 1.0,
+        'args': {
+            'provider': 'CPUExecutionProvider',
+            'op_name': 'Shape',
+        },
+    }
+    write_profile(first, [cuda_event])
+    write_profile(second, [cuda_event, cpu_event])
+
+    comparison = PROFILE_SUMMARY.compare_provider_layouts([
+        PROFILE_SUMMARY.summarize_profile(first),
+        PROFILE_SUMMARY.summarize_profile(second),
+    ])
+
+    assert comparison['match'] is False
+    assert comparison['differences'][0]['extra_in_candidate'] == {
+        'CPUExecutionProvider': ['shape (Shape)'],
+    }

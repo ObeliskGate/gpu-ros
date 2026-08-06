@@ -39,6 +39,10 @@ def parse_args():
         action='store_true',
         help='Fail if CPUExecutionProvider kernel events are present')
     parser.add_argument(
+        '--require-same-provider-layout',
+        action='store_true',
+        help='Fail unless every profile has the same provider-to-node mapping')
+    parser.add_argument(
         '--max-node-names',
         type=int,
         default=50,
@@ -121,6 +125,49 @@ def print_report(report, max_node_names):
         print(f'    ... {omitted} more nodes omitted')
 
 
+def provider_layout(report):
+    """Return provider-to-node mapping without timing or event counts."""
+    return {
+        provider: data['unique_nodes']
+        for provider, data in report['providers'].items()
+    }
+
+
+def compare_provider_layouts(reports):
+    """Compare all provider-to-node mappings against the first profile."""
+    if len(reports) < 2:
+        return {
+            'match': True,
+            'reference_profile': reports[0]['path'] if reports else None,
+            'differences': [],
+        }
+
+    reference = provider_layout(reports[0])
+    differences = []
+    for report in reports[1:]:
+        candidate = provider_layout(report)
+        if candidate == reference:
+            continue
+        differences.append({
+            'profile': report['path'],
+            'missing_from_candidate': {
+                provider: sorted(set(nodes) - set(candidate.get(provider, [])))
+                for provider, nodes in reference.items()
+                if set(nodes) - set(candidate.get(provider, []))
+            },
+            'extra_in_candidate': {
+                provider: sorted(set(nodes) - set(reference.get(provider, [])))
+                for provider, nodes in candidate.items()
+                if set(nodes) - set(reference.get(provider, []))
+            },
+        })
+    return {
+        'match': not differences,
+        'reference_profile': reports[0]['path'],
+        'differences': differences,
+    }
+
+
 def main():
     """Run the provider-assignment report."""
     args = parse_args()
@@ -151,11 +198,27 @@ def main():
                 file=sys.stderr)
             expected_provider_missing = True
 
+    layout_comparison = compare_provider_layouts(reports)
+    if args.require_same_provider_layout:
+        if len(reports) < 2:
+            print(
+                'ERROR: --require-same-provider-layout requires at least two valid profiles',
+                file=sys.stderr)
+        elif not layout_comparison['match']:
+            print('ERROR: provider-to-node layouts differ', file=sys.stderr)
+
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
-        args.output_json.write_text(json.dumps({'profiles': reports}, indent=2) + '\n')
+        args.output_json.write_text(json.dumps({
+            'profiles': reports,
+            'provider_layout_comparison': layout_comparison,
+        }, indent=2) + '\n')
 
-    if invalid_profile or expected_provider_missing:
+    layout_requirement_failed = (
+        args.require_same_provider_layout and
+        (len(reports) < 2 or not layout_comparison['match'])
+    )
+    if invalid_profile or expected_provider_missing or layout_requirement_failed:
         return 2
     if args.require_no_cpu_nodes and cpu_nodes_found:
         return 1

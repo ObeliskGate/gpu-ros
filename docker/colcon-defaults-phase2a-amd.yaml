@@ -1,16 +1,30 @@
 build:
   base-paths:
-    - third_party/isaac_ros_common/isaac_ros_tensor_list_interfaces
+    - src/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu_ros_managed/gpu_ros_managed_cuda
+    - src/gpu_ros_managed/gpu_ros_managed_hip
+    - src/gpu_ros_managed/gpu_ros_managed_ros
+    - migrated_packages/isaac_ros_detection_validation
   cmake-args:
+    - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
     - -DBUILD_NITROS_TRANSPORT=OFF
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=ON
-    - -DONNXRUNTIME_ROOT=/opt/onnxruntime
     - -DBUILD_MIGRAPHX_POL_TEST=ON
+    - -DBUILD_NVIDIA_YOLOV8_POL_TEST=OFF
+    - -DBUILD_YOLOV8_MIGRAPHX_POL_TEST=OFF
     - -DBUILD_TESTING=ON
   symlink-install: true
 test:
   base-paths:
+    - src/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu_ros_managed/gpu_ros_managed_hip
+    - src/gpu_ros_managed/gpu_ros_managed_ros
+    - migrated_packages/isaac_ros_detection_validation
   packages-select:
+    - gpu_ros_managed_core
+    - gpu_ros_managed_hip
+    - gpu_ros_managed_ros
+    - isaac_ros_detection_validation

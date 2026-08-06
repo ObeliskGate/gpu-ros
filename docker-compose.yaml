@@ -8,6 +8,7 @@ services:
       - .env
     environment:
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
+      COLCON_DEFAULTS_FILE: /workspaces/isaac_ros-dev/src/amd_ros_object_detection/docker/colcon-defaults-phase2b-nvidia.yaml
     deploy:
       resources:
         reservations:
@@ -15,6 +16,7 @@ services:
             - capabilities: [gpu]
     volumes:
       - .:/workspaces/isaac_ros-dev/src/amd_ros_object_detection
+      - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/isaac_ros-dev/src/gpu_ros_managed:ro
       - assets:/workspaces/isaac_ros-dev/assets
     working_dir: /workspaces/isaac_ros-dev
 

@@ -126,7 +126,8 @@ def generate_launch_description():
         parameters=[{
             'image_width': input_image_width,
             'image_height': input_image_height,
-            # Match baseline: default use_max_dim_for_orig_size=true ([640,640]).
+            # Match baseline: default use_max_dim_for_orig_size=true, producing
+            # a square [max(input width, input height)] target size.
         }],
         remappings=[('encoded_tensor', 'reshaped_tensor')]
     )

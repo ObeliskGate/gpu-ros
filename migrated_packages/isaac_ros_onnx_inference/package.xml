@@ -13,6 +13,16 @@
   <depend>rclcpp_components</depend>
   <depend>std_msgs</depend>
   <depend>isaac_ros_tensor_list_interfaces</depend>
+  <depend>gpu_ros_managed_core</depend>
+  <depend>gpu_ros_managed_ros</depend>
+  <depend>gpu_ros_managed_tensor_list</depend>
+  <build_depend>gpu_ros_managed_cuda</build_depend>
+
+  <exec_depend>isaac_ros_image_proc</exec_depend>
+  <exec_depend>isaac_ros_tensor_proc</exec_depend>
+  <exec_depend>isaac_ros_yolov8</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

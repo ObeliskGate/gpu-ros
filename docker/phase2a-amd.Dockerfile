@@ -19,12 +19,14 @@ FROM rocm-migraphx AS onnxruntime-builder
 
 ARG ORT_VERSION=1.23.1
 ARG ORT_BUILD_JOBS=16
-ARG AMD_GPU_TARGETS=gfx942
+ARG AMD_GPU_TARGETS
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
+    libgmock-dev \
+    libgtest-dev \
     ninja-build \
     patch \
     python3 \
@@ -52,7 +54,15 @@ COPY docker/patches/onnxruntime-1.23.1-migraphx-enable-gridsample.patch /tmp/
 RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch \
     && git apply /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch
 
-RUN ./build.sh \
+# MIGraphX 2.14 can lose int64 division truncation while converting unsupported
+# GPU pointwise types through float. Keep only int64 Div on CPU so RT-DETR box
+# selection remains correct while the surrounding graph stays on MIGraphX.
+COPY docker/patches/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch /tmp/
+RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch \
+    && git apply /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch
+
+RUN CMAKE_TARGETS="$(printf '%s' "${AMD_GPU_TARGETS}" | tr ',' ';')" \
+    && ./build.sh \
       --config Release \
       --parallel "${ORT_BUILD_JOBS}" \
       --build_shared_lib \
@@ -61,8 +71,8 @@ RUN ./build.sh \
       --use_migraphx \
       --migraphx_home /opt/rocm \
       --cmake_extra_defines \
-        GPU_TARGETS="${AMD_GPU_TARGETS}" \
-        CMAKE_HIP_ARCHITECTURES="${AMD_GPU_TARGETS}"
+        GPU_TARGETS="${CMAKE_TARGETS}" \
+        CMAKE_HIP_ARCHITECTURES="${CMAKE_TARGETS}"
 
 # ORT does not publish a standalone C++ MIGraphX archive. Assemble the same
 # include/lib layout consumed by the ROS package from the source build.
@@ -85,6 +95,7 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV ROS_DISTRO=${ROS_DISTRO}
 ENV ORT_VERSION=${ORT_VERSION}
+ENV OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
 ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
 ENV ONNXRUNTIME_INCLUDE_DIR=/opt/onnxruntime/include
 ENV ONNXRUNTIME_LIBRARY=/opt/onnxruntime/lib/libonnxruntime.so
@@ -100,10 +111,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lsb-release \
     software-properties-common \
     sudo \
+    unzip \
     wget \
     && locale-gen en_US en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
+# Keep the NGC client in the runtime image so asset preparation is a single
+# idempotent container command. Authentication is supplied at runtime.
 COPY --from=onnxruntime-builder /opt/onnxruntime /opt/onnxruntime
 RUN echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf \
     && ldconfig \
@@ -134,6 +148,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-ament-cmake-auto \
     ros-${ROS_DISTRO}-ament-cmake-gtest \
     ros-${ROS_DISTRO}-ament-cmake-python \
+    ros-${ROS_DISTRO}-ament-cmake-pytest \
     ros-${ROS_DISTRO}-ament-lint-auto \
     ros-${ROS_DISTRO}-ament-lint-common \
     ros-${ROS_DISTRO}-cv-bridge \
@@ -159,16 +174,16 @@ RUN rosdep update --rosdistro ${ROS_DISTRO}
 
 FROM ros-runtime-base AS ros2-benchmark-builder
 
-ARG ROS2_BENCHMARK_REF=v4.4-0
+ARG ROS2_BENCHMARK_REF=v4.5-0
 
 WORKDIR /opt/src
 RUN git clone --branch "${ROS2_BENCHMARK_REF}" --depth 1 \
       https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark.git
 
-COPY docker/patches/ros2-benchmark-v4.4-standalone.patch /tmp/
+COPY docker/patches/ros2-benchmark-v4.5-standalone.patch /tmp/
 WORKDIR /opt/src/ros2_benchmark
-RUN git apply --check /tmp/ros2-benchmark-v4.4-standalone.patch \
-    && git apply /tmp/ros2-benchmark-v4.4-standalone.patch
+RUN git apply --check /tmp/ros2-benchmark-v4.5-standalone.patch \
+    && git apply /tmp/ros2-benchmark-v4.5-standalone.patch
 
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon --log-base /tmp/ros2_benchmark_log build \
@@ -187,9 +202,37 @@ FROM ros-runtime-base AS runtime
 
 COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
 
-COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
-RUN chmod +x /usr/local/bin/phase2a-amd-entrypoint.sh
+# The runtime is also the external ONNX Runtime development environment.  Keep
+# the build toolchain needed by tools/build-phase2a-external-ort.sh in the
+# final image so that source, patches, build trees and installs can remain on
+# the host/SIF bind mounts rather than being hidden in an image layer.
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgmock-dev \
+    libgtest-dev \
+    ninja-build \
+    patch \
+    python3-dev \
+    python3-packaging \
+    python3-setuptools \
+    python3-wheel \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG AMD_BASE_IMAGE
+ARG AMD_GPU_TARGETS
+ARG ORT_VERSION=1.23.1
+ARG ROS_DISTRO=jazzy
+ARG ROS2_BENCHMARK_REF=v4.5-0
+RUN mkdir -p /opt/ovg \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
+      "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
+      "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
+      > /opt/ovg/image-manifest.json
+
+COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2-amd-entrypoint.sh
+RUN chmod +x /usr/local/bin/phase2-amd-entrypoint.sh \
+    && ln -s phase2-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
 
 WORKDIR /workspaces/amd_ros_object_detection
-ENTRYPOINT ["/usr/local/bin/phase2a-amd-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/phase2-amd-entrypoint.sh"]
 CMD ["bash"]

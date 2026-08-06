@@ -4,6 +4,10 @@ Phase 1 is complete at the implementation and detection-output validation
 levels. RT-DETR and YOLOv8 run end to end on the NVIDIA A100 with TensorRT or
 ONNX Runtime and with the NITROS or standard ROS 2 pipeline variants.
 
+These historical results were collected with Isaac ROS 4.4. The active source
+and container pins have since moved to 4.5; no number below should be presented
+as a 4.5 result without a new run.
+
 The final performance runs used an A100-SXM4-40GB, a Release build, the same
 1280x720 input dataset, a 640x640 network resolution, and dataset hash
 `8eee68848ee1a95e21b1cd44d5d6ba71`. The machine-readable values are in
@@ -27,9 +31,10 @@ FPS: the implied period increased by about 0.21 ms for A to B and 1.46 ms for C
 to D. At fixed 60 Hz, the last-frame transport penalties were much closer:
 5.58 ms for A to B and 4.77 ms for C to D.
 
-This is not contradictory. B performs its host-to-device copy in a separate
-bridge component, so the multithreaded pipeline can overlap that stage with
-work on other frames. D asks ORT to consume host input and produce host output;
+The B configuration performs its host-to-device copy in a separate bridge
+component, so the multithreaded pipeline can overlap that stage with work on
+other frames. The D configuration asks ORT to consume host input and produce
+host output;
 those transfers and synchronization are part of the inference callback's
 critical path. Pipeline throughput is controlled by the slowest stage rather
 than the sum of every component's wall time.
@@ -80,10 +85,6 @@ The verbose CUDA EP audit assigned 1,055 RT-DETR nodes to CUDA and 493 nodes to
 CPU. The CPU nodes were ORT CPU-preferred optimization, shape, and bookkeeping
 placements rather than evidence of whole-model fallback. Node count is not a
 measure of compute share.
-
-On AMD, MIGraphX claimed one fused RT-DETR subgraph and no CPU fallback was
-observed. This difference reflects provider partitioning policy. It is not, by
-itself, an explanation for the CUDA-versus-MIGraphX performance difference.
 
 Provider auditing remains separate from formal benchmarking. ORT profiling and
 bridge timing are opt-in and disabled in the final benchmark graphs.

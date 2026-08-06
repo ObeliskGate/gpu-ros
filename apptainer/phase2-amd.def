@@ -1,0 +1,20 @@
+# The input is the Docker `save` archive, not a registry reference.  The
+# docker-archive bootstrap agent keeps the SIF build entirely offline.
+Bootstrap: docker-archive
+From: {{ OVG_AMD_IMAGE_URI }}
+
+# This definition is for a build machine that can convert the validated OCI
+# runtime image into a SIF.  HPC nodes consume the resulting SIF; they do not
+# execute an Apptainer build and do not need sudo, fakeroot, or Docker.
+
+%environment
+    export OVG_WORKSPACE_ROOT=/workspaces/amd_ros_object_detection
+    export OVG_ASSETS_ROOT=/workspaces/ovg-assets
+    export OVG_CACHE_ROOT=/workspaces/ovg-cache
+    export OVG_RESULTS_ROOT=/workspaces/ovg-results
+    export OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
+    export ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT=/workspaces/ovg-assets
+    export PATH=/workspaces/amd_ros_object_detection/tools:$PATH
+
+%runscript
+    exec /usr/local/bin/phase2-amd-entrypoint.sh "$@"

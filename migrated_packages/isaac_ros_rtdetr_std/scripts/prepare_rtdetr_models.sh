@@ -10,7 +10,7 @@
 # GPUs, since TRT engines are not portable across architectures.
 set -euo pipefail
 
-ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/isaac_ros-dev/assets}"
+ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-${OVG_ASSETS_ROOT:-/workspaces/isaac_ros-dev/assets}}"
 MODEL_DIR="${ASSETS_ROOT}/models/sdetr"
 FP32_ONNX="${MODEL_DIR}/sdetr_grasp.onnx"
 FP16_ONNX="${MODEL_DIR}/sdetr_grasp_fp16.onnx"

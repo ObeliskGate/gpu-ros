@@ -48,20 +48,18 @@ public:
       [this](const TensorListMsg::SharedPtr msg) {OnMsg(msg);});
   }
 
-  TensorMemoryKind OutputMemoryKind() const override
+  OutputPlacement output_placement() const noexcept override
   {
-    return TensorMemoryKind::kHost;
+    return OutputPlacement::kHost;
   }
 
-  void Publish(
-    std::vector<OwnedTensor> tensors,
-    const std_msgs::msg::Header & header) override
+  void Publish(TensorListOutput && output) override
   {
     auto loaned_message = pub_->borrow_loaned_message();
     auto & msg = loaned_message.get();
-    msg.header = header;
-    msg.tensors.reserve(tensors.size());
-    for (auto & tensor : tensors) {
+    msg.header = std::move(output.header);
+    msg.tensors.reserve(output.tensors.size());
+    for (auto & tensor : output.tensors) {
       auto * host_data = std::get_if<std::vector<uint8_t>>(&tensor.storage);
       if (host_data == nullptr) {
         throw std::runtime_error("StdTensorListIO received a device-memory output tensor");
@@ -71,6 +69,9 @@ public:
       t.data_type = OnnxToGxfDtype(tensor.dtype);
       t.shape.rank = static_cast<int32_t>(tensor.shape.size());
       t.shape.dims.assign(tensor.shape.begin(), tensor.shape.end());
+      t.strides = gpu_ros_managed::contiguous_strides(
+        tensor.shape,
+        static_cast<gpu_ros_managed::TensorDataType>(OnnxToGxfDtype(tensor.dtype)));
       t.data = std::move(*host_data);
       msg.tensors.push_back(std::move(t));
     }
@@ -80,19 +81,21 @@ public:
 private:
   void OnMsg(const TensorListMsg::SharedPtr msg)
   {
-    std::vector<TensorView> inputs;
+    std::vector<gpu_ros_managed::ManagedTensor> inputs;
     inputs.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
-      TensorView view;
-      view.name = t.name;
-      view.dtype = GxfToOnnxDtype(t.data_type);
-      view.shape.assign(t.shape.dims.begin(), t.shape.dims.end());
-      view.data = t.data.data();
-      view.byte_size = t.data.size();
-      view.memory_kind = TensorMemoryKind::kHost;
-      inputs.push_back(std::move(view));
+      std::vector<int64_t> shape(t.shape.dims.begin(), t.shape.dims.end());
+      if (t.shape.rank != shape.size()) {
+        throw std::invalid_argument("StdTensorListIO tensor rank does not match dims");
+      }
+      inputs.push_back(gpu_ros_managed::ManagedTensor::from_host_external(
+          t.name, static_cast<gpu_ros_managed::TensorDataType>(t.data_type),
+          std::move(shape), std::static_pointer_cast<const void>(msg),
+          t.data.data(), t.data.size(), t.strides));
     }
-    callback_(inputs, msg->header);
+    auto list = std::make_shared<gpu_ros_managed::ManagedTensorList>(
+      msg->header, std::move(inputs));
+    callback_(gpu_ros_managed::ManagedTensorListView(std::move(list)));
   }
 
   rclcpp::Node * node_;

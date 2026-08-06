@@ -14,6 +14,7 @@
 
 #include "isaac_ros_onnx_inference/onnx_inference_node.hpp"
 
+#include <cstdint>
 #include <exception>
 #include <memory>
 #include <stdexcept>
@@ -36,9 +37,20 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<int>("gpu_device_id", 0);
   const std::string ort_profile_prefix =
     declare_parameter<std::string>("ort_profile_prefix", "");
+  const int64_t ort_profile_frames =
+    declare_parameter<int64_t>("ort_profile_frames", 0);
   const std::string transport =
     declare_parameter<std::string>("transport", "std");
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
+
+  if (ort_profile_frames < 0) {
+    throw std::invalid_argument("ort_profile_frames must be non-negative");
+  }
+  if (ort_profile_frames > 0 && ort_profile_prefix.empty()) {
+    throw std::invalid_argument(
+            "ort_profile_frames requires a non-empty ort_profile_prefix");
+  }
+  ort_profile_frames_ = static_cast<size_t>(ort_profile_frames);
 
   if (transport == "nitros" && execution_provider != ExecutionProvider::kCuda) {
     throw std::invalid_argument("transport=nitros requires execution_provider=cuda");
@@ -46,8 +58,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
   io_ = CreateTensorListIO(this, transport);
   io_->Subscribe(
-    [this](const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header) {
-      OnTensors(inputs, header);
+    [this](gpu_ros_managed::ManagedTensorListView inputs) {
+      OnTensors(std::move(inputs));
     });
 
   if (model_file_path.empty()) {
@@ -82,26 +94,39 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
 OnnxInferenceNode::~OnnxInferenceNode()
 {
+  FinalizeOrtProfile("shutdown");
+}
+
+void OnnxInferenceNode::FinalizeOrtProfile(const char * reason) noexcept
+{
   if (!core_ || !core_->IsProfilingEnabled()) {
     return;
   }
 
   try {
     const std::string profile_path = core_->EndProfiling();
-    RCLCPP_INFO(get_logger(), "ONNX Runtime profile written to '%s'.", profile_path.c_str());
+    RCLCPP_INFO(
+      get_logger(), "ONNX Runtime profile written to '%s' after %zu frames (%s).",
+      profile_path.c_str(), inference_count_, reason);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "Failed to finalize ONNX Runtime profile: %s", e.what());
   }
 }
 
-void OnnxInferenceNode::OnTensors(
-  const std::vector<TensorView> & inputs, const std_msgs::msg::Header & header)
+void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorListView inputs)
 {
   if (!core_) {
     RCLCPP_WARN_ONCE(get_logger(), "Received tensor but inference core is not initialized.");
     return;
   }
-  io_->Publish(core_->RunInference(inputs, io_->OutputMemoryKind()), header);
+  TensorListOutput output;
+  output.header = inputs.header();
+  output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+  ++inference_count_;
+  if (ort_profile_frames_ > 0 && inference_count_ >= ort_profile_frames_) {
+    FinalizeOrtProfile("configured frame limit");
+  }
+  io_->Publish(std::move(output));
 }
 
 }  // namespace nvidia::isaac_ros::onnx_inference

@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/isaac/ros:isaac_ros_28556f8bc78a98822bd08b2d7c6fcf9b-amd64
+FROM nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64
 
 # 1. Tooling needed to fetch the NGC CLI (rarely changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
