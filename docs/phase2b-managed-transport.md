@@ -1,5 +1,10 @@
 # Phase 2B: Managed Device TensorList Transport
 
+Phase 2A is complete for the AMD RT-DETR and YOLOv8 standard ROS 2 paths.
+Those paths are the reference for Phase 2B benchmark and correctness
+comparisons. Phase 2B must not make either Phase 2A path
+unavailable or require managed transport for standard ROS 2 operation.
+
 ## Ownership and scope
 
 The reusable transport and ownership layer lives in the required sibling

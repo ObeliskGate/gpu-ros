@@ -63,8 +63,8 @@ launch_test \
   src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_transport_probe.py
 ~~~
 
-The first A_fp32/B_fp32 run may create /tmp/sdetr_grasp_fp32.plan. This is a
-temporary TensorRT artifact and is not a result archive.
+The first A_fp32/B_fp32 run may create /tmp/sdetr_grasp_fp32.plan. That file is
+a temporary TensorRT artifact, not a result archive.
 
 ## Configuration C device boundary
 

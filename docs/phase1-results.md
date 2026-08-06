@@ -31,9 +31,10 @@ FPS: the implied period increased by about 0.21 ms for A to B and 1.46 ms for C
 to D. At fixed 60 Hz, the last-frame transport penalties were much closer:
 5.58 ms for A to B and 4.77 ms for C to D.
 
-This is not contradictory. B performs its host-to-device copy in a separate
-bridge component, so the multithreaded pipeline can overlap that stage with
-work on other frames. D asks ORT to consume host input and produce host output;
+The B configuration performs its host-to-device copy in a separate bridge
+component, so the multithreaded pipeline can overlap that stage with work on
+other frames. The D configuration asks ORT to consume host input and produce
+host output;
 those transfers and synchronization are part of the inference callback's
 critical path. Pipeline throughput is controlled by the slowest stage rather
 than the sum of every component's wall time.

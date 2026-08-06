@@ -1,15 +1,30 @@
 # Phase 2A: AMD Standard ROS 2 + MIGraphX
 
+## Status
+
+Phase 2A is complete. This document remains the procedure and regression
+runbook for the accepted AMD standard ROS 2 paths. It covers both RT-DETR and
+YOLOv8; the closure results are recorded separately in
+[`phase2a-results.md`](phase2a-results.md).
+
 ## Target path
 
-Phase 2A validates only the AMD production path:
+Phase 2A validates these AMD production paths:
 
 ~~~text
+RT-DETR:
 Image
   -> RtDetrImageEncoderNode
   -> RtDetrPreprocessorNode
   -> OnnxInferenceNode(transport=std, execution_provider=migraphx)
   -> RtDetrDecoderNode
+  -> Detection2DArray
+
+YOLOv8:
+Image
+  -> YoloV8ImageEncoderNode
+  -> OnnxInferenceNode(transport=std, execution_provider=migraphx)
+  -> YoloV8DecoderNode
   -> Detection2DArray
 ~~~
 
@@ -116,7 +131,8 @@ The standard YOLOv8 launch, AMD fixed-input capture, and AMD benchmark fail
 before graph startup when this asset is missing. The package-level AMD
 MIGraphX POL uses a generated tiny YOLOv8-shaped ONNX model, like the NVIDIA
 POL, so build and graph-contract tests do not require the user asset. The
-fixed-input runner retains its RT-DETR invocation and adds:
+fixed-input runner retains its RT-DETR invocation and adds the explicit
+YOLOv8 lane:
 
 ~~~bash
 run_amd_phase2a_fixed_input_capture.sh yolov8 <output-name>
@@ -233,6 +249,11 @@ launch_test \
   migrated_packages/isaac_ros_rtdetr_std/test/isaac_ros_std_rtdetr_pol_test.py
 ~~~
 
+The standard YOLOv8 unit tests run with the package test set. The generated
+tiny-model MIGraphX POL can be enabled selectively with
+`BUILD_YOLOV8_MIGRAPHX_POL_TEST=ON` when the package is reconfigured. It does
+not require the canonical user-provided model.
+
 For interactive images, the launch defaults are 640x640 input and
 use_max_dim_for_orig_size=false:
 
@@ -258,6 +279,10 @@ ros2 run isaac_ros_detection_validation \
 ros2 run isaac_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   amd_phase2a_fixed
+
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  yolov8 amd_phase2a_yolov8_fixed
 ~~~
 
 The runner explicitly uses 1280x720, use_max_dim_for_orig_size=true, and
@@ -281,10 +306,24 @@ ros2 run isaac_ros_detection_validation \
   --output-json /workspaces/ovg-results/amd-vs-nvidia-config-c.json
 ~~~
 
-For the provider audit, require MIGraphX kernel events and record the exact
-known CPU fallback node allowlist. Any additional CPU node is a failure.
-Do not use --require-no-cpu-nodes because the documented int64 exception is
-expected.
+For both lanes, require MIGraphX kernel events and record the provider
+assignment. The final MI350X RT-DETR profile recorded five CPU fallback nodes,
+all in the postprocessor:
+
+~~~text
+/postprocessor/Div
+/postprocessor/GatherElements
+/postprocessor/Mod
+/postprocessor/Tile_1
+/postprocessor/Unsqueeze_5
+~~~
+
+The fallback is a known, controlled performance limitation and does not
+invalidate Phase 2A correctness. An unexpected additional CPU node is an audit
+failure.
+Do not use `--require-no-cpu-nodes` for RT-DETR. The YOLOv8 closure profile
+showed no CPU fallback, so a YOLOv8 profile may use that strict check when the
+profile is isolated from the RT-DETR run.
 
 While the graph is running, inspect the ORT session process:
 
@@ -304,9 +343,13 @@ export R2B_RESULT_FILE=phase2a_amd_<platform-tag>.json
 export MIGRAPHX_WARMUP_TIMEOUT_SEC=900
 launch_test \
   migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
+
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_yolov8_phase2a_amd_graph.py
 ~~~
 
-An AMD platform is supported for Phase 2A only after target, environment,
-assets, Release build, tests, MIGraphX output, fixed-input comparison,
-provider audit, library audit, benchmark JSON, and persistent-state reuse
-all pass.
+An AMD platform is supported for Phase 2A after both lanes have passed their
+target and environment checks, assets, Release build, package and POL tests,
+MIGraphX output, fixed-input capture and comparison, provider audit, external
+library audit, benchmark, and persistent-state checks. The standard ROS 2
+paths remain independently usable during Phase 2B work.

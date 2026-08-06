@@ -43,7 +43,7 @@ measurements, and interpretation limits:
 
 - phase1-results.md
 - phase2b-results.md
-- phase2a-results.md, when the first formal AMD result is archived
+- [`phase2a-results.md`](phase2a-results.md), the formal Phase 2A closure report
 
 Container-internal paths such as /workspaces/ovg-assets are project runtime
 contracts. They are different from private host mount paths and may appear in
@@ -55,8 +55,9 @@ the experiment documents.
   benchmarks.
 - Phase 1 compares TensorRT and ONNX Runtime, and NITROS and standard ROS 2,
   on NVIDIA.
-- Phase 2A validates the AMD standard ROS 2 TensorList + ONNX Runtime
-  MIGraphX target path. It does not reproduce the Phase 1 A/B/C/D matrix on
-  AMD.
-- Phase 2B develops the reusable gpu_ros_managed device-buffer transport.
-  Phase 2A remains an independent standard ROS 2 path.
+- Phase 2A is complete for the AMD RT-DETR and YOLOv8 standard ROS 2
+  TensorList + ONNX Runtime MIGraphX paths. It does not reproduce the Phase 1
+  A/B/C/D matrix on AMD.
+- Phase 2A is the accepted standard ROS 2 reference. Phase 2B develops the
+  reusable gpu_ros_managed device-buffer transport against that reference and
+  must not remove its independent availability.

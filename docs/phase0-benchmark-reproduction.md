@@ -25,7 +25,7 @@ historical until explicitly rerun and labeled as 4.5.
 
 NITROS requires the CUDA memory-pool API. If
 cudaDeviceGetDefaultMemPool is unsupported, startup may fail as a cascade of
-GXF component errors. This is a runtime capability issue, not a graph
+GXF component errors. Treat this as a runtime capability issue, not a graph
 configuration issue.
 
 The host driver and image CUDA version must be compatible. Do not force an old
