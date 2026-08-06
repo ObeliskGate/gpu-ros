@@ -18,10 +18,12 @@ from array import array
 import os
 from pathlib import Path
 import time
+import unittest
 
-from isaac_ros_test import IsaacROSBaseTest
+import launch
 from launch_ros.actions.composable_node_container import ComposableNodeContainer
 from launch_ros.descriptions.composable_node import ComposableNode
+import launch_testing.actions
 import pytest
 import rclpy
 from sensor_msgs.msg import Image
@@ -32,6 +34,7 @@ MODEL_PATH = Path(
     os.environ.get('OVG_ASSETS_ROOT', '/workspaces/ovg-assets')
 ) / 'models' / 'yolov8' / 'yolov8s.onnx'
 POL_TIMEOUT_SEC = float(os.environ.get('YOLOV8_MIGRAPHX_POL_TIMEOUT_SEC', '900'))
+NAMESPACE = 'yolov8_migraphx_pol'
 
 
 def require_model() -> str:
@@ -45,15 +48,14 @@ def require_model() -> str:
     return str(resolved_path)
 
 
-@pytest.mark.rostest
+@pytest.mark.launch_test
 def generate_test_description():
     """Build the canonical YOLOv8 graph only after checking its model asset."""
     model_path = require_model()
-    namespace = IsaacROSYoloV8MigraphxPOLTest.generate_namespace()
 
     image_encoder_node = ComposableNode(
         name='yolov8_image_encoder',
-        namespace=namespace,
+        namespace=NAMESPACE,
         package='isaac_ros_yolov8_std',
         plugin='nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode',
         parameters=[{
@@ -65,7 +67,7 @@ def generate_test_description():
 
     onnx_node = ComposableNode(
         name='onnx_inference',
-        namespace=namespace,
+        namespace=NAMESPACE,
         package='isaac_ros_onnx_inference',
         plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
         parameters=[{
@@ -81,7 +83,7 @@ def generate_test_description():
 
     decoder_node = ComposableNode(
         name='yolov8_decoder',
-        namespace=namespace,
+        namespace=NAMESPACE,
         package='isaac_ros_yolov8_std',
         plugin='nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode',
         parameters=[{
@@ -94,25 +96,40 @@ def generate_test_description():
 
     container = ComposableNodeContainer(
         name='yolov8_migraphx_pol_container',
-        namespace=namespace,
+        namespace='',
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[image_encoder_node, onnx_node, decoder_node],
         output='screen',
     )
-    return IsaacROSYoloV8MigraphxPOLTest.generate_test_description([container])
+    return launch.LaunchDescription([
+        container,
+        launch_testing.actions.ReadyToTest(),
+    ])
 
 
-class IsaacROSYoloV8MigraphxPOLTest(IsaacROSBaseTest):
+class TestYoloV8MigraphxProofOfLife(unittest.TestCase):
     """Check message flow and header propagation with the real YOLOv8 asset."""
 
+    @classmethod
+    def setUpClass(cls):
+        """Create the ROS test client."""
+        rclpy.init()
+        cls.node = rclpy.create_node('yolov8_migraphx_pol_test_client')
+
+    @classmethod
+    def tearDownClass(cls):
+        """Destroy the ROS test client."""
+        cls.node.destroy_node()
+        rclpy.shutdown()
+
     def test_graph_publishes_detection_array(self):
-        received_messages = {}
-        self.generate_namespace_lookup(['image', 'detections_output'])
-        image_pub = self.node.create_publisher(
-            Image, self.namespaces['image'], self.DEFAULT_QOS)
-        subscriptions = self.create_logging_subscribers(
-            [('detections_output', Detection2DArray)], received_messages)
+        received_messages = []
+        image_topic = f'/{NAMESPACE}/image'
+        detection_topic = f'/{NAMESPACE}/detections_output'
+        image_pub = self.node.create_publisher(Image, image_topic, 10)
+        detection_sub = self.node.create_subscription(
+            Detection2DArray, detection_topic, received_messages.append, 10)
 
         image = Image()
         image.height = 640
@@ -125,22 +142,25 @@ class IsaacROSYoloV8MigraphxPOLTest(IsaacROSBaseTest):
         try:
             deadline = time.monotonic() + POL_TIMEOUT_SEC
             published_stamp = None
+            next_publish = 0.0
             while time.monotonic() < deadline:
-                image.header.stamp = self.node.get_clock().now().to_msg()
-                published_stamp = image.header.stamp
-                image_pub.publish(image)
+                now = time.monotonic()
+                if now >= next_publish:
+                    image.header.stamp = self.node.get_clock().now().to_msg()
+                    published_stamp = image.header.stamp
+                    image_pub.publish(image)
+                    next_publish = now + 0.25
                 rclpy.spin_once(self.node, timeout_sec=0.1)
-                if 'detections_output' in received_messages:
+                if received_messages:
                     break
 
-            self.assertIn(
-                'detections_output',
+            self.assertTrue(
                 received_messages,
                 'The canonical YOLOv8 graph did not publish Detection2DArray',
             )
-            output = received_messages['detections_output']
+            output = received_messages[-1]
             self.assertEqual(output.header.frame_id, 'camera')
             self.assertEqual(output.header.stamp, published_stamp)
         finally:
-            self.node.destroy_subscription(subscriptions)
+            self.node.destroy_subscription(detection_sub)
             self.node.destroy_publisher(image_pub)
