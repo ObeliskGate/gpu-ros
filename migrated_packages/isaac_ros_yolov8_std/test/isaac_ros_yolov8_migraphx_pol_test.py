@@ -25,7 +25,7 @@ from launch_ros.actions.composable_node_container import ComposableNodeContainer
 from launch_ros.descriptions.composable_node import ComposableNode
 import launch_testing.actions
 import onnx
-from onnx import TensorProto, helper
+from onnx import helper, TensorProto
 import pytest
 import rclpy
 from sensor_msgs.msg import Image
