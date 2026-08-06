@@ -112,9 +112,11 @@ static input `[1,3,640,640]` named `images`, and output `[1,84,8400]` named
 `output0` without built-in NMS. An export recipe cannot guarantee identical
 model bytes, so the SHA-256 check is authoritative.
 
-The standard YOLOv8 launch, canonical-model MIGraphX POL, AMD fixed-input
-capture, and AMD benchmark fail before graph startup when this asset is
-missing. The fixed-input runner retains its RT-DETR invocation and adds:
+The standard YOLOv8 launch, AMD fixed-input capture, and AMD benchmark fail
+before graph startup when this asset is missing. The package-level AMD
+MIGraphX POL uses a generated tiny YOLOv8-shaped ONNX model, like the NVIDIA
+POL, so build and graph-contract tests do not require the user asset. The
+fixed-input runner retains its RT-DETR invocation and adds:
 
 ~~~bash
 run_amd_phase2a_fixed_input_capture.sh yolov8 <output-name>

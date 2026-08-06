@@ -41,7 +41,7 @@ option(
 )
 option(
   BUILD_YOLOV8_MIGRAPHX_POL_TEST
-  "Build the canonical-model AMD YOLOv8 MIGraphX proof-of-life test"
+  "Build the AMD YOLOv8 MIGraphX tiny-model proof-of-life test"
   OFF
 )
 
