@@ -20,11 +20,13 @@ usage() {
   echo "       $0 yolov8 <output-name>"
   echo
   echo "Launch, warm up and record AMD Phase 2A in one terminal (RT-DETR or YOLOv8)."
+  echo "Set CAPTURE_TRANSPORT=managed for the Phase 2B Managed HIP lane."
   echo "By default detection output is recorded; CAPTURE_RECORD=0 enables profile-only playback."
   echo "The output name and its log files must not already exist."
   echo
   echo "Environment overrides:"
   echo "  CAPTURE_EXECUTION_PROVIDER=migraphx|cpu  (default: migraphx)"
+  echo "  CAPTURE_TRANSPORT=std|managed            (default: std)"
   echo "  CAPTURE_WARMUP_ONLY=0|1                 (default: 0)"
   echo "  CAPTURE_PLAYBACK_RATE=<positive number> (default: 0.25)"
   echo "  CAPTURE_MIN_MESSAGES=<integer>          (default: 20)"
@@ -70,6 +72,7 @@ WARMUP_LOG="${LOG_ROOT}/${OUTPUT_NAME}.warmup-playback.log"
 WARMUP_OUTPUT="${LOG_ROOT}/${OUTPUT_NAME}.warmup-detection.yaml"
 COMMAND_LOG="${LOG_ROOT}/${OUTPUT_NAME}.command.txt"
 EXECUTION_PROVIDER="${CAPTURE_EXECUTION_PROVIDER:-migraphx}"
+TRANSPORT="${CAPTURE_TRANSPORT:-std}"
 WARMUP_ONLY="${CAPTURE_WARMUP_ONLY:-0}"
 PLAYBACK_RATE="${CAPTURE_PLAYBACK_RATE:-0.25}"
 MIN_MESSAGES="${CAPTURE_MIN_MESSAGES:-20}"
@@ -84,25 +87,49 @@ ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
 RECORD_OUTPUT="${CAPTURE_RECORD:-1}"
 DETECTION_TOPIC=""
 
+case "${TRANSPORT}" in
+  std)
+    GRAPH_PACKAGE=""
+    GRAPH_LAUNCH_FILE=""
+    DEFAULT_NAMESPACE=""
+    ;;
+  managed)
+    GRAPH_PACKAGE="isaac_ros_onnx_inference"
+    GRAPH_LAUNCH_FILE=""
+    DEFAULT_NAMESPACE=""
+    ;;
+  *)
+    echo "ERROR: CAPTURE_TRANSPORT must be std or managed." >&2
+    exit 2
+    ;;
+esac
+
 if [[ ${PIPELINE} == "yolov8" ]]; then
   MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
-  GRAPH_PACKAGE="isaac_ros_yolov8_std"
-  GRAPH_LAUNCH_FILE="yolov8_ort_std_image.launch.py"
-  GRAPH_NAMESPACE="${CAPTURE_NAMESPACE:-yolov8}"
-  DETECTION_CANDIDATES=(
-    /detections_output
-    "/${GRAPH_NAMESPACE}/detections_output"
-  )
+  if [[ ${TRANSPORT} == "managed" ]]; then
+    GRAPH_LAUNCH_FILE="yolov8_ort_managed_amd.launch.py"
+    DEFAULT_NAMESPACE="yolov8_managed"
+  else
+    GRAPH_PACKAGE="isaac_ros_yolov8_std"
+    GRAPH_LAUNCH_FILE="yolov8_ort_std_image.launch.py"
+    DEFAULT_NAMESPACE="yolov8"
+  fi
 else
   MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx}"
-  GRAPH_PACKAGE="isaac_ros_rtdetr_std"
-  GRAPH_LAUNCH_FILE="rtdetr_ort_std_image.launch.py"
-  GRAPH_NAMESPACE="${CAPTURE_NAMESPACE:-rtdetr}"
-  DETECTION_CANDIDATES=(
-    /detections_output
-    /rtdetr/detections_output
-  )
+  if [[ ${TRANSPORT} == "managed" ]]; then
+    GRAPH_LAUNCH_FILE="rtdetr_ort_managed_amd.launch.py"
+    DEFAULT_NAMESPACE="rtdetr_managed"
+  else
+    GRAPH_PACKAGE="isaac_ros_rtdetr_std"
+    GRAPH_LAUNCH_FILE="rtdetr_ort_std_image.launch.py"
+    DEFAULT_NAMESPACE="rtdetr"
+  fi
 fi
+GRAPH_NAMESPACE="${CAPTURE_NAMESPACE:-${DEFAULT_NAMESPACE}}"
+DETECTION_CANDIDATES=(
+  /detections_output
+  "/${GRAPH_NAMESPACE}/detections_output"
+)
 
 case "${EXECUTION_PROVIDER}" in
   migraphx | cpu) ;;
@@ -357,7 +384,7 @@ wait_for_no_publishers() {
   echo "WARNING: publisher remains on ${topic} after capture cleanup." >&2
   ros2 topic info "${topic}" >&2 || true
   ps -eo pid=,ppid=,pgid=,stat=,args= \
-    | awk '/ros2 launch isaac_ros_rtdetr_std|ros2 launch isaac_ros_yolov8_std|component_container_mt|ros2 bag play/ {print}' \
+    | awk '/ros2 launch isaac_ros_rtdetr_std|ros2 launch isaac_ros_yolov8_std|rtdetr_ort_managed_amd|yolov8_ort_managed_amd|component_container_mt|ros2 bag play/ {print}' \
     >&2 || true
   return 1
 }
@@ -445,7 +472,6 @@ if [[ ${PIPELINE} == "yolov8" ]]; then
     "model_file_path:=${MODEL_PATH}"
     "image_topic:=${IMAGE_TOPIC}"
     "namespace:=${GRAPH_NAMESPACE}"
-    "execution_provider:=${EXECUTION_PROVIDER}"
     "confidence_threshold:=0.25"
     "nms_threshold:=0.45"
   )
@@ -461,9 +487,11 @@ else
     # Match the NVIDIA Config C reference capture. With a 1280x720 source this
     # makes orig_target_sizes [1280, 1280], as in the upstream RT-DETR node.
     use_max_dim_for_orig_size:=true
-    "execution_provider:=${EXECUTION_PROVIDER}"
     confidence_threshold:=0.6
   )
+fi
+if [[ ${TRANSPORT} == std ]]; then
+  LAUNCH_COMMAND+=("execution_provider:=${EXECUTION_PROVIDER}")
 fi
 if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   LAUNCH_COMMAND+=("ort_profile_prefix:=${ORT_PROFILE_PREFIX}")
@@ -472,6 +500,7 @@ fi
 {
   echo "pipeline=${PIPELINE}"
   echo "execution_provider=${EXECUTION_PROVIDER}"
+  echo "transport=${TRANSPORT}"
   echo "input_bag=${INPUT_BAG}"
   echo "model_path=${MODEL_PATH}"
   echo "graph_package=${GRAPH_PACKAGE}"

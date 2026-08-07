@@ -146,5 +146,27 @@ decoders, explicit adapters, provider kernels, and CPU fallback remain outside
 that boundary. These AMD changes do not affect the independent Phase 2A
 standard ROS 2 path.
 
+For real-model fixed-input capture, the existing single-terminal runner keeps
+`CAPTURE_TRANSPORT=std` as its Phase 2A default. Set
+`CAPTURE_TRANSPORT=managed` to select the Phase 2B Managed HIP launch files:
+
+~~~bash
+CAPTURE_TRANSPORT=managed \
+CAPTURE_EXECUTION_PROVIDER=migraphx \
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  amd_phase2b_rtdetr_managed
+
+CAPTURE_TRANSPORT=managed \
+CAPTURE_EXECUTION_PROVIDER=migraphx \
+ros2 run isaac_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  yolov8 amd_phase2b_yolov8_managed
+~~~
+
+The resulting Managed bags are candidates for comparison against the
+corresponding standard AMD bags or the existing NVIDIA reference, using the
+unchanged Detection2D comparator and stamp matching.
+
 Concrete hardware, dates, benchmark values, copy audits, timings, and
 shutdown limitations belong in phase2b-results.md.

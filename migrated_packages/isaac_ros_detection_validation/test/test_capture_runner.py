@@ -67,6 +67,13 @@ def test_amd_capture_runner_help_does_not_require_ros_environment():
         text=True,
     )
     assert 'record AMD Phase 2A in one terminal' in result.stdout
+    assert 'CAPTURE_TRANSPORT=std|managed' in result.stdout
+
+
+def test_amd_capture_runner_has_managed_launches():
+    script = AMD_SCRIPT_PATH.read_text()
+    assert 'rtdetr_ort_managed_amd.launch.py' in script
+    assert 'yolov8_ort_managed_amd.launch.py' in script
 
 
 def test_amd_capture_runner_rejects_an_invalid_name_before_starting_ros():
