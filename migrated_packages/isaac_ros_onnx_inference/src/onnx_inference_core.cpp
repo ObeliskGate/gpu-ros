@@ -87,11 +87,7 @@ Ort::MemoryInfo MakeHipDeviceMemoryInfo(ExecutionProvider ep, int device_id)
 {
   const char * allocator_name = ep == ExecutionProvider::kMigraphx ? "Cuda" : "Rocm";
   return Ort::MemoryInfo(
-    allocator_name, OrtDeviceAllocator,
-    OrtDevice(
-      OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
-      static_cast<OrtDevice::DeviceId>(device_id)),
-    OrtMemTypeDefault);
+    allocator_name, OrtDeviceAllocator, device_id, OrtMemTypeDefault);
 }
 
 template<typename MemoryInfoT>
