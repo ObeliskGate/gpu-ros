@@ -31,6 +31,7 @@ if(hip_FOUND)
     ament_export_targets(gpu_ros_managed_hipTargets HAS_LIBRARY_TARGET
       NAMESPACE gpu_ros_managed::)
     ament_export_dependencies(gpu_ros_managed_core)
+    ament_export_dependencies(hip)
   endif()
   include(CTest)
   if(BUILD_TESTING)
