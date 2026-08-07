@@ -53,8 +53,8 @@ def generate_launch_description():
         package='isaac_ros_rtdetr_std',
         plugin='nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode',
         parameters=[{
-            'image_width': input_image_width,
-            'image_height': input_image_height,
+            'image_width': ParameterValue(input_image_width, value_type=int),
+            'image_height': ParameterValue(input_image_height, value_type=int),
             'use_max_dim_for_orig_size': ParameterValue(
                 use_max_dim_for_orig_size, value_type=bool),
         }],
@@ -65,7 +65,9 @@ def generate_launch_description():
         plugin=(
             'nvidia::isaac_ros::onnx_inference::'
             'StdToManagedHipTensorListNode'),
-        parameters=[{'gpu_device_id': gpu_device_id}],
+        parameters=[{
+            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+        }],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'managed_tensor_input'),
@@ -78,7 +80,7 @@ def generate_launch_description():
         parameters=[{
             'model_file_path': model_file_path,
             'execution_provider': 'migraphx',
-            'gpu_device_id': gpu_device_id,
+            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
             'ort_profile_prefix': ort_profile_prefix,
             'transport': 'managed',
         }],
@@ -93,7 +95,9 @@ def generate_launch_description():
         plugin=(
             'nvidia::isaac_ros::onnx_inference::'
             'ManagedHipToStdTensorListNode'),
-        parameters=[{'gpu_device_id': gpu_device_id}],
+        parameters=[{
+            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+        }],
         remappings=[
             ('tensor_input', 'managed_tensor_output'),
             ('tensor_output', 'tensor_sub'),
@@ -103,7 +107,10 @@ def generate_launch_description():
         name='rtdetr_decoder',
         package='isaac_ros_rtdetr_std',
         plugin='nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode',
-        parameters=[{'confidence_threshold': confidence_threshold}],
+        parameters=[{
+            'confidence_threshold': ParameterValue(
+                confidence_threshold, value_type=float),
+        }],
     )
 
     container = ComposableNodeContainer(

@@ -41,10 +41,11 @@ def _launch_setup(context):
 
     image_topic = LaunchConfiguration('image_topic').perform(context)
     namespace = LaunchConfiguration('namespace').perform(context)
-    gpu_device_id = LaunchConfiguration('gpu_device_id').perform(context)
+    gpu_device_id = int(LaunchConfiguration('gpu_device_id').perform(context))
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
-    confidence_threshold = LaunchConfiguration('confidence_threshold').perform(context)
-    nms_threshold = LaunchConfiguration('nms_threshold').perform(context)
+    confidence_threshold = float(
+        LaunchConfiguration('confidence_threshold').perform(context))
+    nms_threshold = float(LaunchConfiguration('nms_threshold').perform(context))
 
     encoder = ComposableNode(
         name='yolov8_image_encoder',
