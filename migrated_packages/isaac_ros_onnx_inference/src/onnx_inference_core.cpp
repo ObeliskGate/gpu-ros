@@ -94,8 +94,9 @@ Ort::MemoryInfo MakeHipDeviceMemoryInfo(ExecutionProvider ep, int device_id)
     OrtMemTypeDefault);
 }
 
+template<typename MemoryInfoT>
 void ValidateDeviceMemoryInfo(
-  const Ort::MemoryInfo & memory_info, const char * allocator_name,
+  const MemoryInfoT & memory_info, const char * allocator_name,
   int device_id, const std::string & context)
 {
   const std::string actual_allocator_name = memory_info.GetAllocatorName();
