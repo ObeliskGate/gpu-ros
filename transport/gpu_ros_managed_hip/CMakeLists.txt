@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22)
 project(gpu_ros_managed_hip LANGUAGES CXX)
 find_package(ament_cmake QUIET)
 find_package(hip CONFIG QUIET)
+
+option(GPU_ROS_MANAGED_HIP_REQUIRE_SDK
+  "Fail configuration when the HIP SDK is unavailable"
+  OFF)
 if(hip_FOUND)
   if(NOT TARGET gpu_ros_managed_core)
     find_package(gpu_ros_managed_core REQUIRED)
@@ -40,6 +44,11 @@ if(hip_FOUND)
     set_tests_properties(gpu_ros_managed_hip_copy_test PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 else()
+  if(GPU_ROS_MANAGED_HIP_REQUIRE_SDK)
+    message(FATAL_ERROR
+      "gpu_ros_managed_hip requires the HIP SDK, but find_package(hip CONFIG) "
+      "failed. Set hip_DIR to the actual ROCm HIP CMake package directory.")
+  endif()
   message(STATUS "HIP SDK not found; gpu_ros_managed_hip target is unavailable")
 endif()
 if(ament_cmake_FOUND)
