@@ -250,7 +250,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
             "Managed device output requires execution_provider=cuda or migraphx");
   }
   if (output_placement == OutputPlacement::kDevice &&
-    execution_provider_ == ExecutionProvider::kMigraphx) {
+    execution_provider_ == ExecutionProvider::kMigraphx)
+  {
 #ifndef GPU_ROS_MANAGED_HIP
     throw std::runtime_error(
             "MIGraphX managed device output requires the gpu_ros_managed_hip backend");
@@ -425,7 +426,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         }
       }
       managed_output_writers.clear();
-      for (auto & buffer : managed_output_buffers) {buffer.reset();}
+      for (auto & buffer : managed_output_buffers) {
+        buffer.reset();
+      }
       managed_output_buffers.assign(output_names_.size(), nullptr);
       bound_output_values.clear();
       binding = std::make_unique<Ort::IoBinding>(*session_);

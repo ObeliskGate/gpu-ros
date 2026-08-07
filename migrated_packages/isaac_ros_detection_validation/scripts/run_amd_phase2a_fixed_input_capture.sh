@@ -19,7 +19,7 @@ usage() {
   echo "Usage: $0 <output-name>"
   echo "       $0 yolov8 <output-name>"
   echo
-  echo "Launch, warm up and record the AMD Phase 2A RT-DETR or YOLOv8 graph in one terminal."
+  echo "Launch, warm up and record AMD Phase 2A in one terminal (RT-DETR or YOLOv8)."
   echo "By default detection output is recorded; CAPTURE_RECORD=0 enables profile-only playback."
   echo "The output name and its log files must not already exist."
   echo

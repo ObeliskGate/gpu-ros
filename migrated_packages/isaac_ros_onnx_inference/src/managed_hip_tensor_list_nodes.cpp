@@ -148,7 +148,8 @@ private:
       }
       publisher_->publish(std::move(output));
     } catch (const std::exception & error) {
-      RCLCPP_ERROR(get_logger(), "Failed to stage Managed HIP TensorList to host: %s", error.what());
+      RCLCPP_ERROR(get_logger(), "Failed to stage Managed HIP TensorList to host: %s",
+          error.what());
     }
   }
 
