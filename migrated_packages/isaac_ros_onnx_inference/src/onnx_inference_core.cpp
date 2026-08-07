@@ -83,27 +83,37 @@ ONNXTensorElementDataType ToOnnxDtype(gpu_ros_managed::TensorDataType dtype)
   }
 }
 
+constexpr uint32_t kAmdPciVendorId = 0x1002;
+constexpr uint32_t kNvidiaPciVendorId = 0x10de;
+
 Ort::MemoryInfo MakeHipDeviceMemoryInfo(ExecutionProvider ep, int device_id)
 {
   const char * allocator_name = ep == ExecutionProvider::kMigraphx ? "Cuda" : "Rocm";
+  // MIGraphX uses ORT's "Cuda" allocator name, but the backing device is AMD.
+  // The legacy four-argument constructor infers the vendor from the allocator
+  // name and therefore incorrectly describes MIGraphX memory as NVIDIA memory.
   return Ort::MemoryInfo(
-    allocator_name, OrtDeviceAllocator, device_id, OrtMemTypeDefault);
+    allocator_name, OrtMemoryInfoDeviceType_GPU, kAmdPciVendorId,
+    static_cast<uint32_t>(device_id), OrtDeviceMemoryType_DEFAULT, 0,
+    OrtDeviceAllocator);
 }
 
 template<typename MemoryInfoT>
 void ValidateDeviceMemoryInfo(
   const MemoryInfoT & memory_info, const char * allocator_name,
-  int device_id, const std::string & context)
+  int device_id, const std::string & context, uint32_t vendor_id)
 {
   const std::string actual_allocator_name = memory_info.GetAllocatorName();
   if (actual_allocator_name != allocator_name ||
     memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
-    memory_info.GetDeviceId() != device_id)
+    memory_info.GetDeviceId() != device_id ||
+    memory_info.GetVendorId() != vendor_id)
   {
     throw std::runtime_error(
             context + " returned unexpected device memory info: allocator=" +
             actual_allocator_name + ", device_id=" +
-            std::to_string(memory_info.GetDeviceId()));
+            std::to_string(memory_info.GetDeviceId()) + ", vendor_id=" +
+            std::to_string(memory_info.GetVendorId()));
   }
 }
 
@@ -310,7 +320,7 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
           execution_provider_ == ExecutionProvider::kMigraphx ? "Cuda" : "Rocm";
         ValidateDeviceMemoryInfo(
           memory_info, allocator_name, gpu_device_id_,
-          "Managed HIP input tensor '" + tensor.name() + "'");
+          "Managed HIP input tensor '" + tensor.name() + "'", kAmdPciVendorId);
 #else
         throw std::runtime_error(
                 "Managed HIP input requires the gpu_ros_managed_hip backend");
@@ -357,8 +367,13 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
     Ort::MemoryInfo device_memory_info = execution_provider_ == ExecutionProvider::kCuda ?
       Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault) :
       MakeHipDeviceMemoryInfo(execution_provider_, gpu_device_id_);
+    const char * expected_allocator_name =
+      execution_provider_ == ExecutionProvider::kRocm ? "Rocm" : "Cuda";
+    const uint32_t expected_vendor_id =
+      execution_provider_ == ExecutionProvider::kCuda ? kNvidiaPciVendorId : kAmdPciVendorId;
     ValidateDeviceMemoryInfo(
-      device_memory_info, "Cuda", gpu_device_id_, "Managed output binding");
+      device_memory_info, expected_allocator_name, gpu_device_id_, "Managed output binding",
+      expected_vendor_id);
 
     auto binding = std::make_unique<Ort::IoBinding>(*session_);
     for (size_t i = 0; i < ort_inputs.size(); ++i) {
@@ -488,7 +503,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
     if (output_placement == OutputPlacement::kDevice) {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
       if (execution_provider_ == ExecutionProvider::kCuda) {
-        ValidateDeviceMemoryInfo(memory_info, "Cuda", gpu_device_id_, "CUDA output tensor");
+        ValidateDeviceMemoryInfo(
+          memory_info, "Cuda", gpu_device_id_, "CUDA output tensor", kNvidiaPciVendorId);
 #ifdef GPU_ROS_MANAGED_CUDA
         auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
         tensor.storage = gpu_ros_managed::cuda::adopt_synchronized_external(
@@ -500,7 +516,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
 #endif
       } else {
 #ifdef GPU_ROS_MANAGED_HIP
-        ValidateDeviceMemoryInfo(memory_info, "Cuda", gpu_device_id_, "MIGraphX output tensor");
+        ValidateDeviceMemoryInfo(
+          memory_info, "Cuda", gpu_device_id_, "MIGraphX output tensor", kAmdPciVendorId);
         void * output_pointer = ort_outputs[i].GetTensorMutableRawData();
         if (managed_output_buffers[i]) {
           auto ready = managed_output_buffers[i]->get_blocking_ready_lease();
