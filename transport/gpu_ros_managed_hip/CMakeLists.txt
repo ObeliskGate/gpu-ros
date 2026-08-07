@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(gpu_ros_managed_hip LANGUAGES CXX)
 find_package(ament_cmake QUIET)
-find_package(hip QUIET)
+find_package(hip CONFIG QUIET)
 if(hip_FOUND)
   if(NOT TARGET gpu_ros_managed_core)
     find_package(gpu_ros_managed_core REQUIRED)
