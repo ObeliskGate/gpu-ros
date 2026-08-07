@@ -91,12 +91,25 @@ verify_external_ort_targets() {
   done < <(tr ',;' '\n' <<<"${actual}")
 }
 
+show_hip_environment() {
+  local rocm_root="${OVG_ROCM_ROOT:-${hip_ROOT:-}}"
+  local hip_config=""
+  if [[ -n "${rocm_root}" ]]; then
+    hip_config="${rocm_root}/lib/cmake/hip/hip-config.cmake"
+  fi
+  echo "COLCON_DEFAULTS_FILE: ${COLCON_DEFAULTS_FILE:-unknown} ($([[ -f "${COLCON_DEFAULTS_FILE:-}" ]] && echo present || echo missing))"
+  echo "OVG_ROCM_ROOT: ${OVG_ROCM_ROOT:-unresolved}"
+  echo "hip_ROOT: ${hip_ROOT:-unresolved}"
+  echo "HIP CMake config: ${hip_config:-unresolved} ($([[ -n "${hip_config}" && -f "${hip_config}" ]] && echo present || echo missing))"
+}
+
 show_env() {
   source_setups
   local ort="${ONNXRUNTIME_LIBRARY:-/opt/onnxruntime/lib/libonnxruntime.so}"
+  local rocm_root="${OVG_ROCM_ROOT:-${hip_ROOT:-}}"
   echo "runtime: ${OVG_RUNTIME_EFFECTIVE:-${OVG_RUNTIME:-unknown}}"
   echo "ROS_DISTRO: ${ROS_DISTRO:-unknown}"
-  echo "ROCm: $(cat /opt/rocm/.info/version 2>/dev/null || echo unknown)"
+  echo "ROCm: $(cat "${rocm_root:-/opt/rocm}/.info/version" 2>/dev/null || echo unknown)"
   echo "GPU gfx: $(detect_gfx || true)"
   echo "/dev/kfd: $([[ -e /dev/kfd ]] && echo available || echo unavailable)"
   echo "/dev/dri: $([[ -d /dev/dri ]] && find /dev/dri -maxdepth 1 -name 'renderD*' -printf '%f ' || true)"
@@ -110,6 +123,7 @@ show_env() {
   echo "ORT library: ${ort} ($([[ -f "${ort}" ]] && echo present || echo missing))"
   echo "MIGraphX provider: $(find "$(dirname "${ort}")" -maxdepth 1 -name '*migraphx*.so*' -printf '%f ' 2>/dev/null || true)"
   echo "workspace: ${WORKSPACE_ROOT}"
+  show_hip_environment
   echo "assets: ${ASSETS_ROOT}"
   echo "cache: ${ORT_MIGRAPHX_MODEL_CACHE_PATH:-${CACHE_ROOT}/migraphx}"
   echo "results: ${RESULTS_ROOT}"
@@ -125,8 +139,39 @@ show_env() {
   fi
 }
 
+verify_colcon_profile() {
+  local expected="${WORKSPACE_ROOT}/docker/colcon-defaults-phase2a-amd.yaml"
+  [[ "${COLCON_DEFAULTS_FILE:-}" == "${expected}" ]] || {
+    echo "ERROR: COLCON_DEFAULTS_FILE is not the canonical AMD profile: ${COLCON_DEFAULTS_FILE:-unset}" >&2
+    return 1
+  }
+  [[ -f "${expected}" ]] || {
+    echo "ERROR: canonical AMD colcon defaults file is missing: ${expected}" >&2
+    return 1
+  }
+}
+
+verify_hip_environment() {
+  local rocm_root="${OVG_ROCM_ROOT:-}"
+  local hip_root="${hip_ROOT:-}"
+  [[ -n "${rocm_root}" && -n "${hip_root}" ]] || {
+    echo "ERROR: HIP/ROCm root was not resolved by the AMD entrypoint" >&2
+    return 1
+  }
+  [[ "${rocm_root}" == "${hip_root}" ]] || {
+    echo "ERROR: OVG_ROCM_ROOT and hip_ROOT disagree: ${rocm_root} vs ${hip_root}" >&2
+    return 1
+  }
+  [[ -f "${hip_root}/lib/cmake/hip/hip-config.cmake" ]] || {
+    echo "ERROR: HIP CMake config is missing: ${hip_root}/lib/cmake/hip/hip-config.cmake" >&2
+    return 1
+  }
+}
+
 verify_env() {
   show_env
+  verify_colcon_profile
+  verify_hip_environment
   [[ -e /dev/kfd ]] || { echo "ERROR: /dev/kfd is not accessible" >&2; return 1; }
   [[ -d /dev/dri ]] || { echo "ERROR: /dev/dri is not accessible" >&2; return 1; }
   [[ -n "$(detect_gfx)" ]] || { echo "ERROR: rocminfo reported no gfx target" >&2; return 1; }
@@ -155,8 +200,8 @@ cache_clean() {
 build_workspace() {
   source_setups
   cd "${WORKSPACE_ROOT}"
-  echo "+ colcon build --merge-install"
-  colcon build --merge-install
+  echo "+ colcon build"
+  colcon build
 }
 
 main() {

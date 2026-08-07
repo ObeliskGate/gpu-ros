@@ -29,6 +29,7 @@ export OVG_CACHE_ROOT="/workspaces/ovg-cache"
 export OVG_RESULTS_ROOT="/workspaces/ovg-results"
 export OVG_ORT_STATE_ROOT="${ORT_CONTAINER_ROOT}"
 export OVG_IMAGE_NAME="${IMAGE_NAME}"
+CONTAINER_ENTRYPOINT="${OVG_WORKSPACE_ROOT}/docker/phase2a-amd-entrypoint.sh"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -243,15 +244,19 @@ apptainer_exec() {
   if [[ "${OVG_APPTAINER_INSTANCE:-0}" == 1 ]] && \
       apptainer instance list 2>/dev/null | awk '{print $1}' | grep -Fxq "${APPTAINER_INSTANCE_NAME}"; then
     apptainer exec "instance://${APPTAINER_INSTANCE_NAME}" \
-      /usr/local/bin/phase2-amd-entrypoint.sh "$@"
+      /bin/bash "${CONTAINER_ENTRYPOINT}" "$@"
   else
     apptainer exec "${APPTAINER_ARGS[@]}" "${APPTAINER_SIF}" \
-      /usr/local/bin/phase2-amd-entrypoint.sh "$@"
+      /bin/bash "${CONTAINER_ENTRYPOINT}" "$@"
   fi
 }
 
 docker_exec() {
-  compose exec -T amd /usr/local/bin/phase2-amd-entrypoint.sh "$@"
+  compose exec -T amd /bin/bash "${CONTAINER_ENTRYPOINT}" "$@"
+}
+
+docker_shell() {
+  compose exec amd /bin/bash "${CONTAINER_ENTRYPOINT}" bash -l
 }
 
 run_phase2() {
@@ -330,7 +335,7 @@ main() {
       set_fingerprint
       [[ "${RUNTIME}" == docker ]] && start_runtime
       if [[ "${RUNTIME}" == docker ]]; then
-        compose exec amd /usr/local/bin/phase2-amd-entrypoint.sh bash -l
+        docker_shell
       else
         apptainer_exec bash -l
       fi

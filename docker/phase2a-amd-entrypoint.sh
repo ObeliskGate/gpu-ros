@@ -1,11 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+COLCON_DEFAULTS_FILE="${WORKSPACE_ROOT}/docker/colcon-defaults-phase2a-amd.yaml"
+export OVG_WORKSPACE_ROOT="${WORKSPACE_ROOT}"
+export COLCON_DEFAULTS_FILE
+
+if [[ ! -f "${COLCON_DEFAULTS_FILE}" ]]; then
+  if [[ "${BASH_SOURCE[0]}" == "${WORKSPACE_ROOT}/docker/phase2a-amd-entrypoint.sh" ]]; then
+    echo "ERROR: canonical AMD colcon defaults file is missing: ${COLCON_DEFAULTS_FILE}" >&2
+    exit 1
+  fi
+  echo "WARNING: canonical AMD colcon defaults file is unavailable: ${COLCON_DEFAULTS_FILE}" >&2
+fi
+
 source_setup() {
   set +u
   # shellcheck disable=SC1090
   source "$1"
   set -u
+}
+
+resolve_hip_root() {
+  local candidate=""
+  unset OVG_ROCM_ROOT hip_ROOT
+
+  command -v hipconfig >/dev/null 2>&1 || return 0
+  candidate="$(hipconfig --path 2>/dev/null | awk 'NF {print $1; exit}')"
+  [[ -n "${candidate}" ]] || return 0
+  candidate="$(readlink -f -- "${candidate}" 2>/dev/null || true)"
+  [[ -n "${candidate}" ]] || return 0
+  [[ -f "${candidate}/lib/cmake/hip/hip-config.cmake" ]] || return 0
+
+  export OVG_ROCM_ROOT="${candidate}"
+  export hip_ROOT="${candidate}"
 }
 
 validate_external_ort() {
@@ -47,6 +75,8 @@ validate_external_ort() {
   export LD_LIBRARY_PATH="${root}/lib:${LD_LIBRARY_PATH:-}"
 }
 
+resolve_hip_root
+
 if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
   validate_external_ort
 fi
@@ -58,7 +88,7 @@ fi
 if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
   source_setup /opt/ros2_benchmark/setup.bash
 fi
-export PATH="/workspaces/amd_ros_object_detection/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+export PATH="${WORKSPACE_ROOT}/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
 mkdir -p "${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}" \
   "${OVG_CACHE_ROOT:-/workspaces/ovg-cache}" \
@@ -71,8 +101,8 @@ elif [[ -n "${OVG_CACHE_ROOT:-}" ]]; then
   mkdir -p "${ORT_MIGRAPHX_MODEL_CACHE_PATH}"
 fi
 
-if [[ -f "/workspaces/amd_ros_object_detection/install/setup.bash" ]]; then
-  source_setup "/workspaces/amd_ros_object_detection/install/setup.bash"
+if [[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]]; then
+  source_setup "${WORKSPACE_ROOT}/install/setup.bash"
 fi
 
 exec "$@"

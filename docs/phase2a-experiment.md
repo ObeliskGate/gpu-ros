@@ -203,9 +203,25 @@ BUILD_YOLOV8_MIGRAPHX_POL_TEST=OFF
 BUILD_TESTING=ON
 ~~~
 
-Manual colcon commands must run inside the launcher runtime where
-COLCON_DEFAULTS_FILE is loaded. Otherwise colcon may discover unrelated
-packages.
+`./docker/phase2-amd.sh colcon` remains the canonical complete-workspace build
+entrypoint. For interactive development, use the supported shell and native
+colcon commands directly:
+
+~~~bash
+./docker/phase2-amd.sh shell
+colcon build --packages-select gpu_ros_managed_hip
+colcon build --packages-up-to isaac_ros_onnx_inference
+colcon test --packages-select isaac_ros_yolov8_std
+~~~
+
+The shell exports `COLCON_DEFAULTS_FILE`, so these commands inherit the AMD
+profile, Release build type, merged install layout, HIP backend, MIGraphX
+provider, and NVIDIA YOLOv8 POL exclusion. The shell does not wrap or restrict
+native `colcon`; normal package-selection arguments remain available.
+
+Do not reconstruct the full AMD profile manually with `--cmake-args` for
+ordinary package debugging. A partial command can replace the profile defaults
+and accidentally re-enable unrelated NVIDIA-only tests or transports.
 
 ## MIGraphX cache
 

@@ -1,4 +1,5 @@
 build:
+  merge-install: true
   base-paths:
     - src/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu_ros_managed/gpu_ros_managed_cuda
