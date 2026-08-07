@@ -41,6 +41,7 @@ private:
   std::unique_ptr<ITensorListIO> io_;
   size_t ort_profile_frames_{0};
   size_t inference_count_{0};
+  bool output_probe_runtime_logged_{false};
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference

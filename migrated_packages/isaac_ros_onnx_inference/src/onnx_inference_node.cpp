@@ -84,6 +84,11 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     ep_str.c_str(),
     transport.c_str());
 
+  const std::string output_probe = core_->OutputBindingProbeReport();
+  if (!output_probe.empty()) {
+    RCLCPP_INFO(get_logger(), "Output binding plan: %s", output_probe.c_str());
+  }
+
   if (core_->IsProfilingEnabled()) {
     RCLCPP_INFO(
       get_logger(),
@@ -123,6 +128,13 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorListView inputs)
   output.header = inputs.header();
   output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
   ++inference_count_;
+  if (!output_probe_runtime_logged_) {
+    const std::string output_probe = core_->OutputBindingProbeReport();
+    if (!output_probe.empty()) {
+      RCLCPP_INFO(get_logger(), "Output binding result: %s", output_probe.c_str());
+    }
+    output_probe_runtime_logged_ = true;
+  }
   if (ort_profile_frames_ > 0 && inference_count_ >= ort_profile_frames_) {
     FinalizeOrtProfile("configured frame limit");
   }

@@ -118,18 +118,33 @@ ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
 latency.
 
-## Current AMD limitation
+## AMD Phase 2B staging policy
 
-AMD Managed inference is not end-to-end zero-copy in the current revision:
+The AMD graph makes host staging explicit at the ROS boundary:
 
-1. A HIP DeviceBuffer input is copied to host inside the ORT adapter for
-   MIGraphX and ROCm EP paths.
-2. Managed device output is implemented only for CUDA EP.
-3. MIGraphX output uses host-backed storage.
-4. Native Managed HIP device output is not available.
+~~~text
+host TensorList -> StdToManagedHipTensorListNode
+  -> OnnxInferenceNode(transport=managed, execution_provider=migraphx)
+  -> ManagedHipToStdTensorListNode -> host TensorList
+~~~
 
-Do not describe AMD Managed inference as device-to-device zero-copy. These
-limitations do not affect the independent Phase 2A standard ROS 2 path.
+`StdToManagedHipTensorListNode` allocates HIP `DeviceBuffer` objects and uses
+the public blocking H2D API. `ManagedHipToStdTensorListNode` uses the public
+blocking D2H API. Neither adapter calls HIP runtime copy functions directly.
+
+Inside the Managed inference boundary, device-backed inputs are passed to ORT
+with their original pointer and a MIGraphX-compatible HIP device memory
+descriptor. Static output metadata is probed with preallocated Managed HIP
+buffers; if the external binding probe fails, the real failure is logged and
+ORT-owned device output is adopted only after synchronization. Dynamic output
+metadata follows the ORT-owned path without changing the ONNX graph.
+
+This establishes that the Managed TensorList boundary adds no additional
+tensor-payload copy beyond the two explicit application staging adapters. It
+does not claim that the complete pipeline has no memcpy: host encoders,
+decoders, explicit adapters, provider kernels, and CPU fallback remain outside
+that boundary. These AMD changes do not affect the independent Phase 2A
+standard ROS 2 path.
 
 Concrete hardware, dates, benchmark values, copy audits, timings, and
 shutdown limitations belong in phase2b-results.md.

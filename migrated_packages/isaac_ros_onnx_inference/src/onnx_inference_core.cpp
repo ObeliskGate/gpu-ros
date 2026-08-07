@@ -14,18 +14,22 @@
 
 #include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "gpu_ros_managed_core/detail/backend_ops.hpp"
 #ifdef GPU_ROS_MANAGED_CUDA
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
+#endif
+#ifdef GPU_ROS_MANAGED_HIP
+#include "gpu_ros_managed_hip/hip_backend.hpp"
 #endif
 
 namespace nvidia::isaac_ros::onnx_inference
@@ -79,6 +83,33 @@ ONNXTensorElementDataType ToOnnxDtype(gpu_ros_managed::TensorDataType dtype)
   }
 }
 
+Ort::MemoryInfo MakeHipDeviceMemoryInfo(ExecutionProvider ep, int device_id)
+{
+  const char * allocator_name = ep == ExecutionProvider::kMigraphx ? "Cuda" : "Rocm";
+  return Ort::MemoryInfo(
+    allocator_name, OrtDeviceAllocator,
+    OrtDevice(
+      OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+      static_cast<OrtDevice::DeviceId>(device_id)),
+    OrtMemTypeDefault);
+}
+
+void ValidateDeviceMemoryInfo(
+  const Ort::MemoryInfo & memory_info, const char * allocator_name,
+  int device_id, const std::string & context)
+{
+  const std::string actual_allocator_name = memory_info.GetAllocatorName();
+  if (actual_allocator_name != allocator_name ||
+    memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
+    memory_info.GetDeviceId() != device_id)
+  {
+    throw std::runtime_error(
+            context + " returned unexpected device memory info: allocator=" +
+            actual_allocator_name + ", device_id=" +
+            std::to_string(memory_info.GetDeviceId()));
+  }
+}
+
 void AppendExecutionProvider(
   Ort::SessionOptions & opts,
   ExecutionProvider ep,
@@ -112,7 +143,8 @@ void AppendExecutionProvider(
     case ExecutionProvider::kMigraphx:
 #ifdef ORT_MIGRAPHX_AVAILABLE
       {
-        const std::unordered_map<std::string, std::string> provider_options{};
+        const std::unordered_map<std::string, std::string> provider_options{
+          {"device_id", std::to_string(device_id)}};
         opts.AppendExecutionProvider("MIGraphXExecutionProvider", provider_options);
         break;
       }
@@ -165,6 +197,22 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
   for (size_t i = 0; i < session_->GetOutputCount(); ++i) {
     auto name = session_->GetOutputNameAllocated(i, allocator_);
     output_names_.emplace_back(name.get());
+
+    const auto shape = session_->GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+    OutputBindingProbe probe;
+    probe.name = output_names_.back();
+    probe.metadata_shape_is_static = std::all_of(
+      shape.begin(), shape.end(), [](const int64_t dimension) {return dimension > 0;});
+    if (probe.metadata_shape_is_static) {
+      probe.decision =
+        execution_provider_ == ExecutionProvider::kMigraphx ?
+        "metadata shape is static; probe preallocated Managed HIP output first" :
+        "metadata shape is static; output probe is not needed for this EP";
+    } else {
+      probe.decision =
+        "metadata shape is dynamic; use ORT-owned output and adopt after synchronization";
+    }
+    output_binding_probes_.push_back(std::move(probe));
   }
 }
 
@@ -183,26 +231,41 @@ std::string OnnxInferenceCore::EndProfiling()
   return profile_path ? profile_path.get() : std::string{};
 }
 
+std::string OnnxInferenceCore::OutputBindingProbeReport() const
+{
+  std::ostringstream report;
+  for (size_t i = 0; i < output_binding_probes_.size(); ++i) {
+    if (i != 0) {report << "; ";}
+    report << output_binding_probes_[i].name << ": " << output_binding_probes_[i].decision;
+  }
+  return report.str();
+}
+
 std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   gpu_ros_managed::ManagedTensorListView inputs,
   OutputPlacement output_placement)
 {
   if (output_placement == OutputPlacement::kDevice &&
-    execution_provider_ != ExecutionProvider::kCuda)
+    execution_provider_ != ExecutionProvider::kCuda &&
+    execution_provider_ != ExecutionProvider::kMigraphx)
   {
     throw std::invalid_argument(
-            "Managed device output is currently implemented only for the CUDA EP; "
-            "MIGraphX external HIP output remains runtime-probe gated");
+            "Managed device output requires execution_provider=cuda or migraphx");
+  }
+  if (output_placement == OutputPlacement::kDevice &&
+    execution_provider_ == ExecutionProvider::kMigraphx) {
+#ifndef GPU_ROS_MANAGED_HIP
+    throw std::runtime_error(
+            "MIGraphX managed device output requires the gpu_ros_managed_hip backend");
+#endif
   }
 
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char *> input_name_ptrs;
   std::vector<gpu_ros_managed::BlockingReadyLease> leases;
-  std::vector<std::vector<uint8_t>> staged_inputs;
   ort_inputs.reserve(inputs.tensors().size());
   input_name_ptrs.reserve(inputs.tensors().size());
   leases.reserve(inputs.tensors().size());
-  staged_inputs.reserve(inputs.tensors().size());
 
   for (const auto & tensor : inputs.tensors()) {
     input_name_ptrs.push_back(tensor.name().c_str());
@@ -216,6 +279,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
     } else {
       const auto & buffer =
         std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
+      if (!buffer) {
+        throw std::invalid_argument("Managed tensor '" + tensor.name() + "' has null storage");
+      }
       const auto device = buffer->device_id();
       const bool use_cuda_device_input =
         device.backend == gpu_ros_managed::BackendKind::kCuda &&
@@ -234,12 +300,23 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         memory_info = Ort::MemoryInfo(
           "Cuda", OrtArenaAllocator, device.ordinal, OrtMemTypeDefault);
       } else if (use_hip_device_input) {
-        // ORT 1.23.1 MIGraphX external HIP pointer support is not assumed.
-        // Keep this explicit staging inside the ORT adapter.
-        staged_inputs.emplace_back(tensor.byte_size());
-        gpu_ros_managed::detail::DeviceBufferFactory::copy_to_host_blocking(
-          *buffer, staged_inputs.back().data(), staged_inputs.back().size());
-        data = staged_inputs.back().data();
+        // Keep the ready lease alive through tensor construction, Run, and
+        // output synchronization.  The MIGraphX external allocator uses the
+        // ORT device memory-info name "Cuda" even though the device vendor is
+        // AMD; this is the allocator identity used by MIGraphX's HIP backend.
+        leases.push_back(buffer->get_blocking_ready_lease());
+        data = leases.back().data();
+#ifdef GPU_ROS_MANAGED_HIP
+        memory_info = MakeHipDeviceMemoryInfo(execution_provider_, device.ordinal);
+        const char * allocator_name =
+          execution_provider_ == ExecutionProvider::kMigraphx ? "Cuda" : "Rocm";
+        ValidateDeviceMemoryInfo(
+          memory_info, allocator_name, gpu_device_id_,
+          "Managed HIP input tensor '" + tensor.name() + "'");
+#else
+        throw std::runtime_error(
+                "Managed HIP input requires the gpu_ros_managed_hip backend");
+#endif
       } else {
         throw std::invalid_argument(
                 "Managed device input backend does not match the configured execution provider");
@@ -250,6 +327,20 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       Ort::Value::CreateTensor(
         memory_info, const_cast<void *>(data), tensor.byte_size(),
         tensor.shape().data(), tensor.shape().size(), dtype));
+    if (!std::holds_alternative<gpu_ros_managed::HostBuffer>(tensor.storage())) {
+      const auto & buffer =
+        std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
+      const auto device = buffer->device_id();
+      if (device.backend == gpu_ros_managed::BackendKind::kCuda ||
+        device.backend == gpu_ros_managed::BackendKind::kHip)
+      {
+        if (ort_inputs.back().GetTensorMutableRawData() != data) {
+          throw std::runtime_error(
+                  "Managed input tensor '" + tensor.name() +
+                  "' lost pointer identity while creating the ORT input");
+        }
+      }
+    }
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -259,26 +350,115 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   }
 
   std::vector<Ort::Value> ort_outputs;
+  std::vector<std::shared_ptr<gpu_ros_managed::DeviceBuffer>> managed_output_buffers(
+    output_names_.size());
+  std::vector<std::unique_ptr<gpu_ros_managed::WriteHandle>> managed_output_writers(
+    output_names_.size());
+  std::vector<Ort::Value> bound_output_values;
   if (output_placement == OutputPlacement::kDevice) {
-    Ort::MemoryInfo cuda_memory_info(
-      "Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault);
-    Ort::IoBinding binding(*session_);
+    Ort::MemoryInfo device_memory_info = execution_provider_ == ExecutionProvider::kCuda ?
+      Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault) :
+      MakeHipDeviceMemoryInfo(execution_provider_, gpu_device_id_);
+    ValidateDeviceMemoryInfo(
+      device_memory_info, "Cuda", gpu_device_id_, "Managed output binding");
+
+    auto binding = std::make_unique<Ort::IoBinding>(*session_);
     for (size_t i = 0; i < ort_inputs.size(); ++i) {
-      binding.BindInput(input_name_ptrs[i], ort_inputs[i]);
-    }
-    for (const auto * output_name : output_name_ptrs) {
-      binding.BindOutput(output_name, cuda_memory_info);
+      binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
     }
 
-    binding.SynchronizeInputs();
-    session_->Run(Ort::RunOptions{nullptr}, binding);
-    binding.SynchronizeOutputs();
+    const bool try_managed_hip_preallocation = execution_provider_ == ExecutionProvider::kMigraphx;
+    bool preallocation_failed = false;
+    std::string preallocation_failure;
+    if (try_managed_hip_preallocation) {
+#ifdef GPU_ROS_MANAGED_HIP
+      if (!hip_output_stream_) {
+        auto hip_stream = gpu_ros_managed::hip::make_stream(gpu_device_id_);
+        hip_output_stream_ = hip_stream.stream();
+      }
+      bound_output_values.reserve(output_names_.size());
+      try {
+        for (size_t i = 0; i < output_names_.size(); ++i) {
+          if (!output_binding_probes_[i].metadata_shape_is_static) {
+            binding->BindOutput(output_name_ptrs[i], device_memory_info);
+            continue;
+          }
 
-    const auto bound_output_names = binding.GetOutputNames();
+          const auto metadata = session_->GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo();
+          const auto shape = metadata.GetShape();
+          const size_t element_count = metadata.GetElementCount();
+          const size_t element_size = DtypeSize(metadata.GetElementType());
+          if (element_count > std::numeric_limits<size_t>::max() / element_size) {
+            throw std::overflow_error(
+                    "Output tensor byte size overflows size_t: " + output_names_[i]);
+          }
+          const size_t byte_count = element_count * element_size;
+          auto buffer = gpu_ros_managed::hip::allocate(byte_count, gpu_device_id_);
+          auto writer = buffer->get_write_handle(hip_output_stream_);
+          bound_output_values.push_back(
+            Ort::Value::CreateTensor(
+              device_memory_info, writer.data(), byte_count, shape.data(), shape.size(),
+              metadata.GetElementType()));
+          if (bound_output_values.back().GetTensorMutableRawData() != writer.data()) {
+            throw std::runtime_error(
+                    "MIGraphX preallocated output '" + output_names_[i] +
+                    "' lost pointer identity during ORT binding");
+          }
+          managed_output_buffers[i] = std::move(buffer);
+          managed_output_writers[i] = std::make_unique<gpu_ros_managed::WriteHandle>(
+            std::move(writer));
+          binding->BindOutput(output_name_ptrs[i], bound_output_values.back());
+        }
+      } catch (const std::exception & error) {
+        preallocation_failed = true;
+        preallocation_failure = error.what();
+      }
+#else
+      preallocation_failed = true;
+      preallocation_failure = "gpu_ros_managed_hip backend is not compiled";
+#endif
+    }
+
+    if (preallocation_failed) {
+      for (auto & probe : output_binding_probes_) {
+        if (probe.metadata_shape_is_static) {
+          probe.decision =
+            "preallocated output binding probe failed: " + preallocation_failure +
+            "; using ORT-owned output";
+        }
+      }
+      managed_output_writers.clear();
+      for (auto & buffer : managed_output_buffers) {buffer.reset();}
+      managed_output_buffers.assign(output_names_.size(), nullptr);
+      bound_output_values.clear();
+      binding = std::make_unique<Ort::IoBinding>(*session_);
+      for (size_t i = 0; i < ort_inputs.size(); ++i) {
+        binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
+      }
+      for (const auto * output_name : output_name_ptrs) {
+        binding->BindOutput(output_name, device_memory_info);
+      }
+    } else if (!try_managed_hip_preallocation) {
+      for (const auto * output_name : output_name_ptrs) {
+        binding->BindOutput(output_name, device_memory_info);
+      }
+    }
+
+    binding->SynchronizeInputs();
+    session_->Run(Ort::RunOptions{nullptr}, *binding);
+    binding->SynchronizeOutputs();
+
+#ifdef GPU_ROS_MANAGED_HIP
+    for (auto & writer : managed_output_writers) {
+      if (writer) {writer->finalize();}
+    }
+#endif
+
+    const auto bound_output_names = binding->GetOutputNames();
     if (bound_output_names != output_names_) {
       throw std::runtime_error("ONNX Runtime returned unexpected bound output names");
     }
-    ort_outputs = binding.GetOutputValues();
+    ort_outputs = binding->GetOutputValues();
   } else {
     ort_outputs = session_->Run(
       Ort::RunOptions{nullptr},
@@ -307,23 +487,57 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
 
     if (output_placement == OutputPlacement::kDevice) {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
-      if (memory_info.GetAllocatorName() != "Cuda" ||
-        memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_GPU ||
-        memory_info.GetDeviceId() != gpu_device_id_)
-      {
-        throw std::runtime_error(
-                "Output tensor '" + tensor.name +
-                "' was not allocated on the requested CUDA device");
-      }
-      auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
+      if (execution_provider_ == ExecutionProvider::kCuda) {
+        ValidateDeviceMemoryInfo(memory_info, "Cuda", gpu_device_id_, "CUDA output tensor");
 #ifdef GPU_ROS_MANAGED_CUDA
-      tensor.storage = gpu_ros_managed::cuda::adopt_synchronized_external(
-        owner->GetTensorMutableRawData(), byte_count, gpu_device_id_,
-        std::static_pointer_cast<void>(owner));
+        auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
+        tensor.storage = gpu_ros_managed::cuda::adopt_synchronized_external(
+          owner->GetTensorMutableRawData(), byte_count, gpu_device_id_,
+          std::static_pointer_cast<void>(owner));
 #else
-      throw std::runtime_error(
-              "CUDA device output requested but gpu_ros_managed_cuda is unavailable");
+        throw std::runtime_error(
+                "CUDA device output requested but gpu_ros_managed_cuda is unavailable");
 #endif
+      } else {
+#ifdef GPU_ROS_MANAGED_HIP
+        ValidateDeviceMemoryInfo(memory_info, "Cuda", gpu_device_id_, "MIGraphX output tensor");
+        void * output_pointer = ort_outputs[i].GetTensorMutableRawData();
+        if (managed_output_buffers[i]) {
+          auto ready = managed_output_buffers[i]->get_blocking_ready_lease();
+          if (output_pointer != ready.data()) {
+            throw std::runtime_error(
+                    "MIGraphX output tensor '" + tensor.name +
+                    "' lost pointer identity after synchronization");
+          }
+          output_binding_probes_[i].decision =
+            "preallocated Managed HIP output passed pointer-identity and lifetime checks";
+          tensor.storage = managed_output_buffers[i];
+        } else {
+          auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
+          auto buffer = gpu_ros_managed::hip::adopt_synchronized_external(
+            owner->GetTensorMutableRawData(), byte_count, gpu_device_id_,
+            std::static_pointer_cast<void>(owner));
+          auto ready = buffer->get_blocking_ready_lease();
+          if (ready.data() != output_pointer) {
+            throw std::runtime_error(
+                    "ORT-owned MIGraphX output tensor '" + tensor.name +
+                    "' lost pointer identity during Managed adoption");
+          }
+          if (output_binding_probes_[i].metadata_shape_is_static) {
+            output_binding_probes_[i].decision +=
+              "; ORT-owned output passed synchronized Managed adoption and pointer-identity checks";
+          } else {
+            output_binding_probes_[i].decision =
+              "dynamic metadata used ORT-owned output; synchronized Managed adoption and "
+              "pointer-identity checks passed";
+          }
+          tensor.storage = std::move(buffer);
+        }
+#else
+        throw std::runtime_error(
+                "MIGraphX device output requested but gpu_ros_managed_hip is unavailable");
+#endif
+      }
     } else {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
       if (memory_info.GetDeviceType() != OrtMemoryInfoDeviceType_CPU) {

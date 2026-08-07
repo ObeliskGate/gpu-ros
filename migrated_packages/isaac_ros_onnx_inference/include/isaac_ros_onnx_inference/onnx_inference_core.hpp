@@ -61,8 +61,16 @@ public:
   size_t GetOutputCount() const;
   bool IsProfilingEnabled() const;
   std::string EndProfiling();
+  std::string OutputBindingProbeReport() const;
 
 private:
+  struct OutputBindingProbe
+  {
+    std::string name;
+    bool metadata_shape_is_static{false};
+    std::string decision;
+  };
+
   Ort::Env env_;
   Ort::SessionOptions session_options_;
   std::unique_ptr<Ort::Session> session_;
@@ -73,6 +81,8 @@ private:
 
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  std::vector<OutputBindingProbe> output_binding_probes_;
+  gpu_ros_managed::DeviceStream hip_output_stream_;
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference

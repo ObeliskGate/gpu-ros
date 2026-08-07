@@ -92,6 +92,10 @@ message(STATUS "ONNX Runtime library: ${ONNXRUNTIME_LIBRARY}")
 option(ORT_ENABLE_CUDA "Enable CUDAExecutionProvider selection" ON)
 option(ORT_ENABLE_ROCM "Enable ROCMExecutionProvider selection" OFF)
 option(ORT_ENABLE_MIGRAPHX "Enable MIGraphXExecutionProvider selection" OFF)
+option(
+  BUILD_MANAGED_HIP_TRANSPORT
+  "Build explicit standard-ROS2 to Managed HIP TensorList adapters"
+  ${ORT_ENABLE_MIGRAPHX})
 
 # ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────
 option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" ON)
@@ -117,6 +121,11 @@ if(ORT_ENABLE_CUDA)
   target_link_libraries(onnx_inference_core gpu_ros_managed::cuda)
   target_compile_definitions(onnx_inference_core PRIVATE GPU_ROS_MANAGED_CUDA)
 endif()
+if(ORT_ENABLE_ROCM OR ORT_ENABLE_MIGRAPHX OR BUILD_MANAGED_HIP_TRANSPORT)
+  find_package(gpu_ros_managed_hip REQUIRED)
+  target_link_libraries(onnx_inference_core gpu_ros_managed::hip)
+  target_compile_definitions(onnx_inference_core PRIVATE GPU_ROS_MANAGED_HIP)
+endif()
 
 # ── ROS2 node + transport IO ──────────────────────────────────────────────────
 set(node_sources
@@ -125,6 +134,9 @@ set(node_sources
   src/managed_tensor_list_io.cpp
   src/tensor_list_io_factory.cpp
 )
+if(BUILD_MANAGED_HIP_TRANSPORT)
+  list(APPEND node_sources src/managed_hip_tensor_list_nodes.cpp)
+endif()
 if(BUILD_NITROS_TRANSPORT)
   list(APPEND node_sources
     src/nitros_tensor_list_io.cpp
@@ -137,6 +149,11 @@ ament_auto_add_library(onnx_inference_node SHARED ${node_sources})
 target_link_libraries(onnx_inference_node onnx_inference_core)
 rclcpp_components_register_nodes(onnx_inference_node
   "nvidia::isaac_ros::onnx_inference::OnnxInferenceNode")
+if(BUILD_MANAGED_HIP_TRANSPORT)
+  rclcpp_components_register_nodes(onnx_inference_node
+    "nvidia::isaac_ros::onnx_inference::StdToManagedHipTensorListNode"
+    "nvidia::isaac_ros::onnx_inference::ManagedHipToStdTensorListNode")
+endif()
 
 install(PROGRAMS
   scripts/compare_nsys_cuda_traces.py
@@ -223,6 +240,11 @@ if(BUILD_TESTING)
       isaac_ros_nitros_tensor_list_type)
     add_launch_test(test/isaac_ros_onnx_rtdetr_pol_test.py TIMEOUT "600")
     add_launch_test(test/isaac_ros_onnx_rtdetr_managed_pol_test.py TIMEOUT "600")
+  endif()
+
+  if(BUILD_MANAGED_HIP_TRANSPORT AND ORT_ENABLE_MIGRAPHX AND BUILD_MIGRAPHX_POL_TEST)
+    find_package(launch_testing_ament_cmake REQUIRED)
+    add_launch_test(test/isaac_ros_onnx_managed_hip_pol_test.py TIMEOUT "900")
   endif()
 endif()
 

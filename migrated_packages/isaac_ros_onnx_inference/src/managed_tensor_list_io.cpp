@@ -39,7 +39,8 @@ class ManagedTensorListIO final : public ITensorListIO
 public:
   explicit ManagedTensorListIO(rclcpp::Node * node)
   : placement_(
-      node->get_parameter("execution_provider").as_string() == "cuda" ?
+      (node->get_parameter("execution_provider").as_string() == "cuda" ||
+      node->get_parameter("execution_provider").as_string() == "migraphx") ?
       OutputPlacement::kDevice : OutputPlacement::kHost),
     publisher_(node, "tensor_output", rclcpp::QoS(10)),
     node_(node)

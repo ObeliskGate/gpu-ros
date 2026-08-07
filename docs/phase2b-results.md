@@ -79,5 +79,10 @@ comparison output had already been written. Fixed-input captures also differed
 by one boundary frame in some runs. These issues do not change the completed
 pointer, copy-count, or paired-frame conclusions.
 
-AMD Managed remains subject to the D2H staging and host-backed-output
-limitations documented in phase2b-managed-transport.md.
+The archived NVIDIA results above predate the AMD Managed HIP adapter and are
+not an AMD Phase 2B result. AMD validation must record the explicit host-to-
+Managed and Managed-to-host adapter copies separately, then verify that the
+Managed TensorList inference boundary adds no tensor-payload copy. The current
+implementation and its probe/fallback policy are documented in
+phase2b-managed-transport.md; MI350X model and copy-trace results remain to be
+archived after the allocation-backed validation run.
