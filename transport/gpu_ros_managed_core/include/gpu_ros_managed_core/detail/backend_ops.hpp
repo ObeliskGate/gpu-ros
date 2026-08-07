@@ -28,6 +28,8 @@ public:
   virtual void synchronize_event(Event event) = 0;
   virtual void destroy_event(Event event) noexcept = 0;
   virtual std::shared_ptr<void> allocate_device(int ordinal, size_t bytes) = 0;
+  virtual void copy_host_to_device(
+    int ordinal, void * destination, const void * source, size_t bytes) = 0;
   virtual void copy_device_to_host(
     int ordinal, void * destination, const void * source, size_t bytes) = 0;
 };

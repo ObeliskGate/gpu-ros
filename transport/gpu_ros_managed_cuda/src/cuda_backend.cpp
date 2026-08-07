@@ -64,6 +64,12 @@ public:
       static_cast<void>(cudaFree(value));
     });
   }
+  void copy_host_to_device(
+    int ordinal, void * destination, const void * source, size_t bytes) override
+  {
+    select_device(ordinal);
+    check(cudaMemcpy(destination, source, bytes, cudaMemcpyHostToDevice), "cudaMemcpy H2D");
+  }
   void copy_device_to_host(
     int ordinal, void * destination, const void * source, size_t bytes) override
   {

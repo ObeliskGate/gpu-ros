@@ -11,7 +11,6 @@
 
 #include "rclcpp/type_adapter.hpp"
 #include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
-#include "gpu_ros_managed_core/detail/backend_ops.hpp"
 #include "gpu_ros_managed_tensor_list/tensor_list.hpp"
 
 template<>
@@ -43,8 +42,7 @@ struct rclcpp::TypeAdapter<
       } else {
         const auto & device = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
           tensor.storage());
-        gpu_ros_managed::detail::DeviceBufferFactory::copy_to_host_blocking(
-          *device, output.data.data(), output.data.size());
+        device->copy_to_host_blocking(output.data.data(), output.data.size());
       }
     }
   }

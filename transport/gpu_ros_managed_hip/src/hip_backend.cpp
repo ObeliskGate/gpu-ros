@@ -44,6 +44,8 @@ public:
       static_cast<void>(hipSetDevice(id)); static_cast<void>(hipFree(p));
     });
   }
+  void copy_host_to_device(int id, void * dst, const void * src, size_t bytes) override
+  {select_device(id); check(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice), "hipMemcpy H2D");}
   void copy_device_to_host(int id, void * dst, const void * src, size_t bytes) override
   {select_device(id); check(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost), "hipMemcpy D2H");}
 };

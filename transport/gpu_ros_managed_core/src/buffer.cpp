@@ -335,6 +335,44 @@ BlockingReadyLease DeviceBuffer::get_blocking_ready_lease() const
 {
   return BlockingReadyLease(state_);
 }
+void DeviceBuffer::copy_from_host_blocking(const void * source, size_t bytes)
+{
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kFresh) {
+    throw std::logic_error("DeviceBuffer H2D copy can only write a fresh buffer");
+  }
+  if (bytes > state_->size) {
+    throw std::out_of_range("H2D copy exceeds DeviceBuffer size");
+  }
+  if (bytes != 0 && source == nullptr) {
+    throw std::invalid_argument("H2D copy source is null for a non-empty copy");
+  }
+  try {
+    if (bytes != 0) {
+      state_->ops->copy_host_to_device(
+        state_->device.ordinal, state_->data, source, bytes);
+    }
+    state_->phase = detail::BufferPhase::kReady;
+  } catch (...) {
+    state_->phase = detail::BufferPhase::kFailed;
+    state_->release_must_orphan = true;
+    throw;
+  }
+}
+void DeviceBuffer::copy_to_host_blocking(void * destination, size_t bytes) const
+{
+  if (bytes > state_->size) {
+    throw std::out_of_range("D2H copy exceeds DeviceBuffer size");
+  }
+  if (bytes != 0 && destination == nullptr) {
+    throw std::invalid_argument("D2H copy destination is null for a non-empty copy");
+  }
+  auto lease = get_blocking_ready_lease();
+  if (bytes != 0) {
+    state_->ops->copy_device_to_host(
+      state_->device.ordinal, destination, lease.data(), bytes);
+  }
+}
 
 DeviceStream detail::DeviceBufferFactory::make_stream(
   DeviceId device, detail::NativeStream native, std::shared_ptr<void> owner,
@@ -383,15 +421,5 @@ std::shared_ptr<DeviceBuffer> detail::DeviceBufferFactory::make_ready(
 {
   return make_buffer(device, data, size, std::move(owner), std::move(ops),
     detail::BufferPhase::kReady);
-}
-void detail::DeviceBufferFactory::copy_to_host_blocking(
-  const DeviceBuffer & buffer, void * destination, size_t bytes)
-{
-  if (bytes > buffer.state_->size) {
-    throw std::out_of_range("D2H copy exceeds DeviceBuffer size");
-  }
-  auto lease = buffer.get_blocking_ready_lease();
-  buffer.state_->ops->copy_device_to_host(
-    buffer.state_->device.ordinal, destination, lease.data(), bytes);
 }
 }  // namespace gpu_ros_managed

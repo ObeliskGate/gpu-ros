@@ -89,6 +89,11 @@ public:
   WriteHandle get_write_handle(const DeviceStream & producer_stream);
   ReadHandle get_read_handle(const DeviceStream & consumer_stream) const;
   BlockingReadyLease get_blocking_ready_lease() const;
+  // A successful blocking H2D copy is the complete producer operation and
+  // transitions a fresh buffer to ready without creating a producer event.
+  void copy_from_host_blocking(const void * source, size_t bytes);
+  // Copies a ready buffer to host memory after synchronizing its producer.
+  void copy_to_host_blocking(void * destination, size_t bytes) const;
 
 private:
   std::shared_ptr<detail::BufferState> state_;
@@ -106,8 +111,6 @@ public:
     DeviceId, void *, size_t, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
   static std::shared_ptr<DeviceBuffer> make_ready(
     DeviceId, void *, size_t, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
-  static void copy_to_host_blocking(
-    const DeviceBuffer &, void * destination, size_t bytes);
 };
 }  // namespace detail
 }  // namespace gpu_ros_managed

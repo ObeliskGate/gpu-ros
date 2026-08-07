@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
 
@@ -18,6 +19,12 @@ int main()
   auto consumer_a = gpu_ros_managed::cuda::make_stream(0);
   auto consumer_b = gpu_ros_managed::cuda::make_stream(0);
   auto buffer = gpu_ros_managed::cuda::allocate(4096, 0);
+  const std::vector<uint8_t> host_source{1, 2, 3, 4};
+  buffer->copy_from_host_blocking(host_source.data(), host_source.size());
+  std::vector<uint8_t> host_destination(host_source.size());
+  buffer->copy_to_host_blocking(host_destination.data(), host_destination.size());
+  assert(host_destination == host_source);
+  buffer = gpu_ros_managed::cuda::allocate(4096, 0);
   {
     auto writer = buffer->get_write_handle(producer);
     assert(cudaMemsetAsync(writer.data(), 0x2a, writer.size(), producer.get()) == cudaSuccess);

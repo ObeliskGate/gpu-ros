@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -91,7 +92,18 @@ public:
     });
   }
 
-  void copy_device_to_host(int, void *, const void *, size_t) override {}
+  void copy_host_to_device(int, void * destination, const void * source, size_t bytes) override
+  {
+    ++h2d_copies;
+    if (fail_h2d.exchange(false)) {throw std::runtime_error("H2D failure");}
+    if (bytes != 0) {std::memcpy(destination, source, bytes);}
+  }
+
+  void copy_device_to_host(int, void * destination, const void * source, size_t bytes) override
+  {
+    ++d2h_copies;
+    if (bytes != 0) {std::memcpy(destination, source, bytes);}
+  }
 
   void fail_synchronize(grm::detail::Event event)
   {
@@ -129,6 +141,9 @@ public:
   std::atomic<int> synchronizes{0};
   std::atomic<int> destroys{0};
   std::atomic<int> allocation_releases{0};
+  std::atomic<int> h2d_copies{0};
+  std::atomic<int> d2h_copies{0};
+  std::atomic<bool> fail_h2d{false};
   std::atomic<int> selected{-1};
   grm::detail::NativeStream last_record_stream{0};
   grm::detail::NativeStream last_wait_stream{0};
@@ -192,6 +207,62 @@ void wait_for_cleanup()
 {
   assert(grm::detail::wait_for_pending_releases(grm::BackendKind::kCuda, 2s));
   assert(grm::detail::pending_release_count(grm::BackendKind::kCuda) == 0);
+}
+
+void test_blocking_copy_api()
+{
+  auto ops = std::make_shared<FakeOps>();
+  std::atomic<int> owner_releases{0};
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto memory = make_owned_memory(owner_releases, 16);
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 16, memory.owner, ops);
+  const uint8_t source[4]{1, 2, 3, 4};
+
+  expect_throws<std::invalid_argument>([&] {buffer->copy_from_host_blocking(nullptr, 4);});
+  expect_throws<std::out_of_range>([&] {buffer->copy_from_host_blocking(source, 17);});
+  buffer->copy_from_host_blocking(source, sizeof(source));
+  expect_throws<std::logic_error>([&] {buffer->copy_from_host_blocking(source, 1);});
+
+  uint8_t destination[4]{};
+  buffer->copy_to_host_blocking(destination, sizeof(destination));
+  assert(std::memcmp(destination, source, sizeof(source)) == 0);
+  assert(ops->h2d_copies == 1);
+  assert(ops->d2h_copies == 1);
+  buffer.reset();
+  memory.owner.reset();
+
+  auto producer = make_stream(device, 17, ops);
+  auto produced_memory = make_owned_memory(owner_releases, 16);
+  auto produced_buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, produced_memory.pointer, 16, produced_memory.owner, ops);
+  std::memcpy(produced_memory.pointer, source, sizeof(source));
+  produced_buffer->get_write_handle(producer).finalize();
+  uint8_t produced_destination[4]{};
+  produced_buffer->copy_to_host_blocking(produced_destination, sizeof(produced_destination));
+  assert(std::memcmp(produced_destination, source, sizeof(source)) == 0);
+  assert(ops->synchronizes == 1);
+  produced_buffer.reset();
+  produced_memory.owner.reset();
+  wait_for_cleanup();
+  assert(owner_releases == 2);
+}
+
+void test_blocking_h2d_failure_safe_orphan()
+{
+  auto ops = std::make_shared<FakeOps>();
+  ops->fail_h2d = true;
+  std::atomic<int> owner_releases{0};
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto memory = make_owned_memory(owner_releases, 16);
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 16, memory.owner, ops);
+  const uint8_t source[4]{1, 2, 3, 4};
+  expect_throws<std::runtime_error>([&] {buffer->copy_from_host_blocking(source, sizeof(source));});
+  buffer.reset();
+  memory.owner.reset();
+  wait_for_cleanup();
+  assert(owner_releases == 0);
 }
 
 void test_state_machine_and_multiple_readers()
@@ -448,5 +519,7 @@ int main()
   test_blocking_failure_safe_orphan();
   test_pool_facade_can_be_destroyed_before_block();
   test_pending_cleanup_drain();
+  test_blocking_copy_api();
+  test_blocking_h2d_failure_safe_orphan();
   return 0;
 }
