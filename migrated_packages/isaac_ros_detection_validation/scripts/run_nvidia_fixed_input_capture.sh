@@ -16,7 +16,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <rtdetr-c|rtdetr-managed|yolov8-c|yolov8-managed> <output-name>"
+  echo "Usage: $0 <rtdetr-c|rtdetr-d|rtdetr-managed|yolov8-c|yolov8-d|yolov8-managed> <output-name>"
   echo
   echo "Record one fixed-input NVIDIA detection bag in a single terminal."
   echo "The output name must not already exist."
@@ -61,6 +61,8 @@ STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
 DETECTION_TOPIC=""
 CONFIDENCE_THRESHOLD="0.6"
 EXTRA_LAUNCH_ARGS=()
+LAUNCH_INPUT_ARGS=()
+REQUIRES_CAMERA_INFO=1
 
 case "${LANE}" in
   rtdetr-c)
@@ -68,6 +70,18 @@ case "${LANE}" in
     LAUNCH_PACKAGE="isaac_ros_rtdetr_std"
     LAUNCH_FILE="rtdetr_ort_nitros.launch.py"
     EXTRA_LAUNCH_ARGS+=(execution_provider:=cuda)
+    LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
+    DETECTION_CANDIDATES=(
+      /detections_output
+      /rtdetr_container/detections_output
+    )
+    ;;
+  rtdetr-d)
+    MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
+    LAUNCH_PACKAGE="isaac_ros_rtdetr_std"
+    LAUNCH_FILE="rtdetr_ort_std.launch.py"
+    EXTRA_LAUNCH_ARGS+=(execution_provider:=cuda)
+    LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
       /detections_output
       /rtdetr_container/detections_output
@@ -77,6 +91,7 @@ case "${LANE}" in
     MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
     LAUNCH_PACKAGE="isaac_ros_onnx_inference"
     LAUNCH_FILE="rtdetr_ort_managed.launch.py"
+    LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
       /detections_output
       /rtdetr_managed_container/detections_output
@@ -88,9 +103,27 @@ case "${LANE}" in
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
     EXTRA_LAUNCH_ARGS+=(transport:=nitros execution_provider:=cuda)
+    LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
       /detections_output
       /yolov8_container/detections_output
+    )
+    ;;
+  yolov8-d)
+    MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
+    LAUNCH_PACKAGE="isaac_ros_yolov8_std"
+    LAUNCH_FILE="yolov8_ort_std_image.launch.py"
+    CONFIDENCE_THRESHOLD="0.25"
+    REQUIRES_CAMERA_INFO=0
+    EXTRA_LAUNCH_ARGS+=(
+      execution_provider:=cuda
+      image_topic:=image_rect
+      namespace:=yolov8_d
+    )
+    DETECTION_CANDIDATES=(
+      /detections_output
+      /yolov8_d/detections_output
+      /yolov8_phase2a_container/detections_output
     )
     ;;
   yolov8-managed)
@@ -98,6 +131,7 @@ case "${LANE}" in
     LAUNCH_PACKAGE="isaac_ros_onnx_inference"
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
+    LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     EXTRA_LAUNCH_ARGS+=(transport:=managed execution_provider:=cuda)
     DETECTION_CANDIDATES=(
       /detections_output
@@ -369,8 +403,7 @@ LAUNCH_COMMAND=(
   "${LAUNCH_PACKAGE}"
   "${LAUNCH_FILE}"
   "model_file_path:=${MODEL_PATH}"
-  input_image_width:=1280
-  input_image_height:=720
+  "${LAUNCH_INPUT_ARGS[@]}"
   "confidence_threshold:=${CONFIDENCE_THRESHOLD}"
   "${EXTRA_LAUNCH_ARGS[@]}"
 )
@@ -406,10 +439,12 @@ if ! wait_for_topic_count "${IMAGE_TOPIC}" "Subscription" "${LAUNCH_PID}" "graph
   exit 1
 fi
 
-if ! wait_for_topic_count \
-  "${CAMERA_INFO_TOPIC}" "Subscription" "${LAUNCH_PID}" "graph"; then
-  tail -n 100 "${LAUNCH_LOG}" >&2 || true
-  exit 1
+if ((REQUIRES_CAMERA_INFO)); then
+  if ! wait_for_topic_count \
+    "${CAMERA_INFO_TOPIC}" "Subscription" "${LAUNCH_PID}" "graph"; then
+    tail -n 100 "${LAUNCH_LOG}" >&2 || true
+    exit 1
+  fi
 fi
 
 echo "Recording ${DETECTION_TOPIC} to ${OUTPUT_PATH}..."

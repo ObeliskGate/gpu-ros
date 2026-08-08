@@ -8,6 +8,7 @@ install(PROGRAMS
   scripts/run_amd_phase2a_fixed_input_capture.sh
   scripts/run_amd_transport_audit.sh
   scripts/run_nvidia_fixed_input_capture.sh
+  scripts/run_nvidia_c_vs_d_copy_audit.sh
   scripts/run_nvidia_transport_audit.sh
   scripts/run_nvidia_yolov8_transport_audit.sh
   DESTINATION lib/${PROJECT_NAME}

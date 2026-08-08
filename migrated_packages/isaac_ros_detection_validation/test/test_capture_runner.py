@@ -28,6 +28,9 @@ AUDIT_SCRIPT_PATH = (
 UNIFIED_NVIDIA_AUDIT_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_nvidia_transport_audit.sh'
 )
+NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH = (
+    Path(__file__).parents[1] / 'scripts' / 'run_nvidia_c_vs_d_copy_audit.sh'
+)
 UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_transport_audit.sh'
 )
@@ -45,7 +48,8 @@ def test_capture_runner_help_does_not_require_ros_environment():
         capture_output=True,
         text=True,
     )
-    assert '<rtdetr-c|rtdetr-managed|yolov8-c|yolov8-managed>' in result.stdout
+    assert '<rtdetr-c|rtdetr-d|rtdetr-managed|yolov8-c|yolov8-d|yolov8-managed>' in (
+        result.stdout)
 
 
 def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():
@@ -129,6 +133,27 @@ def test_unified_nvidia_audit_runner_is_executable_and_has_valid_bash_syntax():
     assert '--config-c-binding-report' in script
     assert '--managed-binding-report' in script
     assert 'Config A is a manual sanity reference only' in script
+
+
+def test_nvidia_c_vs_d_audit_runner_is_executable_and_has_valid_bash_syntax():
+    """The C-vs-D experiment has a separate diagnostic runner."""
+    assert NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
+    subprocess.run(['bash', '-n', str(NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH)], check=True)
+    script = NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH.read_text()
+    assert 'compare_nvidia_copy_traces.py' in script
+    assert 'rtdetr-d' in SCRIPT_PATH.read_text()
+    assert 'yolov8-d' in SCRIPT_PATH.read_text()
+
+
+def test_nvidia_c_vs_d_audit_help_does_not_require_ros_environment():
+    """Help is available before sourcing ROS or checking GPU tools."""
+    result = subprocess.run(
+        [str(NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH), '--help'],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert '<yolov8|rtdetr> <audit-name>' in result.stdout
 
 
 def test_unified_amd_audit_uses_attach_trace_without_warmup_fallback():

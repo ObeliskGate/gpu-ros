@@ -54,6 +54,14 @@ def generate_launch_description():
             default_value='',
             description='Enable ORT profiling and write JSON using this path prefix'),
         DeclareLaunchArgument(
+            'ort_profile_frames',
+            default_value='0',
+            description='Number of inference frames to include in the ORT profile'),
+        DeclareLaunchArgument(
+            'binding_report_path',
+            default_value='',
+            description='Write the first-frame ORT pointer/lifetime report here'),
+        DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
             description='Minimum score for a bounding box to be published'),
@@ -64,6 +72,8 @@ def generate_launch_description():
     model_file_path = LaunchConfiguration('model_file_path')
     execution_provider = LaunchConfiguration('execution_provider')
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
+    ort_profile_frames = LaunchConfiguration('ort_profile_frames')
+    binding_report_path = LaunchConfiguration('binding_report_path')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     resize_node = ComposableNode(
@@ -160,6 +170,8 @@ def generate_launch_description():
             'model_file_path': model_file_path,
             'execution_provider': execution_provider,
             'ort_profile_prefix': ort_profile_prefix,
+            'ort_profile_frames': ort_profile_frames,
+            'binding_report_path': binding_report_path,
             'transport': 'std',
         }],
         remappings=[
