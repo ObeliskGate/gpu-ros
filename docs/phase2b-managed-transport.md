@@ -164,11 +164,13 @@ The unified AMD audit performs the post-warm-up attach itself:
 
 It uses `rocprofv3 --attach <PID>` with memory-copy and kernel tracing. It does
 not set `ROCP_TOOL_ATTACH`. The runner uses `--attach-duration-msec` when
-available so attachment is non-interactive, and sends SIGINT after fixed-input
-playback to detach. It uses `--attach-sync-output` when supported and otherwise
-waits for stable non-empty JSON output before parsing. Attach/detach or missing
-JSON output remains a hard tooling failure. Warm-up events are not used as a
-substitute for a fixed-input trace.
+available so attachment is non-interactive. After fixed-input playback and
+drain, the capture process signals completion while keeping the graph alive;
+the audit runner detaches rocprofv3 and acknowledges completion before the
+capture process stops the graph. It uses `--attach-sync-output` when supported
+and otherwise waits for stable non-empty JSON output before parsing.
+Attach/detach or missing JSON output remains a hard tooling failure. Warm-up
+events are not used as a substitute for a fixed-input trace.
 
 For real-model fixed-input capture, the existing single-terminal runner keeps
 `CAPTURE_TRANSPORT=std` as its Phase 2A default. Set

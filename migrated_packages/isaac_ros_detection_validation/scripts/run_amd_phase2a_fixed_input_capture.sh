@@ -36,6 +36,8 @@ usage() {
   echo "  CAPTURE_BINDING_REPORT_PATH=<absolute path>  (default: disabled)"
   echo "  CAPTURE_TRACE_ATTACH_READY_FILE=<path>       (default: disabled)"
   echo "  CAPTURE_TRACE_ATTACH_RELEASE_FILE=<path>     (default: disabled)"
+  echo "  CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE=<path> (default: disabled)"
+  echo "  CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE=<path> (default: disabled)"
   echo "  CAPTURE_RECORD=0|1                        (default: 1)"
   echo "  CAPTURE_OUTPUT_ROOT=<absolute path>"
 }
@@ -90,6 +92,8 @@ ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
 BINDING_REPORT_PATH="${CAPTURE_BINDING_REPORT_PATH:-}"
 TRACE_ATTACH_READY_FILE="${CAPTURE_TRACE_ATTACH_READY_FILE:-}"
 TRACE_ATTACH_RELEASE_FILE="${CAPTURE_TRACE_ATTACH_RELEASE_FILE:-}"
+TRACE_ATTACH_PLAYBACK_DONE_FILE="${CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE:-}"
+TRACE_ATTACH_DETACH_COMPLETE_FILE="${CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE:-}"
 TRACE_ATTACH_TIMEOUT_SECONDS="${CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS:-900}"
 RECORD_OUTPUT="${CAPTURE_RECORD:-1}"
 DETECTION_TOPIC=""
@@ -185,6 +189,18 @@ if [[ -n ${TRACE_ATTACH_READY_FILE} && -z ${TRACE_ATTACH_RELEASE_FILE} ]]; then
   echo "ERROR: CAPTURE_TRACE_ATTACH_READY_FILE requires CAPTURE_TRACE_ATTACH_RELEASE_FILE." >&2
   exit 2
 fi
+if [[ -n ${TRACE_ATTACH_PLAYBACK_DONE_FILE} &&
+  -z ${TRACE_ATTACH_DETACH_COMPLETE_FILE} ]]; then
+  echo "ERROR: CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE requires " \
+    "CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE." >&2
+  exit 2
+fi
+if [[ -n ${TRACE_ATTACH_DETACH_COMPLETE_FILE} &&
+  -z ${TRACE_ATTACH_PLAYBACK_DONE_FILE} ]]; then
+  echo "ERROR: CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE requires " \
+    "CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE." >&2
+  exit 2
+fi
 
 if [[ ! -s ${MODEL_PATH} ]]; then
   if [[ ${PIPELINE} == "yolov8" ]]; then
@@ -209,13 +225,20 @@ fi
 if [[ -n ${BINDING_REPORT_PATH} ]]; then
   mkdir -p "$(dirname "${BINDING_REPORT_PATH}")"
 fi
-if [[ -n ${TRACE_ATTACH_READY_FILE} ]]; then
-  mkdir -p "$(dirname "${TRACE_ATTACH_READY_FILE}")"
-  if [[ -e ${TRACE_ATTACH_READY_FILE} || -e ${TRACE_ATTACH_RELEASE_FILE} ]]; then
-    echo "ERROR: refusing to overwrite trace attach handshake files." >&2
+for handshake_file in \
+  "${TRACE_ATTACH_READY_FILE}" \
+  "${TRACE_ATTACH_RELEASE_FILE}" \
+  "${TRACE_ATTACH_PLAYBACK_DONE_FILE}" \
+  "${TRACE_ATTACH_DETACH_COMPLETE_FILE}"; do
+  if [[ -z ${handshake_file} ]]; then
+    continue
+  fi
+  mkdir -p "$(dirname "${handshake_file}")"
+  if [[ -e ${handshake_file} ]]; then
+    echo "ERROR: refusing to overwrite trace attach handshake file: ${handshake_file}" >&2
     exit 1
   fi
-fi
+done
 
 TARGET_PATHS=(
   "${LAUNCH_LOG}" \
@@ -439,6 +462,27 @@ wait_for_no_publishers() {
   ps -eo pid=,ppid=,pgid=,stat=,args= \
     | awk '/ros2 launch isaac_ros_rtdetr_std|ros2 launch isaac_ros_yolov8_std|rtdetr_ort_managed_amd|yolov8_ort_managed_amd|component_container_mt|ros2 bag play/ {print}' \
     >&2 || true
+  return 1
+}
+
+wait_for_profiler_detach() {
+  local detach_complete_file="$1"
+  local timeout_seconds="$2"
+  local attempt
+  local attempts=$((timeout_seconds * 2))
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if [[ -e ${detach_complete_file} ]]; then
+      return 0
+    fi
+    if ! process_alive "${LAUNCH_PID}"; then
+      echo "ERROR: graph exited while waiting for profiler detach." >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+
+  echo "ERROR: profiler detach did not complete within ${timeout_seconds}s." >&2
   return 1
 }
 
@@ -692,6 +736,18 @@ if [[ ${RECORD_OUTPUT} == 0 ]]; then
 
   echo "Playback completed. Draining the graph for ${DRAIN_SECONDS} seconds..."
   sleep "${DRAIN_SECONDS}"
+
+  if [[ -n ${TRACE_ATTACH_PLAYBACK_DONE_FILE} ]]; then
+    touch "${TRACE_ATTACH_PLAYBACK_DONE_FILE}"
+    echo "Fixed-input playback complete; waiting for profiler detach..."
+    if ! wait_for_profiler_detach \
+      "${TRACE_ATTACH_DETACH_COMPLETE_FILE}" \
+      "${TRACE_ATTACH_TIMEOUT_SECONDS}"; then
+      exit 1
+    fi
+    echo "Profiler detach complete; stopping graph."
+  fi
+
   stop_process "${LAUNCH_PID}" "graph"
   LAUNCH_PID=""
 
@@ -749,6 +805,17 @@ print_command "${PLAYBACK_COMMAND[@]}" >>"${COMMAND_LOG}"
 
 echo "Playback completed. Draining the graph for ${DRAIN_SECONDS} seconds..."
 sleep "${DRAIN_SECONDS}"
+
+if [[ -n ${TRACE_ATTACH_PLAYBACK_DONE_FILE} ]]; then
+  touch "${TRACE_ATTACH_PLAYBACK_DONE_FILE}"
+  echo "Fixed-input playback complete; waiting for profiler detach..."
+  if ! wait_for_profiler_detach \
+    "${TRACE_ATTACH_DETACH_COMPLETE_FILE}" \
+    "${TRACE_ATTACH_TIMEOUT_SECONDS}"; then
+    exit 1
+  fi
+  echo "Profiler detach complete; stopping graph."
+fi
 
 stop_process "${RECORD_PID}" "recorder"
 RECORD_PID=""

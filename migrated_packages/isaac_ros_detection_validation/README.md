@@ -136,8 +136,9 @@ rocprofv3 --attach <PID> \
 
 The runner probes whether the installed ROCprofiler supports
 `--attach-sync-output` and `--attach-duration-msec`. The duration option keeps
-the attach non-interactive; after fixed-input playback the runner sends SIGINT
-to detach. If synchronous output is unavailable, it waits for stable non-empty
+the attach non-interactive. After fixed-input playback and drain, the capture
+runner waits for the audit runner to finish detach before stopping the target
+graph. If synchronous output is unavailable, it waits for stable non-empty
 JSON output before parsing. Only the subsequent fixed-input playback is
 included in the rocprof trace.
 Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H

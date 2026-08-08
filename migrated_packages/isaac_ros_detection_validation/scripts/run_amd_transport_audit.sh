@@ -174,6 +174,32 @@ wait_for_ready_file() {
   return 1
 }
 
+wait_for_playback_done_file() {
+  local done_file="$1"
+  local capture_pid="$2"
+  local profiler_pid="$3"
+  local attempt
+  local attempts=$((TRACE_ATTACH_TIMEOUT_SECONDS * 2))
+
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if [[ -e ${done_file} ]]; then
+      return 0
+    fi
+    if ! kill -0 "${capture_pid}" 2>/dev/null; then
+      echo "ERROR: capture exited before fixed-input playback completed: ${done_file}" >&2
+      return 1
+    fi
+    if ! kill -0 "${profiler_pid}" 2>/dev/null; then
+      echo "ERROR: rocprofv3 exited before fixed-input playback completed." >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+
+  echo "ERROR: timed out waiting for fixed-input playback completion: ${done_file}" >&2
+  return 1
+}
+
 read_ready_value() {
   local key="$1"
   local path="$2"
@@ -246,12 +272,15 @@ run_lane() {
   local release_file="${LOG_ROOT}/${lane_name}.attach-release"
   local trace_dir="${TRACE_ROOT}/${lane_name}"
   local profiler_log="${LOG_ROOT}/${lane_name}.rocprof.log"
+  local playback_done_file="${LOG_ROOT}/${lane_name}.playback-done"
+  local detach_complete_file="${LOG_ROOT}/${lane_name}.detach-complete"
   local binding_path="${BINDING_ROOT}/${lane_name}.json"
   local profile_prefix="${ORT_ROOT}/${lane_name}_"
   local command_log="${LOG_ROOT}/${lane_name}.capture.log"
   local container_pid
   local capture_status
   local profiler_status
+  local wait_for_playback_status
   local trace_files
   local capture_args=("${output_name}")
 
@@ -270,6 +299,8 @@ run_lane() {
   CAPTURE_BINDING_REPORT_PATH="${binding_path}" \
   CAPTURE_TRACE_ATTACH_READY_FILE="${ready_file}" \
   CAPTURE_TRACE_ATTACH_RELEASE_FILE="${release_file}" \
+  CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE="${playback_done_file}" \
+  CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE="${detach_complete_file}" \
   CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS="${TRACE_ATTACH_TIMEOUT_SECONDS}" \
   CAPTURE_STOP_GRACE_SECONDS=60 \
   CAPTURE_STOP_TERM_SECONDS=20 \
@@ -291,17 +322,33 @@ run_lane() {
 
   touch "${release_file}"
   set +e
-  wait "${CAPTURE_PID}"
-  capture_status=$?
-  CAPTURE_PID=""
+  if ! wait_for_playback_done_file \
+    "${playback_done_file}" \
+    "${CAPTURE_PID}" \
+    "${PROFILER_PID}"; then
+    wait_for_playback_status=1
+  else
+    wait_for_playback_status=0
+  fi
   if [[ -n ${PROFILER_PID} ]] && kill -0 "${PROFILER_PID}" 2>/dev/null; then
     echo "Detaching rocprofv3 from ${container_pid}..."
     kill -INT "${PROFILER_PID}" 2>/dev/null || true
   fi
-  wait "${PROFILER_PID}"
-  profiler_status=$?
+  if [[ -n ${PROFILER_PID} ]]; then
+    wait "${PROFILER_PID}"
+    profiler_status=$?
+  else
+    profiler_status=1
+  fi
+  touch "${detach_complete_file}"
   set -e
   PROFILER_PID=""
+  wait "${CAPTURE_PID}"
+  capture_status=$?
+  CAPTURE_PID=""
+  if ((wait_for_playback_status != 0)); then
+    return 1
+  fi
   if ((capture_status != 0)); then
     echo "ERROR: ${transport} fixed-input capture failed." >&2
     return 1

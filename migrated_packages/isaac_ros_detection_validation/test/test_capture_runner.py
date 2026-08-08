@@ -188,7 +188,20 @@ def test_unified_amd_audit_handles_rocprof_versions_without_sync_output():
     assert 'ROCPROF_ATTACH_ARGS=()' in script
     assert '--attach-duration-msec' in script
     assert 'kill -INT "${PROFILER_PID}"' in script
+    assert 'CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE' in script
+    assert 'CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE' in script
+    assert 'wait_for_playback_done_file' in script
     assert 'wait_for_trace_outputs' in script
+
+
+def test_capture_runner_holds_graph_until_profiler_detaches():
+    script = (
+        Path(__file__).parents[1] / 'scripts' /
+        'run_amd_phase2a_fixed_input_capture.sh'
+    ).read_text()
+    assert 'CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE' in script
+    assert 'CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE' in script
+    assert 'wait_for_profiler_detach' in script
 
 
 def test_amd_profile_excludes_legacy_nvidia_yolov8_pol_test():
