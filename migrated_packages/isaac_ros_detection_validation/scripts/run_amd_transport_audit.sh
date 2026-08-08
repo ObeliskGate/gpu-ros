@@ -245,6 +245,14 @@ start_profiler_attach() {
   # so no warm-up GPU activity is included in the copy statistics.
   (
     cd "${trace_dir}"
+    # ROCprofiler-SDK 1.0 uses these values when it injects the profiler
+    # configuration into the attached target. Keep them scoped to this
+    # profiler process; do not modify the container or shell environment.
+    ROCPROF_KERNEL_TRACE=1 \
+    ROCPROF_MEMORY_COPY_TRACE=1 \
+    ROCPROF_OUTPUT_PATH="${trace_dir}" \
+    ROCPROF_OUTPUT_FILE_NAME="${MODEL}_managed_attach" \
+    ROCPROF_OUTPUT_FORMAT=json \
     rocprofv3 --attach "${container_pid}" \
       --memory-copy-trace \
       --kernel-trace \

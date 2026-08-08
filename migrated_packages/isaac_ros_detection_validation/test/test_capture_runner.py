@@ -193,6 +193,9 @@ def test_unified_amd_audit_handles_rocprof_versions_without_sync_output():
     assert 'CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE' in script
     assert 'CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE' in script
     assert 'wait_for_playback_done_file' in script
+    assert 'ROCPROF_OUTPUT_PATH=' in script
+    assert 'ROCPROF_OUTPUT_FILE_NAME=' in script
+    assert 'ROCPROF_OUTPUT_FORMAT=json' in script
     assert 'wait_for_trace_outputs' in script
 
 
