@@ -106,7 +106,8 @@ records are the primary copy evidence. Kernel names containing `copy`,
 The result status is `PASS`, `FAIL`, or `INCONCLUSIVE`: an explicit
 Managed-only tensor-sized memory-copy record is `FAIL`, while an unresolved
 kernel-only payload risk or a memory-copy record without a byte count is
-`INCONCLUSIVE`. RT-DETR CPU fallback is retained
+`INCONCLUSIVE`; the AMD audit is also `INCONCLUSIVE` if the Managed trace does
+not contain the expected adapter H2D and D2H directions. RT-DETR CPU fallback is retained
 as ORT placement diagnostics and does not fail closure. Config A is a manual
 sanity reference only when Config C is inconclusive.
 

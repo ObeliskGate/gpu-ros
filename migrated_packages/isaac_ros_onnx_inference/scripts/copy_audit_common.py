@@ -128,6 +128,15 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+def _agent_text(value: Any) -> str:
+    """Normalize ROCprofiler agent-id objects without losing the handle."""
+    if isinstance(value, Mapping):
+        for key in ('name', 'agent', 'handle', 'id'):
+            if key in value:
+                return _text(value[key])
+    return _text(value)
+
+
 def _agent_class(agent: str) -> str:
     text = agent.lower().replace('_', ' ').replace('-', ' ')
     if any(word in text for word in CPU_AGENT_WORDS):
@@ -177,12 +186,14 @@ def normalize_direction(
 def _is_copy_record(event: Mapping[str, Any], size: Optional[int]) -> bool:
     kind = _text(event_field(
         event, 'kind', 'category', 'record_type', 'record', 'domain', 'type', default=''))
-    direction = _text(event_field(event, 'direction', 'copy_direction', default=''))
+    direction = _text(event_field(
+        event, 'direction', 'copy_direction', 'transfer_direction', default=''))
     source = event_field(
-        event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from', default='')
+        event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from',
+        'src_agent_id', 'source_agent_id', default='')
     destination = event_field(
         event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to',
-        default='')
+        'dst_agent_id', 'destination_agent_id', default='')
     copy_words = r'copy|memcpy|memmove|memory[_ ]?operation|transfer|blit|h2d|d2h|d2d'
     kind_is_copy = bool(re.search(copy_words, kind.lower()))
     kind_is_kernel = bool(re.search(r'kernel|dispatch', kind.lower()))
@@ -209,11 +220,12 @@ def normalize_event(event: Mapping[str, Any], platform: str = 'generic') -> Dict
     operation = _text(event_field(
         event, 'Name', 'name', 'operation', 'op', 'kernel_name', 'kernel', 'event', default=''))
     size = byte_count(event)
-    source = _text(event_field(
-        event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from', default=''))
-    destination = _text(event_field(
+    source = _agent_text(event_field(
+        event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from',
+        'src_agent_id', 'source_agent_id', default=''))
+    destination = _agent_text(event_field(
         event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to',
-        default=''))
+        'dst_agent_id', 'destination_agent_id', default=''))
     explicit_direction = event_field(
         event, 'direction', 'copy_direction', 'transfer_direction', default='')
     if _is_copy_record(event, size):
@@ -249,6 +261,7 @@ def normalize_event(event: Mapping[str, Any], platform: str = 'generic') -> Dict
         'frame_id': frame_id,
         'process_id': process_id,
         'payload_hint': payload_hint,
+        'raw_fields': sorted(str(key) for key in event),
     }
 
 
@@ -421,7 +434,7 @@ def _is_adapter_direction(direction: str, adapter_directions: Set[str]) -> bool:
 
 
 def _copy_record_for_json(event: Mapping[str, Any], count: int = 1) -> Dict[str, Any]:
-    return {
+    record = {
         'operation': event.get('operation', '<unnamed>'),
         'direction': event.get('direction', 'unknown'),
         'source_agent': event.get('source_agent', ''),
@@ -429,6 +442,9 @@ def _copy_record_for_json(event: Mapping[str, Any], count: int = 1) -> Dict[str,
         'bytes': event.get('bytes'),
         'count': count,
     }
+    if event.get('raw_fields'):
+        record['raw_fields'] = event['raw_fields']
+    return record
 
 
 def _evidence_flags(boundary_evidence: Optional[Mapping[str, Any]]) -> Tuple[List[Any], List[Any]]:
@@ -463,6 +479,7 @@ def build_pair_report(
     platform: str = 'generic',
     reference_lane: str = 'reference',
     managed_adapter_directions: Iterable[str] = (),
+    require_adapter_directions: bool = False,
     boundary_evidence: Optional[Mapping[str, Any]] = None,
     profiler_complete: bool = True,
     kernel_payload_risk_names: Optional[Iterable[str]] = None,
@@ -520,11 +537,25 @@ def build_pair_report(
     def has_explainable_events(summary):
         return summary['kernel_event_count'] > 0 or bool(summary['memcopies'])
 
+    adapter_directions = {str(direction).upper() for direction in managed_adapter_directions}
+    missing_adapter_directions = sorted(
+        adapter_directions - set(managed['memory_totals'])
+    ) if require_adapter_directions else []
+    for direction in missing_adapter_directions:
+        incomplete_memory_copy_evidence.append({
+            'lane': 'managed',
+            'operation': '<missing expected adapter direction>',
+            'direction': direction,
+            'source_agent': '',
+            'destination_agent': '',
+            'bytes': None,
+            'count': 0,
+            'reason': 'expected Managed adapter memory-copy direction was not observed',
+        })
     trace_data_complete = (
         profiler_complete and has_explainable_events(reference) and
         has_explainable_events(managed) and
         not incomplete_memory_copy_evidence)
-    adapter_directions = {str(direction).upper() for direction in managed_adapter_directions}
     memory_copy_failures: List[Dict[str, Any]] = []
 
     managed_extra = [
@@ -689,6 +720,7 @@ def build_pair_report(
             'managed_has_no_extra_payload_copy_rate': payload_rate_pass,
             'memory_copy_evidence_complete': memory_copy_evidence_complete,
             'memory_copy_records_explainable': not incomplete_memory_copy_evidence,
+            'expected_adapter_directions_observed': not missing_adapter_directions,
             'profiler_data_complete': trace_data_complete,
             'pointer_lifetime_evidence_complete': pointer_lifetime_complete,
             'kernel_differences_are_diagnostic': True,

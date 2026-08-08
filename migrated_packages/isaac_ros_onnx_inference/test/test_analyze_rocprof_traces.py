@@ -37,6 +37,16 @@ def memory_copy(operation, size, source, destination, frame=None):
     return record
 
 
+def rocprof_json_memory_copy(operation, size, source_handle, destination_handle):
+    return {
+        'kind': 'MEMORY_COPY',
+        'operation': operation,
+        'bytes': size,
+        'src_agent_id': {'handle': source_handle},
+        'dst_agent_id': {'handle': destination_handle},
+    }
+
+
 def kernel(name):
     return {'kind': 'kernel_dispatch', 'kernel_name': name}
 
@@ -59,6 +69,16 @@ def test_rocprof_directions_bytes_and_frame_normalization():
     assert report['memory_totals']['D2D'] == {'count': 1, 'bytes': 1600}
     assert report['normalized_per_frame']['H2D']['count'] == 0.5
     assert report['payload_copy_counts'][(1600, 'D2D')] == 1
+
+
+def test_rocprof_json_agent_id_fields_are_normalized():
+    report = ROC.summarize(
+        [rocprof_json_memory_copy(
+            'MEMORY_COPY_HOST_TO_DEVICE', 4915200, 0, 4)],
+        {4915200},
+    )
+
+    assert report['memory_totals']['H2D'] == {'count': 1, 'bytes': 4915200}
 
 
 def test_rocprof_multi_process_wrapper_is_flattened(tmp_path):
@@ -157,6 +177,18 @@ def test_memory_copy_without_byte_count_is_inconclusive():
     assert result['criteria']['memory_copy_records_explainable'] is False
     assert result['unresolved_memory_copy_evidence'][0]['lane'] == 'managed'
     assert result['unresolved_memory_copy_evidence'][0]['bytes'] is None
+
+
+def test_amd_audit_requires_expected_managed_adapter_directions():
+    result = ROC.compare(
+        [kernel('provider_kernel')],
+        [kernel('provider_kernel')],
+        set(),
+        require_adapter_directions=True,
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['expected_adapter_directions_observed'] is False
 
 
 def test_pointer_lifetime_boundary_evidence_fails():

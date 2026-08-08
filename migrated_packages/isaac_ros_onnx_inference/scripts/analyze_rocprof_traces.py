@@ -106,6 +106,7 @@ def compare(
         std_frames=None,
         managed_frames=None,
         adapter_directions=('H2D', 'D2H'),
+        require_adapter_directions=False,
         boundary_evidence=None,
         profiler_complete=True,
         kernel_payload_risk_names=None,
@@ -120,6 +121,7 @@ def compare(
         platform='rocprof',
         reference_lane='std',
         managed_adapter_directions=adapter_directions,
+        require_adapter_directions=require_adapter_directions,
         boundary_evidence=boundary_evidence,
         profiler_complete=profiler_complete,
         kernel_payload_risk_names=kernel_payload_risk_names,
@@ -169,6 +171,7 @@ def main():
                 std_frames=args.std_frames,
                 managed_frames=args.managed_frames,
                 adapter_directions=args.expected_adapter_direction or ('H2D', 'D2H'),
+                require_adapter_directions=True,
                 boundary_evidence=evidence,
                 kernel_payload_risk_names=args.kernel_payload_risk,
                 binding_reports=load_binding_reports(
@@ -184,9 +187,10 @@ def main():
         print(f"{result['lane']} ROCprofiler report written")
         return 0
     print(f"Status: {result['status']}")
-    for direction, values in result['managed']['memory_totals'].items():
-        print(
-            f"Managed {direction}: count={values['count']} bytes={values['bytes']}")
+    for lane in (result['reference_lane'], 'managed'):
+        for direction, values in result[lane]['memory_totals'].items():
+            print(
+                f"{lane} {direction}: count={values['count']} bytes={values['bytes']}")
     for item in result['unresolved_memory_copy_evidence']:
         print(
             'Unresolved memory-copy record: '

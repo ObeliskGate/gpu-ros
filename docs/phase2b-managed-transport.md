@@ -121,7 +121,9 @@ Kernel traces are retained to discover and explain possible payload movement;
 a kernel name containing `copy`, `memcpy`, or `blit` is not automatically a
 copy failure. A confirmed Managed-only tensor-sized memory copy is `FAIL`; an
 unresolved payload risk or a memory-copy record without a byte count is
-`INCONCLUSIVE`.
+`INCONCLUSIVE`. For the AMD Managed lane, failure to observe either expected
+adapter direction (H2D or D2H) is also `INCONCLUSIVE`, because an empty copy
+set cannot prove that the inference boundary was audited.
 
 ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
