@@ -613,7 +613,7 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
     }
     const size_t byte_count = element_count * element_size;
     void * ort_output_pointer = ort_outputs[i].GetTensorMutableRawData();
-    void * storage_pointer = ort_output_pointer;
+    const void * storage_pointer = ort_output_pointer;
     std::string output_storage = "host";
     std::string output_lifetime_path = "ORT output copied into host TensorList storage";
     bool output_pointer_identity = false;
