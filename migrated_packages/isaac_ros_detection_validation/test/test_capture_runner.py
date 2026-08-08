@@ -182,6 +182,14 @@ def test_unified_amd_audit_matches_capture_runner_argument_contract():
     assert '"${CAPTURE_RUNNER}" "${capture_args[@]}"' in script
 
 
+def test_unified_amd_audit_handles_rocprof_versions_without_sync_output():
+    script = UNIFIED_AMD_AUDIT_SCRIPT_PATH.read_text()
+    assert "rocprofv3 --help" in script
+    assert 'ROCPROF_ATTACH_SYNC_ARGS=()' in script
+    assert '--process-sync true' in script
+    assert 'wait_for_trace_outputs' in script
+
+
 def test_amd_profile_excludes_legacy_nvidia_yolov8_pol_test():
     profile = AMD_COLCON_DEFAULTS_PATH.read_text()
     assert '-DBUILD_NVIDIA_YOLOV8_POL_TEST=OFF' in profile

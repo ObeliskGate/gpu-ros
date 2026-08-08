@@ -41,9 +41,8 @@ if [[ ! ${AUDIT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 
 WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
-APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
-AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${APP_ROOT}/migrated_packages/benchmark_results/phase2b_amd_audits}"
+AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b_amd_audits}"
 AUDIT_ROOT="${AUDIT_PARENT}/${AUDIT_NAME}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CAPTURE_RUNNER="${SCRIPT_DIR}/run_amd_phase2a_fixed_input_capture.sh"
@@ -105,12 +104,25 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in awk find grep ros2 rocprofv3 sleep tee; do
+for command_name in awk find grep ros2 rocprofv3 sed sleep sort tee; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
   fi
 done
+
+ROCPROF_ATTACH_SYNC_ARGS=()
+ROCPROF_ATTACH_SYNC_MODE=unsupported
+if rocprofv3 --help 2>&1 | grep -q -- '--attach-sync-output'; then
+  ROCPROF_ATTACH_SYNC_ARGS=(--attach-sync-output)
+  ROCPROF_ATTACH_SYNC_MODE=attach-sync-output
+elif rocprofv3 --help 2>&1 | grep -q -- '--process-sync'; then
+  ROCPROF_ATTACH_SYNC_ARGS=(--process-sync true)
+  ROCPROF_ATTACH_SYNC_MODE=process-sync
+else
+  echo "WARNING: installed rocprofv3 supports neither --attach-sync-output nor " \
+    "--process-sync; using stable-output polling after detach." >&2
+fi
 
 mkdir -p "${ORT_ROOT}" "${TRACE_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
   "${REPORT_ROOT}" "${LOG_ROOT}"
@@ -166,6 +178,35 @@ read_ready_value() {
   awk -F= -v wanted="${key}" '$1 == wanted {print $2; exit}' "${path}"
 }
 
+wait_for_trace_outputs() {
+  local trace_dir="$1"
+  local attempts=$((TRACE_ATTACH_TIMEOUT_SECONDS * 2))
+  local attempt
+  local previous=""
+  local current=""
+  local stable_count=0
+
+  # Older ROCprofiler SDKs do not provide --attach-sync-output. Wait until
+  # the JSON output exists and its file set/sizes are stable before parsing.
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    current="$(find "${trace_dir}" -type f -name '*.json' -size +0c \
+      -printf '%p %s\n' | sort)"
+    if [[ -n ${current} && ${current} == "${previous}" ]]; then
+      ((stable_count += 1))
+      if ((stable_count >= 2)); then
+        return 0
+      fi
+    else
+      stable_count=0
+      previous="${current}"
+    fi
+    sleep 0.5
+  done
+
+  echo "ERROR: rocprofv3 produced no stable non-empty JSON output in ${trace_dir}." >&2
+  return 1
+}
+
 start_profiler_attach() {
   local container_pid="$1"
   local trace_dir="$2"
@@ -180,7 +221,7 @@ start_profiler_attach() {
       --memory-copy-trace \
       --kernel-trace \
       --output-format json \
-      --attach-sync-output \
+      "${ROCPROF_ATTACH_SYNC_ARGS[@]}" \
       --output-directory "${trace_dir}" \
       --output-file "${MODEL}_managed_attach"
   ) >"${profiler_log}" 2>&1 &
@@ -189,6 +230,8 @@ start_profiler_attach() {
   if ! kill -0 "${PROFILER_PID}" 2>/dev/null; then
     wait "${PROFILER_PID}" 2>/dev/null || true
     echo "ERROR: rocprofv3 attach exited before fixed-input playback." >&2
+    echo "rocprofv3 log: ${profiler_log}" >&2
+    sed -n '1,160p' "${profiler_log}" >&2 || true
     return 1
   fi
 }
@@ -262,6 +305,9 @@ run_lane() {
     return 1
   fi
 
+  if ! wait_for_trace_outputs "${trace_dir}"; then
+    return 1
+  fi
   mapfile -t trace_files < <(find "${trace_dir}" -type f -name '*.json' -size +0c -print | sort)
   if [[ ${#trace_files[@]} -eq 0 ]]; then
     echo "ERROR: rocprofv3 produced no non-empty JSON files for ${transport}." >&2
@@ -391,7 +437,9 @@ fi
   echo "${MODEL} AMD transport audit: ${FINAL_STATUS}"
   echo "std captured frames: ${STD_FRAMES}"
   echo "Managed captured frames: ${MANAGED_FRAMES}"
-  echo "rocprof command: rocprofv3 --attach <component_container_mt PID> --memory-copy-trace --kernel-trace --output-format json --attach-sync-output"
+  echo "rocprof command: rocprofv3 --attach <component_container_mt PID> --memory-copy-trace --kernel-trace --output-format json"
+  echo "rocprof --attach-sync-output support: ${ROCPROF_ATTACH_SYNC_MODE}"
+  echo "Trace output is required to be stable before parsing."
   echo "Warm-up is excluded: rocprofv3 attaches only after the warm-up handshake."
   echo "Managed-only H2D/D2H records are reported as expected explicit adapter staging."
   echo "Managed-only tensor-sized inference-boundary copies fail; ambiguous payload kernels are INCONCLUSIVE."
