@@ -185,8 +185,9 @@ def test_unified_amd_audit_matches_capture_runner_argument_contract():
 def test_unified_amd_audit_handles_rocprof_versions_without_sync_output():
     script = UNIFIED_AMD_AUDIT_SCRIPT_PATH.read_text()
     assert "rocprofv3 --help" in script
-    assert 'ROCPROF_ATTACH_SYNC_ARGS=()' in script
-    assert '--process-sync true' in script
+    assert 'ROCPROF_ATTACH_ARGS=()' in script
+    assert '--attach-duration-msec' in script
+    assert 'kill -INT "${PROFILER_PID}"' in script
     assert 'wait_for_trace_outputs' in script
 
 

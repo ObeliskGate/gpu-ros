@@ -111,17 +111,19 @@ for command_name in awk find grep ros2 rocprofv3 sed sleep sort tee; do
   fi
 done
 
-ROCPROF_ATTACH_SYNC_ARGS=()
-ROCPROF_ATTACH_SYNC_MODE=unsupported
+ROCPROF_ATTACH_ARGS=()
+ROCPROF_ATTACH_MODE=interactive
 if rocprofv3 --help 2>&1 | grep -q -- '--attach-sync-output'; then
-  ROCPROF_ATTACH_SYNC_ARGS=(--attach-sync-output)
-  ROCPROF_ATTACH_SYNC_MODE=attach-sync-output
-elif rocprofv3 --help 2>&1 | grep -q -- '--process-sync'; then
-  ROCPROF_ATTACH_SYNC_ARGS=(--process-sync true)
-  ROCPROF_ATTACH_SYNC_MODE=process-sync
+  ROCPROF_ATTACH_ARGS+=(--attach-sync-output)
+  ROCPROF_ATTACH_MODE=sync-output
+fi
+if rocprofv3 --help 2>&1 | grep -q -- '--attach-duration-msec'; then
+  ROCPROF_ATTACH_ARGS+=(
+    --attach-duration-msec "$((TRACE_ATTACH_TIMEOUT_SECONDS * 1000))")
+  ROCPROF_ATTACH_MODE="${ROCPROF_ATTACH_MODE}+duration"
 else
-  echo "WARNING: installed rocprofv3 supports neither --attach-sync-output nor " \
-    "--process-sync; using stable-output polling after detach." >&2
+  echo "WARNING: installed rocprofv3 has no non-interactive attach duration; " \
+    "SIGINT detach will be used." >&2
 fi
 
 mkdir -p "${ORT_ROOT}" "${TRACE_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
@@ -221,7 +223,7 @@ start_profiler_attach() {
       --memory-copy-trace \
       --kernel-trace \
       --output-format json \
-      "${ROCPROF_ATTACH_SYNC_ARGS[@]}" \
+      "${ROCPROF_ATTACH_ARGS[@]}" \
       --output-directory "${trace_dir}" \
       --output-file "${MODEL}_managed_attach"
   ) >"${profiler_log}" 2>&1 &
@@ -292,6 +294,10 @@ run_lane() {
   wait "${CAPTURE_PID}"
   capture_status=$?
   CAPTURE_PID=""
+  if [[ -n ${PROFILER_PID} ]] && kill -0 "${PROFILER_PID}" 2>/dev/null; then
+    echo "Detaching rocprofv3 from ${container_pid}..."
+    kill -INT "${PROFILER_PID}" 2>/dev/null || true
+  fi
   wait "${PROFILER_PID}"
   profiler_status=$?
   set -e
@@ -438,7 +444,7 @@ fi
   echo "std captured frames: ${STD_FRAMES}"
   echo "Managed captured frames: ${MANAGED_FRAMES}"
   echo "rocprof command: rocprofv3 --attach <component_container_mt PID> --memory-copy-trace --kernel-trace --output-format json"
-  echo "rocprof --attach-sync-output support: ${ROCPROF_ATTACH_SYNC_MODE}"
+  echo "rocprof attach mode: ${ROCPROF_ATTACH_MODE}"
   echo "Trace output is required to be stable before parsing."
   echo "Warm-up is excluded: rocprofv3 attaches only after the warm-up handshake."
   echo "Managed-only H2D/D2H records are reported as expected explicit adapter staging."

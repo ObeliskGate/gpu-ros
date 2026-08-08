@@ -135,10 +135,11 @@ rocprofv3 --attach <PID> \
 ```
 
 The runner probes whether the installed ROCprofiler supports
-`--attach-sync-output`. If it does not, the flag is omitted and the runner
-uses `--process-sync true` when available, then waits for stable non-empty JSON
-output before parsing. Only the subsequent fixed-input playback is included in
-the rocprof trace.
+`--attach-sync-output` and `--attach-duration-msec`. The duration option keeps
+the attach non-interactive; after fixed-input playback the runner sends SIGINT
+to detach. If synchronous output is unavailable, it waits for stable non-empty
+JSON output before parsing. Only the subsequent fixed-input playback is
+included in the rocprof trace.
 Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H
 records are separately reported as explicit adapter staging; an additional
 tensor-sized inference-boundary copy fails the audit. This is not a claim that
