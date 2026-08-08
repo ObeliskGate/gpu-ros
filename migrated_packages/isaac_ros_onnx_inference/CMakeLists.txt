@@ -156,7 +156,9 @@ if(BUILD_MANAGED_HIP_TRANSPORT)
 endif()
 
 install(PROGRAMS
+  scripts/copy_audit_common.py
   scripts/compare_nsys_cuda_traces.py
+  scripts/analyze_rocprof_traces.py
   scripts/summarize_ort_profile.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -224,6 +226,9 @@ if(BUILD_TESTING)
   )
   ament_add_pytest_test(test_compare_nsys_cuda_traces
     test/test_compare_nsys_cuda_traces.py
+  )
+  ament_add_pytest_test(test_analyze_rocprof_traces
+    test/test_analyze_rocprof_traces.py
   )
 
   if(BUILD_NITROS_TRANSPORT)

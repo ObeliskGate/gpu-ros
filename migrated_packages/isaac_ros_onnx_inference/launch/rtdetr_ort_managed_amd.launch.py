@@ -35,6 +35,7 @@ def generate_launch_description():
     use_max_dim_for_orig_size = LaunchConfiguration('use_max_dim_for_orig_size')
     gpu_device_id = LaunchConfiguration('gpu_device_id')
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
+    binding_report_path = LaunchConfiguration('binding_report_path')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     encoder = ComposableNode(
@@ -82,6 +83,7 @@ def generate_launch_description():
             'execution_provider': 'migraphx',
             'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
             'ort_profile_prefix': ort_profile_prefix,
+            'binding_report_path': binding_report_path,
             'transport': 'managed',
         }],
         remappings=[
@@ -132,6 +134,7 @@ def generate_launch_description():
         DeclareLaunchArgument('use_max_dim_for_orig_size', default_value='false'),
         DeclareLaunchArgument('gpu_device_id', default_value='0'),
         DeclareLaunchArgument('ort_profile_prefix', default_value=''),
+        DeclareLaunchArgument('binding_report_path', default_value=''),
         DeclareLaunchArgument('confidence_threshold', default_value='0.6'),
     ]
     return launch.LaunchDescription(arguments + [container])

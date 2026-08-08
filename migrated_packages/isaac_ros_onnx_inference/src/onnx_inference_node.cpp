@@ -39,6 +39,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("ort_profile_prefix", "");
   const int64_t ort_profile_frames =
     declare_parameter<int64_t>("ort_profile_frames", 0);
+  const std::string binding_report_path =
+    declare_parameter<std::string>("binding_report_path", "");
   const std::string transport =
     declare_parameter<std::string>("transport", "std");
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
@@ -72,6 +74,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   cfg.ep = execution_provider;
   cfg.gpu_device_id = gpu_device_id;
   cfg.ort_profile_prefix = ort_profile_prefix;
+  cfg.binding_report_path = binding_report_path;
+  cfg.transport = transport;
   core_ = std::make_unique<OnnxInferenceCore>(cfg);
 
   RCLCPP_INFO(

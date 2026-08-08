@@ -17,7 +17,6 @@
 import importlib.util
 from pathlib import Path
 
-
 SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'compare_nsys_cuda_traces.py'
 SPEC = importlib.util.spec_from_file_location('compare_nsys_cuda_traces', SCRIPT_PATH)
 TRACE_COMPARE = importlib.util.module_from_spec(SPEC)
@@ -116,15 +115,44 @@ def test_same_signature_with_one_extra_payload_copy_per_frame_fails():
     assert result['criteria']['managed_has_no_extra_payload_copy_rate'] is False
 
 
-def test_managed_only_kernel_fails():
-    """An M-only CUDA kernel makes the GPU logic sets differ."""
+def test_managed_only_ordinary_kernel_is_diagnostic_only():
+    """A provider kernel difference is not itself a transport copy failure."""
     result = TRACE_COMPARE.compare(
         [kernel('conv_kernel')],
         [kernel('conv_kernel'), kernel('unexpected_kernel')],
         set(),
     )
 
-    assert result['pass'] is False
+    assert result['pass'] is True
+    assert result['status'] == 'PASS'
     assert result['bridge_zero_copy_pass'] is True
     assert result['gpu_execution_control_pass'] is False
     assert result['kernel_names']['extra_in_managed'] == ['unexpected_kernel']
+    assert result['kernel_only_differences'][0]['classification'].startswith('diagnostic_')
+
+
+def test_managed_only_copy_kernel_is_inconclusive():
+    """A copy-looking kernel needs payload evidence, but is not an automatic FAIL."""
+    result = TRACE_COMPARE.compare(
+        [kernel('conv_kernel')],
+        [kernel('conv_kernel'), kernel('payload_copy_kernel')],
+        set(),
+    )
+
+    assert result['pass'] is False
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['memory_copy_failures'] == []
+    assert result['unresolved_payload_copy_risk'][0]['name'] == 'payload_copy_kernel'
+
+
+def test_pointer_lifetime_confirmed_boundary_copy_fails():
+    """Independent pointer/lifetime evidence can promote a trace to FAIL."""
+    result = TRACE_COMPARE.compare(
+        [kernel('conv_kernel')],
+        [kernel('conv_kernel')],
+        set(),
+        boundary_evidence={'managed_boundary_payload_copy_confirmed': True},
+    )
+
+    assert result['status'] == 'FAIL'
+    assert result['memory_copy_failures'][0]['reason'].startswith('pointer/lifetime')

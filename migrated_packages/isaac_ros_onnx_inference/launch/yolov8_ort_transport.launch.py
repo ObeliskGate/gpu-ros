@@ -35,6 +35,7 @@ def launch_setup(context):
     execution_provider = LaunchConfiguration('execution_provider')
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
     ort_profile_frames = LaunchConfiguration('ort_profile_frames')
+    binding_report_path = LaunchConfiguration('binding_report_path')
     input_image_width = LaunchConfiguration('input_image_width')
     input_image_height = LaunchConfiguration('input_image_height')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
@@ -121,6 +122,7 @@ def launch_setup(context):
                 'execution_provider': execution_provider,
                 'ort_profile_prefix': ort_profile_prefix,
                 'ort_profile_frames': ort_profile_frames,
+                'binding_report_path': binding_report_path,
                 'transport': 'nitros',
             }],
             remappings=[
@@ -151,6 +153,7 @@ def launch_setup(context):
                     'execution_provider': execution_provider,
                     'ort_profile_prefix': ort_profile_prefix,
                     'ort_profile_frames': ort_profile_frames,
+                    'binding_report_path': binding_report_path,
                     'transport': 'managed',
                 }],
                 remappings=[
@@ -212,6 +215,7 @@ def generate_launch_description():
         DeclareLaunchArgument('execution_provider', default_value='cuda'),
         DeclareLaunchArgument('ort_profile_prefix', default_value=''),
         DeclareLaunchArgument('ort_profile_frames', default_value='0'),
+        DeclareLaunchArgument('binding_report_path', default_value=''),
         DeclareLaunchArgument('input_image_width', default_value='1280'),
         DeclareLaunchArgument('input_image_height', default_value='720'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.25'),

@@ -54,6 +54,7 @@ DRAIN_SECONDS="${CAPTURE_DRAIN_SECONDS:-10}"
 MIN_MESSAGES="${CAPTURE_MIN_MESSAGES:-20}"
 ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
 ORT_PROFILE_FRAMES="${CAPTURE_ORT_PROFILE_FRAMES:-0}"
+BINDING_REPORT_PATH="${CAPTURE_BINDING_REPORT_PATH:-}"
 NSYS_OUTPUT="${CAPTURE_NSYS_OUTPUT:-}"
 STOP_GRACE_SECONDS="${CAPTURE_STOP_GRACE_SECONDS:-10}"
 STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
@@ -135,11 +136,6 @@ if ((ORT_PROFILE_FRAMES > 0)) && [[ -z ${ORT_PROFILE_PREFIX} ]]; then
   exit 2
 fi
 
-if [[ -n ${ORT_PROFILE_PREFIX} && ${LANE} != yolov8-c && ${LANE} != yolov8-managed ]]; then
-  echo "ERROR: bounded ORT profiling is currently supported only for YOLOv8 lanes." >&2
-  exit 2
-fi
-
 if [[ -n ${NSYS_OUTPUT} && ${NSYS_OUTPUT} == *.nsys-rep ]]; then
   echo "ERROR: CAPTURE_NSYS_OUTPUT must be a prefix without the .nsys-rep suffix." >&2
   exit 2
@@ -150,6 +146,10 @@ if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
     "ort_profile_prefix:=${ORT_PROFILE_PREFIX}"
     "ort_profile_frames:=${ORT_PROFILE_FRAMES}"
   )
+fi
+
+if [[ -n ${BINDING_REPORT_PATH} ]]; then
+  EXTRA_LAUNCH_ARGS+=("binding_report_path:=${BINDING_REPORT_PATH}")
 fi
 
 if [[ ! -s ${MODEL_PATH} ]]; then
@@ -188,6 +188,20 @@ for target in "${OUTPUT_PATH}" "${LAUNCH_LOG}" "${RECORD_LOG}"; do
     exit 1
   fi
 done
+if [[ -n ${BINDING_REPORT_PATH} && -e ${BINDING_REPORT_PATH} ]]; then
+  echo "ERROR: refusing to overwrite binding report: ${BINDING_REPORT_PATH}" >&2
+  exit 1
+fi
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  existing_profiles=()
+  mapfile -t existing_profiles < <(
+    find "$(dirname -- "${ORT_PROFILE_PREFIX}")" -maxdepth 1 -type f \
+      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print)
+  if [[ ${#existing_profiles[@]} -ne 0 ]]; then
+    echo "ERROR: refusing to overwrite existing ORT profile output for prefix: ${ORT_PROFILE_PREFIX}" >&2
+    exit 1
+  fi
+fi
 
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then

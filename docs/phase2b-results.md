@@ -3,6 +3,11 @@
 This report records the existing NVIDIA validation archive. Procedures and
 interpretation rules are in phase2b-managed-transport.md.
 
+The unified NVIDIA/AMD audit tooling added afterward has not been run against
+new hardware traces in this change. Its implementation status is therefore
+`tooling implemented`; no new `PASS` is claimed here. The NVIDIA values below
+remain historical, and the allocation-backed AMD copy audit remains pending.
+
 ## Provenance
 
 | Field | Value |

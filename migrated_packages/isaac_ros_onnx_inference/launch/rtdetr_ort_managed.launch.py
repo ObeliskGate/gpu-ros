@@ -26,12 +26,18 @@ def generate_launch_description():
     input_image_width = LaunchConfiguration('input_image_width')
     input_image_height = LaunchConfiguration('input_image_height')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
+    ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
+    ort_profile_frames = LaunchConfiguration('ort_profile_frames')
+    binding_report_path = LaunchConfiguration('binding_report_path')
 
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=''),
         DeclareLaunchArgument('input_image_width', default_value='640'),
         DeclareLaunchArgument('input_image_height', default_value='480'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.6'),
+        DeclareLaunchArgument('ort_profile_prefix', default_value=''),
+        DeclareLaunchArgument('ort_profile_frames', default_value='0'),
+        DeclareLaunchArgument('binding_report_path', default_value=''),
     ]
 
     resize = ComposableNode(
@@ -83,6 +89,9 @@ def generate_launch_description():
         name='onnx_inference', package='isaac_ros_onnx_inference',
         plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
         parameters=[{'model_file_path': model_file_path, 'execution_provider': 'cuda',
+                     'ort_profile_prefix': ort_profile_prefix,
+                     'ort_profile_frames': ort_profile_frames,
+                     'binding_report_path': binding_report_path,
                      'transport': 'managed'}],
         remappings=[('tensor_input', 'managed_tensor_input'),
                     ('tensor_output', 'managed_tensor_output')])

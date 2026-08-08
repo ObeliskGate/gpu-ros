@@ -51,6 +51,7 @@ def _launch_setup(context):
     namespace = LaunchConfiguration('namespace').perform(context)
     execution_provider = LaunchConfiguration('execution_provider').perform(context)
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
+    binding_report_path = LaunchConfiguration('binding_report_path').perform(context)
     confidence_threshold = float(
         LaunchConfiguration('confidence_threshold').perform(context))
     nms_threshold = float(
@@ -76,6 +77,7 @@ def _launch_setup(context):
             'model_file_path': resolved_model_path,
             'execution_provider': execution_provider,
             'ort_profile_prefix': ort_profile_prefix,
+            'binding_report_path': binding_report_path,
             'transport': 'std',
         }],
         remappings=[
@@ -133,6 +135,11 @@ def generate_launch_description():
             'ort_profile_prefix',
             default_value='',
             description='Enable ORT profiling and write JSON using this path prefix',
+        ),
+        DeclareLaunchArgument(
+            'binding_report_path',
+            default_value='',
+            description='Write the first-frame ORT pointer/lifetime report here',
         ),
         DeclareLaunchArgument(
             'confidence_threshold',

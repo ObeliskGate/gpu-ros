@@ -74,25 +74,69 @@ Set `CAPTURE_PLAYBACK_RATE` to change the default `0.25` playback rate. Set
 
 The runner also accepts `yolov8-c` and `yolov8-managed` lanes.
 
-## NVIDIA YOLOv8 transport audit
+## NVIDIA transport audit
 
-The transport audit runs Config C and Managed against the same fixed input and
-keeps the bags, bounded ONNX Runtime profiles, full Nsight Systems reports and
-machine-readable comparisons in one directory. It checks all of the following:
+The unified audit runs Config C and Managed against the same fixed input for
+either YOLOv8 or RT-DETR. Run it from the Isaac ROS workspace root after
+building and sourcing the workspace:
 
-- NITROS/Managed payload-pointer identity and CUDA I/O Binding tests pass.
-- C and M assign the same ONNX nodes to the same execution providers.
-- C and M expose the same CUDA kernel-name set.
-- M introduces no new CUDA memcpy signature or tensor-payload copy rate.
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
+  yolov8 \
+  yolov8_transport_audit_20260808
 
-Run it from the Isaac ROS workspace root after building and sourcing the
-workspace:
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
+  rtdetr \
+  rtdetr_transport_audit_20260808
+```
+
+The historical YOLOv8 entry point remains compatible:
 
 ```bash
 ./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_nvidia_yolov8_transport_audit.sh \
-  yolov8_transport_audit_20260801
+  yolov8_transport_audit_20260808
 ```
 
-The official YOLOv8 decoder's device-to-host output copy is expected in both
-lanes. The audit reports that copy separately; its presence does not imply a
-Managed bridge payload copy.
+Each audit archives lane self reports, the paired copy report, ORT provider
+placement, first-frame pointer/lifetime binding reports, Nsight traces, and
+the existing stamp-matched detection comparator JSON. Explicit `memory_copy`
+records are the primary copy evidence. Kernel names containing `copy`,
+`memcpy`, or `blit` are diagnostic and do not automatically mean a copy.
+
+The result status is `PASS`, `FAIL`, or `INCONCLUSIVE`: an explicit
+Managed-only tensor-sized memory-copy record is `FAIL`, while an unresolved
+kernel-only payload risk is `INCONCLUSIVE`. RT-DETR CPU fallback is retained
+as ORT placement diagnostics and does not fail closure. Config A is a manual
+sanity reference only when Config C is inconclusive.
+
+## AMD Phase 2B transport audit
+
+Run the standard and Managed HIP lanes with the unified runner:
+
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+  yolov8 \
+  yolov8_amd_transport_audit_20260808
+
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+  rtdetr \
+  rtdetr_amd_transport_audit_20260808
+```
+
+The runner completes warm-up first, locates `component_container_mt`, and
+attaches directly with:
+
+```bash
+rocprofv3 --attach <PID> \
+  --memory-copy-trace \
+  --kernel-trace \
+  --output-format json \
+  --attach-sync-output
+```
+
+Only the subsequent fixed-input playback is included in the rocprof trace.
+Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H
+records are separately reported as explicit adapter staging; an additional
+tensor-sized inference-boundary copy fails the audit. This is not a claim that
+the complete pipeline, adapters, decoders, provider kernels, or serialization
+never copy.

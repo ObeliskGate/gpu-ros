@@ -33,6 +33,9 @@ usage() {
   echo "  CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=<integer> (default: 900)"
   echo "  CAPTURE_GRAPH_READY_TIMEOUT_SECONDS=<integer>  (default: 900)"
   echo "  CAPTURE_ORT_PROFILE_PREFIX=<absolute path prefix> (default: disabled)"
+  echo "  CAPTURE_BINDING_REPORT_PATH=<absolute path>  (default: disabled)"
+  echo "  CAPTURE_TRACE_ATTACH_READY_FILE=<path>       (default: disabled)"
+  echo "  CAPTURE_TRACE_ATTACH_RELEASE_FILE=<path>     (default: disabled)"
   echo "  CAPTURE_RECORD=0|1                        (default: 1)"
   echo "  CAPTURE_OUTPUT_ROOT=<absolute path>"
 }
@@ -84,6 +87,10 @@ STOP_GRACE_SECONDS="${CAPTURE_STOP_GRACE_SECONDS:-10}"
 STOP_TERM_SECONDS="${CAPTURE_STOP_TERM_SECONDS:-5}"
 IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
 ORT_PROFILE_PREFIX="${CAPTURE_ORT_PROFILE_PREFIX:-}"
+BINDING_REPORT_PATH="${CAPTURE_BINDING_REPORT_PATH:-}"
+TRACE_ATTACH_READY_FILE="${CAPTURE_TRACE_ATTACH_READY_FILE:-}"
+TRACE_ATTACH_RELEASE_FILE="${CAPTURE_TRACE_ATTACH_RELEASE_FILE:-}"
+TRACE_ATTACH_TIMEOUT_SECONDS="${CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS:-900}"
 RECORD_OUTPUT="${CAPTURE_RECORD:-1}"
 DETECTION_TOPIC=""
 
@@ -170,6 +177,15 @@ for value_name in \
   fi
 done
 
+if [[ ! ${TRACE_ATTACH_TIMEOUT_SECONDS} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS must be a non-negative integer." >&2
+  exit 2
+fi
+if [[ -n ${TRACE_ATTACH_READY_FILE} && -z ${TRACE_ATTACH_RELEASE_FILE} ]]; then
+  echo "ERROR: CAPTURE_TRACE_ATTACH_READY_FILE requires CAPTURE_TRACE_ATTACH_RELEASE_FILE." >&2
+  exit 2
+fi
+
 if [[ ! -s ${MODEL_PATH} ]]; then
   if [[ ${PIPELINE} == "yolov8" ]]; then
     echo "YOLOv8 ONNX asset is missing:" >&2
@@ -190,6 +206,16 @@ mkdir -p "${OUTPUT_ROOT}" "${LOG_ROOT}"
 if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   mkdir -p "$(dirname "${ORT_PROFILE_PREFIX}")"
 fi
+if [[ -n ${BINDING_REPORT_PATH} ]]; then
+  mkdir -p "$(dirname "${BINDING_REPORT_PATH}")"
+fi
+if [[ -n ${TRACE_ATTACH_READY_FILE} ]]; then
+  mkdir -p "$(dirname "${TRACE_ATTACH_READY_FILE}")"
+  if [[ -e ${TRACE_ATTACH_READY_FILE} || -e ${TRACE_ATTACH_RELEASE_FILE} ]]; then
+    echo "ERROR: refusing to overwrite trace attach handshake files." >&2
+    exit 1
+  fi
+fi
 
 TARGET_PATHS=(
   "${LAUNCH_LOG}" \
@@ -199,6 +225,9 @@ TARGET_PATHS=(
   "${WARMUP_OUTPUT}" \
   "${COMMAND_LOG}"
 )
+if [[ -n ${BINDING_REPORT_PATH} ]]; then
+  TARGET_PATHS+=("${BINDING_REPORT_PATH}")
+fi
 if [[ ${RECORD_OUTPUT} == 1 ]]; then
   TARGET_PATHS+=("${OUTPUT_PATH}")
 fi
@@ -209,6 +238,16 @@ for target in "${TARGET_PATHS[@]}"; do
     exit 1
   fi
 done
+if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
+  existing_profiles=()
+  mapfile -t existing_profiles < <(
+    find "$(dirname -- "${ORT_PROFILE_PREFIX}")" -maxdepth 1 -type f \
+      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print)
+  if [[ ${#existing_profiles[@]} -ne 0 ]]; then
+    echo "ERROR: refusing to overwrite existing ORT profile output for prefix: ${ORT_PROFILE_PREFIX}" >&2
+    exit 1
+  fi
+fi
 
 source_setup() {
   local setup_file="$1"
@@ -255,6 +294,20 @@ collect_descendants() {
     collect_descendants "${child_pid}"
     printf '%s\n' "${child_pid}"
   done < <(child_pids "${parent_pid}")
+}
+
+find_component_container_pid() {
+  local candidate
+  local command_line
+  for candidate in "${LAUNCH_PID}" $(collect_descendants "${LAUNCH_PID}"); do
+    [[ -n ${candidate} ]] || continue
+    command_line="$(ps -o args= -p "${candidate}" 2>/dev/null || true)"
+    if [[ ${command_line} == *component_container_mt* ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  return 1
 }
 
 process_alive() {
@@ -496,6 +549,9 @@ fi
 if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   LAUNCH_COMMAND+=("ort_profile_prefix:=${ORT_PROFILE_PREFIX}")
 fi
+if [[ -n ${BINDING_REPORT_PATH} ]]; then
+  LAUNCH_COMMAND+=("binding_report_path:=${BINDING_REPORT_PATH}")
+fi
 
 {
   echo "pipeline=${PIPELINE}"
@@ -509,6 +565,8 @@ fi
   echo "output_path=${OUTPUT_PATH}"
   echo "record_output=${RECORD_OUTPUT}"
   echo "ort_profile_prefix=${ORT_PROFILE_PREFIX}"
+  echo "binding_report_path=${BINDING_REPORT_PATH}"
+  echo "trace_attach_ready_file=${TRACE_ATTACH_READY_FILE}"
   print_command "${LAUNCH_COMMAND[@]}"
 } >"${COMMAND_LOG}"
 
@@ -574,6 +632,42 @@ fi
 stop_process "${WARMUP_PID}" "warm-up player"
 WARMUP_PID=""
 echo "Warm-up complete. First detection: ${WARMUP_OUTPUT}"
+
+if [[ -n ${TRACE_ATTACH_READY_FILE} ]]; then
+  COMPONENT_CONTAINER_PID="$(find_component_container_pid || true)"
+  if [[ ! ${COMPONENT_CONTAINER_PID} =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: could not locate component_container_mt after warm-up." >&2
+    exit 1
+  fi
+  READY_TMP="${TRACE_ATTACH_READY_FILE}.tmp.$$.$RANDOM"
+  {
+    echo "launch_pid=${LAUNCH_PID}"
+    echo "component_container_pid=${COMPONENT_CONTAINER_PID}"
+    echo "fixed_input_playback_pending=true"
+  } >"${READY_TMP}"
+  mv -- "${READY_TMP}" "${TRACE_ATTACH_READY_FILE}"
+  echo "Trace attach ready: component_container_mt PID ${COMPONENT_CONTAINER_PID}"
+
+  ATTACH_WAIT_ATTEMPTS=$((TRACE_ATTACH_TIMEOUT_SECONDS * 2))
+  for ((attach_wait_attempt = 1; attach_wait_attempt <= ATTACH_WAIT_ATTEMPTS; attach_wait_attempt++)); do
+    if [[ -e ${TRACE_ATTACH_RELEASE_FILE} ]]; then
+      break
+    fi
+    if ! process_alive "${LAUNCH_PID}"; then
+      echo "ERROR: graph exited while waiting for the profiler attach." >&2
+      exit 1
+    fi
+    if ((attach_wait_attempt % 20 == 0)); then
+      echo "Waiting for profiler attach release file..."
+    fi
+    sleep 0.5
+  done
+  if [[ ! -e ${TRACE_ATTACH_RELEASE_FILE} ]]; then
+    echo "ERROR: profiler attach release timed out after ${TRACE_ATTACH_TIMEOUT_SECONDS}s." >&2
+    exit 1
+  fi
+  echo "Profiler attach acknowledged; starting fixed-input playback."
+fi
 
 if [[ ${WARMUP_ONLY} == 1 ]]; then
   stop_process "${LAUNCH_PID}" "graph"

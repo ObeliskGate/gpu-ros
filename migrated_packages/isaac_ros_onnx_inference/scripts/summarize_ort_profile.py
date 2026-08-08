@@ -16,10 +16,10 @@
 """Summarize ONNX Runtime execution-provider assignments from profile files."""
 
 import argparse
-from collections import defaultdict
 import json
-from pathlib import Path
 import sys
+from collections import defaultdict
+from pathlib import Path
 
 CPU_PROVIDER = 'CPUExecutionProvider'
 
@@ -43,6 +43,10 @@ def parse_args():
         action='store_true',
         help='Fail unless every profile has the same provider-to-node mapping')
     parser.add_argument(
+        '--ignore-cpu-provider-layout',
+        action='store_true',
+        help='When comparing layouts, ignore CPUExecutionProvider node differences')
+    parser.add_argument(
         '--max-node-names',
         type=int,
         default=50,
@@ -55,8 +59,7 @@ def event_node_name(event):
     """Return a stable node label for a kernel event."""
     args = event.get('args') or {}
     name = str(args.get('node_name') or event.get('name') or '<unnamed>')
-    if name.endswith('_kernel_time'):
-        name = name[:-len('_kernel_time')]
+    name = name.removesuffix('_kernel_time')
     op_name = args.get('op_name')
     return f'{name} ({op_name})' if op_name else name
 
@@ -125,15 +128,16 @@ def print_report(report, max_node_names):
         print(f'    ... {omitted} more nodes omitted')
 
 
-def provider_layout(report):
+def provider_layout(report, ignored_providers=()):
     """Return provider-to-node mapping without timing or event counts."""
     return {
         provider: data['unique_nodes']
         for provider, data in report['providers'].items()
+        if provider not in set(ignored_providers)
     }
 
 
-def compare_provider_layouts(reports):
+def compare_provider_layouts(reports, ignored_providers=()):
     """Compare all provider-to-node mappings against the first profile."""
     if len(reports) < 2:
         return {
@@ -142,10 +146,10 @@ def compare_provider_layouts(reports):
             'differences': [],
         }
 
-    reference = provider_layout(reports[0])
+    reference = provider_layout(reports[0], ignored_providers)
     differences = []
     for report in reports[1:]:
-        candidate = provider_layout(report)
+        candidate = provider_layout(report, ignored_providers)
         if candidate == reference:
             continue
         differences.append({
@@ -198,7 +202,8 @@ def main():
                 file=sys.stderr)
             expected_provider_missing = True
 
-    layout_comparison = compare_provider_layouts(reports)
+    ignored_providers = {CPU_PROVIDER} if args.ignore_cpu_provider_layout else set()
+    layout_comparison = compare_provider_layouts(reports, ignored_providers)
     if args.require_same_provider_layout:
         if len(reports) < 2:
             print(
@@ -212,6 +217,7 @@ def main():
         args.output_json.write_text(json.dumps({
             'profiles': reports,
             'provider_layout_comparison': layout_comparison,
+            'ignored_layout_providers': sorted(ignored_providers),
         }, indent=2) + '\n')
 
     layout_requirement_failed = (

@@ -110,9 +110,17 @@ must report paired/unpaired frames, class match, box IoU, score delta, and
 frame pass rate. Throughput alone is not a correctness result.
 
 Pointer identity proves allocation identity at the tested boundary; it does
-not prove that the whole application has no other copy. Nsight Systems or the
-platform profiler must compare H2D, D2H, and D2D counts and bytes per output
-frame, payload sizes, frame counts, and Managed-only signatures.
+not prove that the whole application has no other copy. The audit archives a
+machine-readable first-frame binding report containing tensor names, byte
+counts, storage, pointers, pointer equality, and the lifetime path.
+
+Nsight Systems or the platform profiler must compare H2D, D2H, and D2D counts
+and bytes per output frame, payload sizes, frame counts, and Managed-only
+signatures. Explicit `memory_copy` records are the primary copy evidence.
+Kernel traces are retained to discover and explain possible payload movement;
+a kernel name containing `copy`, `memcpy`, or `blit` is not automatically a
+copy failure. A confirmed Managed-only tensor-sized memory copy is `FAIL`; an
+unresolved payload risk is `INCONCLUSIVE`.
 
 ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
@@ -139,12 +147,25 @@ buffers; if the external binding probe fails, the real failure is logged and
 ORT-owned device output is adopted only after synchronization. Dynamic output
 metadata follows the ORT-owned path without changing the ONNX graph.
 
-This establishes that the Managed TensorList boundary adds no additional
-tensor-payload copy beyond the two explicit application staging adapters. It
-does not claim that the complete pipeline has no memcpy: host encoders,
-decoders, explicit adapters, provider kernels, and CPU fallback remain outside
-that boundary. These AMD changes do not affect the independent Phase 2A
-standard ROS 2 path.
+The AMD audit records the explicit adapter H2D/D2H operations separately. It
+then audits the Managed TensorList inference boundary for additional
+tensor-sized copies. This does not claim that the complete pipeline has no
+memcpy: host encoders, decoders, explicit adapters, provider kernels, and CPU
+fallback remain outside that boundary. These AMD changes do not affect the
+independent Phase 2A standard ROS 2 path.
+
+The unified AMD audit performs the post-warm-up attach itself:
+
+```bash
+./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+  rtdetr \
+  rtdetr_amd_transport_audit_20260808
+```
+
+It uses `rocprofv3 --attach <PID>` with memory-copy and kernel tracing. It does
+not set `ROCP_TOOL_ATTACH`, and it treats attach/detach or missing JSON output
+as a hard tooling failure. Warm-up events are not used as a substitute for a
+fixed-input trace.
 
 For real-model fixed-input capture, the existing single-terminal runner keeps
 `CAPTURE_TRANSPORT=std` as its Phase 2A default. Set

@@ -43,6 +43,7 @@ def _launch_setup(context):
     namespace = LaunchConfiguration('namespace').perform(context)
     gpu_device_id = int(LaunchConfiguration('gpu_device_id').perform(context))
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
+    binding_report_path = LaunchConfiguration('binding_report_path').perform(context)
     confidence_threshold = float(
         LaunchConfiguration('confidence_threshold').perform(context))
     nms_threshold = float(LaunchConfiguration('nms_threshold').perform(context))
@@ -79,6 +80,7 @@ def _launch_setup(context):
             'execution_provider': 'migraphx',
             'gpu_device_id': gpu_device_id,
             'ort_profile_prefix': ort_profile_prefix,
+            'binding_report_path': binding_report_path,
             'transport': 'managed',
         }],
         remappings=[
@@ -130,6 +132,7 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value='yolov8_managed'),
         DeclareLaunchArgument('gpu_device_id', default_value='0'),
         DeclareLaunchArgument('ort_profile_prefix', default_value=''),
+        DeclareLaunchArgument('binding_report_path', default_value=''),
         DeclareLaunchArgument('confidence_threshold', default_value='0.25'),
         DeclareLaunchArgument('nms_threshold', default_value='0.45'),
     ]

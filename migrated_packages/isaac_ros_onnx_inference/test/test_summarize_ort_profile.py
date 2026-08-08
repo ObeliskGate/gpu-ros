@@ -147,3 +147,32 @@ def test_provider_layout_comparison_reports_extra_cpu_node(tmp_path):
     assert comparison['differences'][0]['extra_in_candidate'] == {
         'CPUExecutionProvider': ['shape (Shape)'],
     }
+
+
+def test_cpu_layout_difference_can_be_ignored_for_closure(tmp_path):
+    """Known CPU fallback remains visible but does not fail accelerator closure."""
+    first = tmp_path / 'first.json'
+    second = tmp_path / 'second.json'
+    cuda_event = {
+        'cat': 'Node',
+        'name': 'conv_kernel_time',
+        'dur': 3.0,
+        'args': {'provider': 'CUDAExecutionProvider', 'op_name': 'Conv'},
+    }
+    cpu_event = {
+        'cat': 'Node',
+        'name': 'shape_kernel_time',
+        'dur': 1.0,
+        'args': {'provider': 'CPUExecutionProvider', 'op_name': 'Shape'},
+    }
+    write_profile(first, [cuda_event])
+    write_profile(second, [cuda_event, cpu_event])
+
+    comparison = PROFILE_SUMMARY.compare_provider_layouts(
+        [PROFILE_SUMMARY.summarize_profile(first), PROFILE_SUMMARY.summarize_profile(second)],
+        ignored_providers={PROFILE_SUMMARY.CPU_PROVIDER},
+    )
+
+    assert comparison['match'] is True
+    assert PROFILE_SUMMARY.CPU_PROVIDER in (
+        PROFILE_SUMMARY.summarize_profile(second)['providers'])

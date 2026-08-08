@@ -71,6 +71,10 @@ def generate_launch_description():
             default_value='',
             description='Enable ORT profiling and write JSON using this path prefix'),
         DeclareLaunchArgument(
+            'binding_report_path',
+            default_value='',
+            description='Write the first-frame ORT pointer/lifetime report here'),
+        DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
             description='Minimum score for a bounding box to be published'),
@@ -85,6 +89,7 @@ def generate_launch_description():
     execution_provider = LaunchConfiguration('execution_provider')
     gpu_device_id = LaunchConfiguration('gpu_device_id')
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix')
+    binding_report_path = LaunchConfiguration('binding_report_path')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
 
     image_encoder_node = ComposableNode(
@@ -120,6 +125,7 @@ def generate_launch_description():
             'execution_provider': execution_provider,
             'gpu_device_id': gpu_device_id,
             'ort_profile_prefix': ort_profile_prefix,
+            'binding_report_path': binding_report_path,
             'transport': 'std',
         }],
         remappings=[

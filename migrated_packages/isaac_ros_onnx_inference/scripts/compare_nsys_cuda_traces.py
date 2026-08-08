@@ -13,21 +13,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compare C/M CUDA kernels and memory operations exported by Nsight Systems."""
+"""Compare Config C and Managed Nsight Systems CUDA trace exports.
+
+The historical command line and JSON keys are retained.  The closure decision
+now uses explicit memory-copy records as the primary copy evidence.  Kernel
+set/count differences remain in the report as diagnostics; a copy-looking
+Managed-only kernel produces ``INCONCLUSIVE`` until its payload role is
+resolved, rather than an automatic ``FAIL``.
+"""
 
 import argparse
-from collections import Counter, defaultdict
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
+
+try:
+    from copy_audit_common import (
+        build_pair_report,
+        load_trace_records,
+        self_report_from_summary,
+        summarize_events,
+    )
+    from copy_audit_common import (
+        byte_count as _byte_count,
+    )
+except ModuleNotFoundError:  # Direct source-tree imports used by pytest.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from copy_audit_common import (  # type: ignore[no-redef]
+        build_pair_report,
+        load_trace_records,
+        self_report_from_summary,
+        summarize_events,
+    )
+    from copy_audit_common import (
+        byte_count as _byte_count,
+    )
 
 
 def parse_args():
-    """Parse command-line arguments."""
+    """Parse paired or self-report command-line arguments."""
     parser = argparse.ArgumentParser(
         description='Compare Config C and Managed nsys cuda_gpu_trace JSON files.')
-    parser.add_argument('--config-c-trace', required=True, type=Path)
-    parser.add_argument('--managed-trace', required=True, type=Path)
+    parser.add_argument('--config-c-trace', type=Path)
+    parser.add_argument('--managed-trace', type=Path)
+    parser.add_argument(
+        '--trace', action='append', type=Path,
+        help='Trace JSON for --self-report; may be repeated for multi-process output')
+    parser.add_argument('--lane', default='unknown')
+    parser.add_argument('--self-report', action='store_true')
     parser.add_argument('--output-json', required=True, type=Path)
     parser.add_argument('--config-c-frames', type=int)
     parser.add_argument('--managed-frames', type=int)
@@ -42,23 +75,20 @@ def parse_args():
         default=[],
         type=int,
         help='Expected payload size in bytes; may be repeated')
+    parser.add_argument(
+        '--boundary-evidence', type=Path,
+        help='Optional JSON evidence confirming or leaving a boundary copy unresolved')
+    parser.add_argument('--config-c-binding-report', type=Path)
+    parser.add_argument('--managed-binding-report', type=Path)
+    parser.add_argument(
+        '--kernel-payload-risk', action='append', default=[],
+        help='Managed-only kernel name that cannot be ruled out as payload movement')
     return parser.parse_args()
 
 
 def load_events(path):
-    """Load one nsys JSON report."""
-    trace_text = path.read_text(encoding='utf-8')
-    if not trace_text.strip():
-        raise ValueError(f'{path}: report is empty')
-    try:
-        events = json.loads(trace_text)
-    except json.JSONDecodeError as exc:
-        first_line = trace_text.splitlines()[0][:120]
-        raise ValueError(
-            f'{path}: report is not pure JSON; first line: {first_line!r}') from exc
-    if not isinstance(events, list):
-        raise ValueError(f'{path}: top-level JSON value must be an array')
-    return [event for event in events if isinstance(event, dict)]
+    """Load one nsys JSON report, preserving the historical helper API."""
+    return list(load_trace_records([Path(path)]))
 
 
 def event_field(event, name, default=''):
@@ -67,95 +97,23 @@ def event_field(event, name, default=''):
         return event[name]
     lower_name = name.lower()
     for key, value in event.items():
-        if key.lower() == lower_name:
+        if str(key).lower() == lower_name:
             return value
     return default
 
 
 def byte_count(event):
-    """Return a memory-operation byte count, or None for a kernel row."""
-    value = event_field(event, 'Bytes', '')
-    factor = 1
-    if value in ('', None):
-        unit_factors = {
-            'B': 1,
-            'KB': 1000,
-            'KiB': 1024,
-            'MB': 1000 ** 2,
-            'MiB': 1024 ** 2,
-            'GB': 1000 ** 3,
-            'GiB': 1024 ** 3,
-        }
-        for key, candidate in event.items():
-            if not key.startswith('Bytes (') or not key.endswith(')'):
-                continue
-            unit = key[len('Bytes ('):-1]
-            if unit in unit_factors:
-                value = candidate
-                factor = unit_factors[unit]
-                break
-    if value in ('', None):
-        return None
-    if isinstance(value, str):
-        value = value.replace(',', '').strip()
-        if not value:
-            return None
-    return int(round(float(value) * factor))
+    """Preserve the historical byte-count helper exported by this module."""
+    return _byte_count(event)
 
 
 def summarize(events, payload_sizes):
-    """Summarize stable kernel names and memcpy signatures."""
-    kernels = Counter()
-    memcopies = Counter()
-    memory_totals = defaultdict(lambda: {'count': 0, 'bytes': 0})
-    payload_copy_counts = Counter()
+    """Summarize stable kernel names and memory-copy signatures.
 
-    for event in events:
-        name = str(event_field(event, 'Name', '<unnamed>'))
-        size = byte_count(event)
-        if size is None:
-            kernels[name] += 1
-            continue
-
-        source = str(event_field(event, 'SrcMemKd', ''))
-        destination = str(event_field(event, 'DstMemKd', ''))
-        direction = f'{source}->{destination}'
-        if 'memcpy' not in name.lower():
-            continue
-
-        memory_totals[direction]['count'] += 1
-        memory_totals[direction]['bytes'] += size
-        signature = (name, size, source, destination)
-        memcopies[signature] += 1
-        if size in payload_sizes:
-            payload_copy_counts[(size, direction)] += 1
-
-    return {
-        'kernels': kernels,
-        'memcopies': memcopies,
-        'memory_totals': dict(memory_totals),
-        'payload_copy_counts': payload_copy_counts,
-    }
-
-
-def counter_deltas(reference, candidate):
-    """Return sorted non-zero candidate-minus-reference counter deltas."""
-    return [
-        {
-            'key': list(key) if isinstance(key, tuple) else key,
-            'delta': candidate[key] - reference[key],
-        }
-        for key in sorted(set(reference) | set(candidate), key=str)
-        if candidate[key] != reference[key]
-    ]
-
-
-def serialize_counter(counter):
-    """Convert a possibly tuple-keyed Counter into stable JSON records."""
-    return [
-        {'key': list(key) if isinstance(key, tuple) else key, 'count': counter[key]}
-        for key in sorted(counter, key=str)
-    ]
+    This wrapper keeps the old Python API used by downstream audit notebooks.
+    New consumers should use ``copy_audit_common.summarize_events`` directly.
+    """
+    return summarize_events(events, payload_sizes, platform='nsys')
 
 
 def compare(
@@ -164,132 +122,125 @@ def compare(
         payload_sizes,
         config_c_frames=None,
         managed_frames=None,
-        max_payload_copy_rate_delta=0.05):
-    """Build the machine-readable transport audit comparison."""
-    if (config_c_frames is None) != (managed_frames is None):
-        raise ValueError('both frame counts must be provided together')
-    if config_c_frames is not None and (config_c_frames <= 0 or managed_frames <= 0):
-        raise ValueError('frame counts must be positive')
-    if max_payload_copy_rate_delta < 0:
-        raise ValueError('max payload copy rate delta must be non-negative')
+        max_payload_copy_rate_delta=0.05,
+        boundary_evidence=None,
+        profiler_complete=True,
+        kernel_payload_risk_names=None,
+        binding_reports=None):
+    """Build the machine-readable transport audit comparison.
 
-    config_c = summarize(config_c_events, payload_sizes)
-    managed = summarize(managed_events, payload_sizes)
-    c_kernel_names = set(config_c['kernels'])
-    m_kernel_names = set(managed['kernels'])
-    memcpy_deltas = counter_deltas(config_c['memcopies'], managed['memcopies'])
-    managed_extra_memcopies = serialize_counter(Counter({
-        signature: count
-        for signature, count in managed['memcopies'].items()
-        if signature not in config_c['memcopies']
-    }))
-
-    payload_copy_rates = []
-    payload_copy_rate_pass = True
-    if config_c_frames is not None:
-        payload_keys = sorted(
-            set(config_c['payload_copy_counts']) |
-            set(managed['payload_copy_counts']),
-            key=str)
-        for key in payload_keys:
-            config_c_rate = config_c['payload_copy_counts'][key] / config_c_frames
-            managed_rate = managed['payload_copy_counts'][key] / managed_frames
-            rate_delta = managed_rate - config_c_rate
-            within_limit = rate_delta <= max_payload_copy_rate_delta
-            payload_copy_rate_pass = payload_copy_rate_pass and within_limit
-            payload_copy_rates.append({
-                'key': list(key),
-                'config_c_per_frame': config_c_rate,
-                'managed_per_frame': managed_rate,
-                'managed_minus_config_c': rate_delta,
-                'within_limit': within_limit,
-            })
-
-    memory_directions = sorted(
-        set(config_c['memory_totals']) | set(managed['memory_totals']))
-    memory_total_deltas = []
-    for direction in memory_directions:
-        c_data = config_c['memory_totals'].get(direction, {'count': 0, 'bytes': 0})
-        m_data = managed['memory_totals'].get(direction, {'count': 0, 'bytes': 0})
-        memory_total_deltas.append({
-            'direction': direction,
-            'count_delta': m_data['count'] - c_data['count'],
-            'byte_delta': m_data['bytes'] - c_data['bytes'],
-        })
-
-    bridge_zero_copy_pass = not managed_extra_memcopies and payload_copy_rate_pass
-    gpu_execution_control_pass = c_kernel_names == m_kernel_names
-    result = {
-        'pass': bridge_zero_copy_pass and gpu_execution_control_pass,
-        'bridge_zero_copy_pass': bridge_zero_copy_pass,
-        'gpu_execution_control_pass': gpu_execution_control_pass,
-        'criteria': {
-            'kernel_name_sets_match': c_kernel_names == m_kernel_names,
-            'managed_has_no_extra_memcpy_signature': not managed_extra_memcopies,
-            'managed_has_no_extra_payload_copy_rate': payload_copy_rate_pass,
-        },
-        'kernel_names': {
-            'config_c_unique_count': len(c_kernel_names),
-            'managed_unique_count': len(m_kernel_names),
-            'missing_from_managed': sorted(c_kernel_names - m_kernel_names),
-            'extra_in_managed': sorted(m_kernel_names - c_kernel_names),
-            'event_count_deltas': counter_deltas(
-                config_c['kernels'], managed['kernels']),
-        },
-        'memcpy': {
-            'config_c': serialize_counter(config_c['memcopies']),
-            'managed': serialize_counter(managed['memcopies']),
-            'signature_count_deltas': memcpy_deltas,
-            'managed_extra_signatures': managed_extra_memcopies,
-            'memory_total_deltas': memory_total_deltas,
-        },
-        'payload_copy_counts': {
-            'sizes_bytes': sorted(payload_sizes),
-            'config_c_frames': config_c_frames,
-            'managed_frames': managed_frames,
-            'max_managed_minus_config_c_per_frame': max_payload_copy_rate_delta,
-            'config_c': serialize_counter(config_c['payload_copy_counts']),
-            'managed': serialize_counter(managed['payload_copy_counts']),
-            'deltas': counter_deltas(
-                config_c['payload_copy_counts'], managed['payload_copy_counts']),
-            'normalized_rates': payload_copy_rates,
-        },
-    }
+    ``config_c_events`` and ``managed_events`` are raw Nsight rows.  The
+    resulting report keeps the historical ``pass``/``criteria``/``memcpy``
+    sections and adds explicit PASS/FAIL/INCONCLUSIVE evidence sections.
+    """
+    result = build_pair_report(
+        config_c_events,
+        managed_events,
+        payload_sizes,
+        reference_frames=config_c_frames,
+        managed_frames=managed_frames,
+        max_payload_copy_rate_delta=max_payload_copy_rate_delta,
+        platform='nsys',
+        reference_lane='config_c',
+        boundary_evidence=boundary_evidence,
+        profiler_complete=profiler_complete,
+        kernel_payload_risk_names=kernel_payload_risk_names,
+        binding_reports=binding_reports,
+    )
     return result
 
 
+def load_boundary_evidence(path):
+    if path is None:
+        return None
+    with path.open(encoding='utf-8') as evidence_file:
+        evidence = json.load(evidence_file)
+    if not isinstance(evidence, dict):
+        raise TypeError(f'{path}: boundary evidence must be a JSON object')
+    return evidence
+
+
+def load_binding_reports(config_c_path, managed_path):
+    """Load the first-frame reports used to complete pointer/lifetime evidence."""
+    if config_c_path is None and managed_path is None:
+        return None
+    reports = {}
+    for lane, path in (('reference', config_c_path), ('managed', managed_path)):
+        if path is None:
+            reports[lane] = None
+            continue
+        with path.open(encoding='utf-8') as report_file:
+            reports[lane] = json.load(report_file)
+    return reports
+
+
+def self_report(events, lane, payload_sizes, frames=None, profiler_complete=True):
+    """Return one lane's machine-readable self report."""
+    summary = summarize_events(events, payload_sizes, platform='nsys', frame_count=frames)
+    return self_report_from_summary(summary, lane, 'nsys', frames, profiler_complete)
+
+
 def main():
-    """Run the CUDA trace comparison."""
+    """Run the CUDA trace comparison or a single-lane report."""
     args = parse_args()
     try:
-        result = compare(
-            load_events(args.config_c_trace),
-            load_events(args.managed_trace),
-            set(args.payload_size),
-            args.config_c_frames,
-            args.managed_frames,
-            args.max_payload_copy_rate_delta,
-        )
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        if args.self_report:
+            if not args.trace:
+                raise ValueError('--self-report requires at least one --trace')
+            if args.config_c_trace or args.managed_trace:
+                raise ValueError('--self-report cannot be combined with paired trace arguments')
+            events = load_trace_records(args.trace)
+            result = self_report(
+                events, args.lane, set(args.payload_size),
+                frames=args.config_c_frames or args.managed_frames,
+            )
+            result['profiler_complete'] = True
+        else:
+            if not args.config_c_trace or not args.managed_trace:
+                raise ValueError(
+                    'paired comparison requires --config-c-trace and --managed-trace')
+            evidence = load_boundary_evidence(args.boundary_evidence)
+            result = compare(
+                load_events(args.config_c_trace),
+                load_events(args.managed_trace),
+                set(args.payload_size),
+                args.config_c_frames,
+                args.managed_frames,
+                args.max_payload_copy_rate_delta,
+                boundary_evidence=evidence,
+                kernel_payload_risk_names=args.kernel_payload_risk,
+                binding_reports=load_binding_reports(
+                    args.config_c_binding_report, args.managed_binding_report),
+            )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         return 2
 
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
-    print(f"Kernel name sets match: {result['criteria']['kernel_name_sets_match']}")
+    if args.self_report:
+        print(
+            f"{result['lane']} memory-copy events: "
+            f"{sum(item['count'] for item in result['memory_copy'])}")
+        print('SELF REPORT')
+        return 0
+
+    print(f"Status: {result['status']}")
+    print(
+        'Kernel name sets match (diagnostic): '
+        f"{result['criteria']['kernel_name_sets_match']}")
     print(
         'Managed has no extra memcpy signature: '
         f"{result['criteria']['managed_has_no_extra_memcpy_signature']}")
     print(
         'Managed has no extra payload copy rate: '
         f"{result['criteria']['managed_has_no_extra_payload_copy_rate']}")
-    print(f"Managed bridge zero-copy: {result['bridge_zero_copy_pass']}")
+    print(f"Managed boundary status: {result['status']}")
     for delta in result['memcpy']['memory_total_deltas']:
         print(
             f"{delta['direction']}: count delta={delta['count_delta']}, "
             f"byte delta={delta['byte_delta']}")
-    print('PASS' if result['pass'] else 'FAIL')
-    return 0 if result['pass'] else 1
+    return 0 if result['status'] == 'PASS' else 1
 
 
 if __name__ == '__main__':

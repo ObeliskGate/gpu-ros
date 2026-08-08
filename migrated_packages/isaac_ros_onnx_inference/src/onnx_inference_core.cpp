@@ -16,6 +16,9 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -85,6 +88,40 @@ ONNXTensorElementDataType ToOnnxDtype(gpu_ros_managed::TensorDataType dtype)
 
 constexpr uint32_t kAmdPciVendorId = 0x1002;
 constexpr uint32_t kNvidiaPciVendorId = 0x10de;
+
+std::string PointerString(const void * pointer)
+{
+  std::ostringstream stream;
+  stream << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(pointer);
+  return stream.str();
+}
+
+std::string JsonEscape(const std::string & value)
+{
+  std::ostringstream escaped;
+  for (const char character : value) {
+    switch (character) {
+      case '\\': escaped << "\\\\"; break;
+      case '"': escaped << "\\\""; break;
+      case '\n': escaped << "\\n"; break;
+      case '\r': escaped << "\\r"; break;
+      case '\t': escaped << "\\t"; break;
+      default: escaped << character; break;
+    }
+  }
+  return escaped.str();
+}
+
+const char * ExecutionProviderName(ExecutionProvider provider)
+{
+  switch (provider) {
+    case ExecutionProvider::kCuda: return "CUDAExecutionProvider";
+    case ExecutionProvider::kRocm: return "ROCMExecutionProvider";
+    case ExecutionProvider::kMigraphx: return "MIGraphXExecutionProvider";
+    case ExecutionProvider::kCpu: return "CPUExecutionProvider";
+  }
+  return "unknown";
+}
 
 Ort::MemoryInfo MakeHipDeviceMemoryInfo(ExecutionProvider ep, int device_id)
 {
@@ -179,7 +216,9 @@ ExecutionProvider ParseExecutionProvider(const std::string & ep_str)
 OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
 : env_(GetOrtLoggingLevel(), "isaac_ros_onnx_inference"),
   execution_provider_(cfg.ep),
-  gpu_device_id_(cfg.gpu_device_id)
+  gpu_device_id_(cfg.gpu_device_id),
+  binding_report_path_(cfg.binding_report_path),
+  transport_(cfg.transport)
 {
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
   if (!cfg.ort_profile_prefix.empty()) {
@@ -248,6 +287,65 @@ std::string OnnxInferenceCore::OutputBindingProbeReport() const
   return report.str();
 }
 
+void OnnxInferenceCore::WriteBindingReport(
+  const std::vector<BindingTensorReport> & inputs,
+  const std::vector<BindingTensorReport> & outputs,
+  OutputPlacement output_placement)
+{
+  if (binding_report_path_.empty() || binding_report_written_) {
+    return;
+  }
+
+  const std::filesystem::path report_path(binding_report_path_);
+  if (report_path.has_parent_path()) {
+    std::filesystem::create_directories(report_path.parent_path());
+  }
+  std::ofstream report(report_path, std::ios::out | std::ios::trunc);
+  if (!report) {
+    throw std::runtime_error(
+            "Unable to write ONNX Runtime binding report: " + binding_report_path_);
+  }
+
+  const auto write_tensor = [&report](
+    const BindingTensorReport & tensor, const char * pointer_key) {
+      report << "    {\n"
+             << "      \"name\": \"" << JsonEscape(tensor.name) << "\",\n"
+             << "      \"bytes\": " << tensor.bytes << ",\n"
+             << "      \"storage\": \"" << JsonEscape(tensor.storage) << "\",\n"
+             << "      \"" << pointer_key << "\": \"" << tensor.pointer << "\",\n"
+             << "      \"ort_pointer\": \"" << tensor.ort_pointer << "\",\n"
+             << "      \"pointer_identity\": "
+             << (tensor.pointer_identity ? "true" : "false") << ",\n"
+             << "      \"lifetime_path\": \"" << JsonEscape(tensor.lifetime_path)
+             << "\"\n"
+             << "    }";
+    };
+
+  report << "{\n"
+         << "  \"schema_version\": 1,\n"
+         << "  \"provider\": \"" << ExecutionProviderName(execution_provider_) << "\",\n"
+         << "  \"transport\": \"" << JsonEscape(transport_) << "\",\n"
+         << "  \"output_placement\": \""
+         << (output_placement == OutputPlacement::kDevice ? "device" : "host") << "\",\n"
+         << "  \"first_frame\": true,\n"
+         << "  \"inputs\": [\n";
+  for (size_t index = 0; index < inputs.size(); ++index) {
+    if (index != 0) {report << ",\n";}
+    write_tensor(inputs[index], "input_pointer");
+  }
+  report << "\n  ],\n  \"outputs\": [\n";
+  for (size_t index = 0; index < outputs.size(); ++index) {
+    if (index != 0) {report << ",\n";}
+    write_tensor(outputs[index], "output_pointer");
+  }
+  report << "\n  ]\n}\n";
+  if (!report) {
+    throw std::runtime_error(
+            "Failed while writing ONNX Runtime binding report: " + binding_report_path_);
+  }
+  binding_report_written_ = true;
+}
+
 std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   gpu_ros_managed::ManagedTensorListView inputs,
   OutputPlacement output_placement)
@@ -271,13 +369,17 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char *> input_name_ptrs;
   std::vector<gpu_ros_managed::BlockingReadyLease> leases;
+  std::vector<BindingTensorReport> input_reports;
   ort_inputs.reserve(inputs.tensors().size());
   input_name_ptrs.reserve(inputs.tensors().size());
   leases.reserve(inputs.tensors().size());
+  input_reports.reserve(inputs.tensors().size());
 
   for (const auto & tensor : inputs.tensors()) {
     input_name_ptrs.push_back(tensor.name().c_str());
     const void * data = nullptr;
+    std::string storage = "host";
+    std::string lifetime_path = "input message owner through inference";
     Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(
       OrtArenaAllocator, OrtMemTypeDefault);
     if (const auto * host =
@@ -305,6 +407,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       if (use_cuda_device_input) {
         leases.push_back(buffer->get_blocking_ready_lease());
         data = leases.back().data();
+        storage = "cuda_device";
+        lifetime_path = "Managed ready lease through ORT Run and output synchronization";
         memory_info = Ort::MemoryInfo(
           "Cuda", OrtArenaAllocator, device.ordinal, OrtMemTypeDefault);
       } else if (use_hip_device_input) {
@@ -314,6 +418,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         // AMD; this is the allocator identity used by MIGraphX's HIP backend.
         leases.push_back(buffer->get_blocking_ready_lease());
         data = leases.back().data();
+        storage = "hip_device";
+        lifetime_path = "Managed HIP ready lease through ORT Run and output synchronization";
 #ifdef GPU_ROS_MANAGED_HIP
         memory_info = MakeHipDeviceMemoryInfo(execution_provider_, device.ordinal);
         const char * allocator_name =
@@ -335,6 +441,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       Ort::Value::CreateTensor(
         memory_info, const_cast<void *>(data), tensor.byte_size(),
         tensor.shape().data(), tensor.shape().size(), dtype));
+    void * ort_pointer = ort_inputs.back().GetTensorMutableRawData();
+    const bool pointer_identity = ort_pointer == data;
     if (!std::holds_alternative<gpu_ros_managed::HostBuffer>(tensor.storage())) {
       const auto & buffer =
         std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
@@ -349,6 +457,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         }
       }
     }
+    input_reports.push_back(BindingTensorReport{
+      tensor.name(), tensor.byte_size(), storage, PointerString(data),
+      PointerString(ort_pointer), pointer_identity, lifetime_path});
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -363,6 +474,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   std::vector<std::unique_ptr<gpu_ros_managed::WriteHandle>> managed_output_writers(
     output_names_.size());
   std::vector<Ort::Value> bound_output_values;
+  std::vector<BindingTensorReport> output_reports;
+  output_reports.reserve(output_names_.size());
   if (output_placement == OutputPlacement::kDevice) {
     Ort::MemoryInfo device_memory_info = execution_provider_ == ExecutionProvider::kCuda ?
       Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault) :
@@ -499,6 +612,11 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       throw std::overflow_error("Output tensor byte size overflows size_t: " + tensor.name);
     }
     const size_t byte_count = element_count * element_size;
+    void * ort_output_pointer = ort_outputs[i].GetTensorMutableRawData();
+    void * storage_pointer = ort_output_pointer;
+    std::string output_storage = "host";
+    std::string output_lifetime_path = "ORT output copied into host TensorList storage";
+    bool output_pointer_identity = false;
 
     if (output_placement == OutputPlacement::kDevice) {
       const auto memory_info = ort_outputs[i].GetTensorMemoryInfo();
@@ -507,9 +625,21 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
           memory_info, "Cuda", gpu_device_id_, "CUDA output tensor", kNvidiaPciVendorId);
 #ifdef GPU_ROS_MANAGED_CUDA
         auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
-        tensor.storage = gpu_ros_managed::cuda::adopt_synchronized_external(
+        auto buffer = gpu_ros_managed::cuda::adopt_synchronized_external(
           owner->GetTensorMutableRawData(), byte_count, gpu_device_id_,
           std::static_pointer_cast<void>(owner));
+        auto ready = buffer->get_blocking_ready_lease();
+        if (ready.data() != ort_output_pointer) {
+          throw std::runtime_error(
+                  "CUDA ORT-owned output '" + tensor.name +
+                  "' lost pointer identity during Managed adoption");
+        }
+        storage_pointer = ready.data();
+        output_storage = "cuda_device";
+        output_lifetime_path =
+          "ORT-owned output retained by synchronized Managed CUDA adoption";
+        output_pointer_identity = true;
+        tensor.storage = std::move(buffer);
 #else
         throw std::runtime_error(
                 "CUDA device output requested but gpu_ros_managed_cuda is unavailable");
@@ -528,6 +658,11 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
           }
           output_binding_probes_[i].decision =
             "preallocated Managed HIP output passed pointer-identity and lifetime checks";
+          storage_pointer = ready.data();
+          output_storage = "hip_device";
+          output_lifetime_path =
+            "preallocated Managed HIP buffer retained by synchronized write handle";
+          output_pointer_identity = true;
           tensor.storage = managed_output_buffers[i];
         } else {
           auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
@@ -540,6 +675,11 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
                     "ORT-owned MIGraphX output tensor '" + tensor.name +
                     "' lost pointer identity during Managed adoption");
           }
+          storage_pointer = ready.data();
+          output_storage = "hip_device";
+          output_lifetime_path =
+            "ORT-owned output retained by synchronized Managed HIP adoption";
+          output_pointer_identity = true;
           if (output_binding_probes_[i].metadata_shape_is_static) {
             output_binding_probes_[i].decision +=
               "; ORT-owned output passed synchronized Managed adoption and pointer-identity checks";
@@ -567,10 +707,16 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       if (byte_count != 0) {
         host_data.assign(raw, raw + byte_count);
       }
+      storage_pointer = host_data.data();
+      output_pointer_identity = storage_pointer == ort_output_pointer;
       tensor.storage = std::move(host_data);
     }
+    output_reports.push_back(BindingTensorReport{
+      tensor.name, byte_count, output_storage, PointerString(storage_pointer),
+      PointerString(ort_output_pointer), output_pointer_identity, output_lifetime_path});
     results.push_back(std::move(tensor));
   }
+  WriteBindingReport(input_reports, output_reports, output_placement);
   return results;
 }
 

@@ -44,6 +44,8 @@ public:
     ExecutionProvider ep{ExecutionProvider::kCuda};
     int gpu_device_id{0};
     std::string ort_profile_prefix;
+    std::string binding_report_path;
+    std::string transport;
   };
 
   explicit OnnxInferenceCore(const Config & cfg);
@@ -64,6 +66,17 @@ public:
   std::string OutputBindingProbeReport() const;
 
 private:
+  struct BindingTensorReport
+  {
+    std::string name;
+    size_t bytes{0};
+    std::string storage;
+    std::string pointer;
+    std::string ort_pointer;
+    bool pointer_identity{false};
+    std::string lifetime_path;
+  };
+
   struct OutputBindingProbe
   {
     std::string name;
@@ -83,6 +96,14 @@ private:
   std::vector<std::string> output_names_;
   std::vector<OutputBindingProbe> output_binding_probes_;
   gpu_ros_managed::DeviceStream hip_output_stream_;
+  std::string binding_report_path_;
+  std::string transport_;
+  bool binding_report_written_{false};
+
+  void WriteBindingReport(
+    const std::vector<BindingTensorReport> & inputs,
+    const std::vector<BindingTensorReport> & outputs,
+    OutputPlacement output_placement);
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference
