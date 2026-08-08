@@ -16,8 +16,8 @@
 """Summarize ONNX Runtime execution-provider assignments from profile files."""
 
 import argparse
-import json
 from collections import defaultdict
+import json
 from pathlib import Path
 import sys
 
