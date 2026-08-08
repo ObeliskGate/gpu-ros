@@ -6,6 +6,7 @@ find_package(ament_cmake REQUIRED)
 install(PROGRAMS
   scripts/compare_detection2d_bags.py
   scripts/run_amd_phase2a_fixed_input_capture.sh
+  scripts/run_rocprof_hip_copy_probe.sh
   scripts/run_amd_transport_audit.sh
   scripts/run_nvidia_fixed_input_capture.sh
   scripts/run_nvidia_c_vs_d_copy_audit.sh

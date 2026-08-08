@@ -235,6 +235,25 @@ wait_for_trace_outputs() {
   return 1
 }
 
+write_capture_manifest() {
+  local path="$1"
+  local lane="$2"
+  if [[ -e ${path} ]]; then
+    echo "ERROR: refusing to overwrite capture manifest: ${path}" >&2
+    return 1
+  fi
+  {
+    echo '{'
+    echo '  "schema_version": 1,'
+    echo "  \"lane\": \"${lane}\","
+    echo '  "tracing_domains": ["memory_copy_trace", "kernel_trace"],'
+    echo '  "output_formats": ["json"],'
+    echo '  "attach_mode": "target-tool-attach",'
+    echo '  "warmup_excluded": true'
+    echo '}'
+  } >"${path}"
+}
+
 start_profiler_attach() {
   local container_pid="$1"
   local trace_dir="$2"
@@ -291,6 +310,7 @@ run_lane() {
   local wait_for_playback_status
   local trace_files
   local capture_args=("${output_name}")
+  local manifest_path="${TRACE_ROOT}/${lane_name}.capture-manifest.json"
 
   # The RT-DETR capture runner uses its one-argument form, while the
   # YOLOv8 runner is selected with an explicit leading "yolov8" argument.
@@ -380,6 +400,7 @@ run_lane() {
     return 1
   fi
   printf '%s\n' "${trace_files[@]}" >"${trace_dir}/trace-files.txt"
+  write_capture_manifest "${manifest_path}" "${lane_name}"
 }
 
 run_lane std std
@@ -420,6 +441,14 @@ fi
 
 mapfile -t STD_TRACE_FILES <"${TRACE_ROOT}/std/trace-files.txt"
 mapfile -t MANAGED_TRACE_FILES <"${TRACE_ROOT}/managed/trace-files.txt"
+STD_MANIFEST="${TRACE_ROOT}/std.capture-manifest.json"
+MANAGED_MANIFEST="${TRACE_ROOT}/managed.capture-manifest.json"
+for manifest_path in "${STD_MANIFEST}" "${MANAGED_MANIFEST}"; do
+  if [[ ! -s ${manifest_path} ]]; then
+    echo "ERROR: required ROCprofiler capture manifest is missing: ${manifest_path}" >&2
+    exit 1
+  fi
+done
 STD_TRACE_ARGS=()
 MANAGED_TRACE_ARGS=()
 for trace_file in "${STD_TRACE_FILES[@]}"; do
@@ -448,11 +477,13 @@ for trace_file in "${MANAGED_TRACE_FILES[@]}"; do
 done
 ros2 run isaac_ros_onnx_inference analyze_rocprof_traces.py \
   --self-report --lane std --frame-count "${STD_FRAMES}" \
+  --manifest "${STD_MANIFEST}" \
   "${STD_SELF_TRACE_ARGS[@]}" \
   --output-json "${REPORT_ROOT}/std_self.json" \
   2>&1 | tee "${LOG_ROOT}/std_self.log"
 ros2 run isaac_ros_onnx_inference analyze_rocprof_traces.py \
   --self-report --lane managed --frame-count "${MANAGED_FRAMES}" \
+  --manifest "${MANAGED_MANIFEST}" \
   "${MANAGED_SELF_TRACE_ARGS[@]}" \
   --output-json "${REPORT_ROOT}/managed_self.json" \
   2>&1 | tee "${LOG_ROOT}/managed_self.log"
@@ -467,6 +498,7 @@ set +e
 ros2 run isaac_ros_onnx_inference analyze_rocprof_traces.py \
   "${STD_TRACE_ARGS[@]}" "${MANAGED_TRACE_ARGS[@]}" \
   --std-frames "${STD_FRAMES}" --managed-frames "${MANAGED_FRAMES}" \
+  --std-manifest "${STD_MANIFEST}" --managed-manifest "${MANAGED_MANIFEST}" \
   --expected-adapter-direction H2D \
   --expected-adapter-direction D2H \
   --std-binding-report "${STD_BINDING}" \
@@ -491,11 +523,16 @@ set -e
 FINAL_STATUS="PASS"
 if ((TRACE_STATUS != 0)); then
   FINAL_STATUS="INCONCLUSIVE"
-  if grep -q '"status": "FAIL"' "${REPORT_ROOT}/rocprof_comparison.json"; then
+  if ((TRACE_STATUS == 2)); then
+    FINAL_STATUS="TOOLING_ERROR"
+  fi
+  if [[ ${FINAL_STATUS} != TOOLING_ERROR &&
+    -s ${REPORT_ROOT}/rocprof_comparison.json ]] &&
+    grep -q '"status": "FAIL"' "${REPORT_ROOT}/rocprof_comparison.json"; then
     FINAL_STATUS="FAIL"
   fi
 fi
-if ((DETECTION_STATUS != 0)); then
+if ((DETECTION_STATUS != 0)) && [[ ${FINAL_STATUS} != TOOLING_ERROR ]]; then
   FINAL_STATUS="FAIL"
 fi
 
@@ -504,6 +541,7 @@ fi
   echo "std captured frames: ${STD_FRAMES}"
   echo "Managed captured frames: ${MANAGED_FRAMES}"
   echo "rocprof command: rocprofv3 --attach <component_container_mt PID> --memory-copy-trace --kernel-trace --output-format json"
+  echo "capture manifests: ${STD_MANIFEST}, ${MANAGED_MANIFEST}"
   echo "rocprof attach mode: ${ROCPROF_ATTACH_MODE}"
   echo "rocprof target opt-in: ROCP_TOOL_ATTACH=1 (scoped to each capture lane)"
   echo "Trace output is required to be stable before parsing."
@@ -515,6 +553,10 @@ fi
   echo "No claim is made for copies outside the Managed TensorList inference boundary."
 } | tee "${AUDIT_ROOT}/summary.txt"
 
+if [[ ${FINAL_STATUS} == TOOLING_ERROR ]]; then
+  echo "TOOLING_ERROR: AMD transport audit parser rejected capture input." >&2
+  exit 2
+fi
 if [[ ${FINAL_STATUS} != PASS ]]; then
   echo "${FINAL_STATUS}: AMD transport audit written to ${AUDIT_ROOT}" >&2
   exit 1

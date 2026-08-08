@@ -123,7 +123,9 @@ copy failure. A confirmed Managed-only tensor-sized memory copy is `FAIL`; an
 unresolved payload risk or a memory-copy record without a byte count is
 `INCONCLUSIVE`. For the AMD Managed lane, failure to observe either expected
 adapter direction (H2D or D2H) is also `INCONCLUSIVE`, because an empty copy
-set cannot prove that the inference boundary was audited.
+set cannot prove that the inference boundary was audited. Direction and bytes
+alone classify a record as staging-shaped; they do not prove that it came from
+the Managed adapter.
 
 ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
@@ -175,8 +177,12 @@ signals completion while keeping the graph alive; the audit runner detaches
 rocprofv3 and acknowledges completion before the capture process stops the
 graph. It uses `--attach-sync-output` when supported and otherwise waits for
 stable non-empty JSON output before parsing.
-Attach/detach or missing JSON output remains a hard tooling failure. Warm-up
-events are not used as a substitute for a fixed-input trace.
+Attach/detach or missing JSON output remains a hard tooling failure. Each lane
+writes a manifest containing the requested domains and output formats. The
+AMD-specific parser consumes only `buffer_records.memory_copy` and
+`buffer_records.kernel_dispatch`; malformed records remain diagnostics and
+make the report `INCONCLUSIVE`. Warm-up events are not used as a substitute
+for a fixed-input trace.
 
 For real-model fixed-input capture, the existing single-terminal runner keeps
 `CAPTURE_TRANSPORT=std` as its Phase 2A default. Set

@@ -160,6 +160,7 @@ install(PROGRAMS
   scripts/compare_nsys_cuda_traces.py
   scripts/compare_nvidia_copy_traces.py
   scripts/analyze_rocprof_traces.py
+  scripts/rocprofv3_json_loader.py
   scripts/summarize_ort_profile.py
   DESTINATION lib/${PROJECT_NAME}
 )

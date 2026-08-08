@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "lane": "std",
+  "tracing_domains": ["memory_copy_trace", "kernel_trace"],
+  "output_formats": ["json"]
+}

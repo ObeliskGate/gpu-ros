@@ -34,6 +34,9 @@ NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH = (
 UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_transport_audit.sh'
 )
+ROCPROF_HIP_PROBE_SCRIPT_PATH = (
+    Path(__file__).parents[1] / 'scripts' / 'run_rocprof_hip_copy_probe.sh'
+)
 AMD_COLCON_DEFAULTS_PATH = (
     Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
 )
@@ -175,6 +178,24 @@ def test_unified_amd_audit_uses_attach_trace_without_warmup_fallback():
     assert 'fixed_input_playback_pending=true' in (
         Path(__file__).parents[1] / 'scripts' /
         'run_amd_phase2a_fixed_input_capture.sh').read_text()
+
+
+def test_rocprof_hip_probe_is_explicit_and_requests_json_csv_and_hip_trace():
+    assert ROCPROF_HIP_PROBE_SCRIPT_PATH.stat().st_mode & 0o111
+    subprocess.run(['bash', '-n', str(ROCPROF_HIP_PROBE_SCRIPT_PATH)], check=True)
+    result = subprocess.run(
+        [str(ROCPROF_HIP_PROBE_SCRIPT_PATH), '--help'],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    script = ROCPROF_HIP_PROBE_SCRIPT_PATH.read_text()
+    assert '<hip-copy-executable> <output-directory>' in result.stdout
+    assert '--memory-copy-trace' in script
+    assert '--kernel-trace' in script
+    assert '--hip-trace' in script
+    assert '--output-format json csv' in script
+    assert 'does not assume a build target name' in script
 
 
 def test_unified_amd_audit_matches_capture_runner_argument_contract():

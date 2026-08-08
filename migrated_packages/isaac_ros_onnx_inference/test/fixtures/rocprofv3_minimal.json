@@ -1,0 +1,56 @@
+{
+  "rocprofiler-sdk-tool": [
+    {
+      "metadata": {"pid": 101},
+      "agents": [
+        {"id": {"handle": 10}, "type": 1, "name": "CPU", "vendor_name": "CPU"},
+        {"id": {"handle": 11}, "type": 2, "name": "gfx950", "vendor_name": "AMD"}
+      ],
+      "strings": {
+        "buffer_records": [
+          {"kind": 10, "operations": [
+            "MEMORY_COPY_NONE",
+            "MEMORY_COPY_HOST_TO_HOST",
+            "MEMORY_COPY_HOST_TO_DEVICE",
+            "MEMORY_COPY_DEVICE_TO_HOST",
+            "MEMORY_COPY_DEVICE_TO_DEVICE"
+          ]},
+          {"kind": 11, "operations": [
+            "KERNEL_DISPATCH_NONE",
+            "KERNEL_DISPATCH_ENQUEUE",
+            "KERNEL_DISPATCH_COMPLETE"
+          ]}
+        ]
+      },
+      "kernel_symbols": [
+        {"kernel_id": 0, "kernel_name": ""},
+        {"kernel_id": 7, "kernel_name": "provider_kernel.kd"},
+        {"kernel_id": 8, "kernel_name": "__amd_rocclr_copyBuffer.kd"}
+      ],
+      "buffer_records": {
+        "memory_copy": [
+          {"kind": 10, "operation": 2, "src_agent_id": {"handle": 10},
+           "dst_agent_id": {"handle": 11}, "bytes": 16},
+          {"kind": 10, "operation": 3, "src_agent_id": {"handle": 11},
+           "dst_agent_id": {"handle": 10}, "bytes": 8}
+        ],
+        "kernel_dispatch": [
+          {"kind": 11, "operation": 2,
+           "dispatch_info": {"kernel_id": 7, "agent_id": {"handle": 11}}},
+          {"kind": 11, "operation": 2,
+           "dispatch_info": {"kernel_id": 8, "agent_id": {"handle": 11}}}
+        ],
+        "hip_api": [],
+        "hsa_api": [],
+        "marker_api": [],
+        "rccl_api": [],
+        "memory_allocation": [],
+        "scratch_memory": [],
+        "rocdecode_api": [],
+        "rocjpeg_api": [],
+        "pc_sample_host_trap": [],
+        "pc_sample_stochastic": []
+      }
+    }
+  ]
+}

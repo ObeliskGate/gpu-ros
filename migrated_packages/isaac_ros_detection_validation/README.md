@@ -102,14 +102,20 @@ placement, first-frame pointer/lifetime binding reports, Nsight traces, and
 the existing stamp-matched detection comparator JSON. Explicit `memory_copy`
 records are the primary copy evidence. Kernel names containing `copy`,
 `memcpy`, or `blit` are diagnostic and do not automatically mean a copy.
+The ROCprofiler analyzer reads only the official `buffer_records` activity
+sections. Each lane also archives a capture manifest recording the requested
+tracing domains and output formats; a requested-but-missing or empty
+`memory_copy` section is `copy_domain_incomplete`, not evidence of zero-copy.
 
 The result status is `PASS`, `FAIL`, or `INCONCLUSIVE`: an explicit
 Managed-only tensor-sized memory-copy record is `FAIL`, while an unresolved
 kernel-only payload risk or a memory-copy record without a byte count is
 `INCONCLUSIVE`; the AMD audit is also `INCONCLUSIVE` if the Managed trace does
-not contain the expected adapter H2D and D2H directions. RT-DETR CPU fallback is retained
-as ORT placement diagnostics and does not fail closure. Config A is a manual
-sanity reference only when Config C is inconclusive.
+not contain the expected adapter H2D and D2H directions. H2D/D2H direction and
+bytes are reported as staging-shaped evidence, not proof of adapter ownership.
+RT-DETR CPU fallback is retained as ORT placement diagnostics and does not fail
+closure. Config A is a manual sanity reference only when Config C is
+inconclusive.
 
 ## AMD Phase 2B transport audit
 
@@ -146,7 +152,26 @@ included in the rocprof trace. ROCprofiler-SDK 1.0 also requires the attached
 target to opt in with `ROCP_TOOL_ATTACH=1`; the runner scopes that variable to
 each capture lane and does not require a persistent shell export.
 Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H
-records are separately reported as explicit adapter staging; an additional
+records are separately reported as staging-shaped evidence; an additional
 tensor-sized inference-boundary copy fails the audit. This is not a claim that
 the complete pipeline, adapters, decoders, provider kernels, or serialization
 never copy.
+
+Before a formal audit on a new ROCm/MI350X environment, run the small HIP
+probe with the executable that actually exists in the sibling checkout. The
+current sibling provides `gpu_ros_managed_hip_copy_test`, but the probe keeps
+the path explicit so it does not assume a target name or build layout:
+
+```bash
+ros2 run isaac_ros_detection_validation run_rocprof_hip_copy_probe.sh \
+  /path/to/gpu_ros_managed_hip_copy_test \
+  /tmp/rocprof-hip-copy-probe
+```
+
+The probe requests memory-copy, kernel, and HIP runtime tracing in JSON and
+CSV. JSON is authoritative for bytes; CSV only cross-checks direction, agent,
+and count. A D2H record with operation 3 proves that the profiler captured D2H
+in that attach mode. HIP runtime or `__amd_rocclr_copyBuffer` activity alone
+does not prove D2H bytes. The formal attach runner remains JSON-only until this
+probe has confirmed stable JSON/CSV output and HIP runtime tracing on the target
+ROCm/MI350X attach setup.
