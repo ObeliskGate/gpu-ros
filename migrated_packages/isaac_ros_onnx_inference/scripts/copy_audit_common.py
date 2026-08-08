@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Platform-neutral event normalization and transport-copy audit helpers.
+"""
+Platform-neutral event normalization and transport-copy audit helpers.
 
 Nsight Systems and ROCprofiler use different field names and different names
 for the same host/device directions.  The audit tools deliberately normalize
@@ -22,10 +23,10 @@ separate from explicit memory-copy records: a kernel which happens to contain
 ``copy`` in its name is not, by itself, a copy failure.
 """
 
-import json
-import re
 from collections import Counter, defaultdict
+import json
 from pathlib import Path
+import re
 from typing import (
     Any,
     Dict,
@@ -180,7 +181,8 @@ def _is_copy_record(event: Mapping[str, Any], size: Optional[int]) -> bool:
     source = event_field(
         event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from', default='')
     destination = event_field(
-        event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to', default='')
+        event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to',
+        default='')
     copy_words = r'copy|memcpy|memmove|memory[_ ]?operation|transfer|blit|h2d|d2h|d2d'
     kind_is_copy = bool(re.search(copy_words, kind.lower()))
     kind_is_kernel = bool(re.search(r'kernel|dispatch', kind.lower()))
@@ -210,8 +212,10 @@ def normalize_event(event: Mapping[str, Any], platform: str = 'generic') -> Dict
     source = _text(event_field(
         event, 'SrcMemKd', 'src_agent', 'source_agent', 'source', 'src', 'from', default=''))
     destination = _text(event_field(
-        event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to', default=''))
-    explicit_direction = event_field(event, 'direction', 'copy_direction', 'transfer_direction', default='')
+        event, 'DstMemKd', 'dst_agent', 'destination_agent', 'destination', 'dst', 'to',
+        default=''))
+    explicit_direction = event_field(
+        event, 'direction', 'copy_direction', 'transfer_direction', default='')
     if _is_copy_record(event, size):
         event_type = 'memory_copy'
         direction = normalize_direction(source, destination, operation, explicit_direction)
@@ -426,7 +430,8 @@ def _evidence_flags(boundary_evidence: Optional[Mapping[str, Any]]) -> Tuple[Lis
             {'reason': 'binding/lifetime evidence explicitly confirmed a boundary payload copy'}
         ]
     if isinstance(confirmed, bool):
-        confirmed = [{'reason': 'explicit boundary payload-copy confirmation'}] if confirmed else []
+        confirmed = ([{'reason': 'explicit boundary payload-copy confirmation'}]
+                     if confirmed else [])
     if isinstance(unresolved, bool):
         unresolved = [{'reason': 'explicit unresolved payload-copy risk'}] if unresolved else []
     return list(confirmed), list(unresolved)
@@ -489,6 +494,7 @@ def build_pair_report(
     pointer_lifetime_complete = not binding_report_errors
     reference = summarize_events(reference_events, payload_set, platform, reference_frames)
     managed = summarize_events(managed_events, payload_set, platform, managed_frames)
+
     def has_explainable_events(summary):
         return summary['kernel_event_count'] > 0 or bool(summary['memcopies'])
 
@@ -535,7 +541,8 @@ def build_pair_report(
                 'managed_minus_config_c': rate_delta,
                 'within_limit': within_limit,
                 'classification': (
-                    'expected_managed_adapter' if _is_adapter_direction(direction, adapter_directions)
+                    'expected_managed_adapter'
+                    if _is_adapter_direction(direction, adapter_directions)
                     else 'inference_boundary_candidate'
                 ),
             })
@@ -557,7 +564,8 @@ def build_pair_report(
             'count_delta': managed_data['count'] - reference_data['count'],
             'byte_delta': managed_data['bytes'] - reference_data['bytes'],
             'classification': (
-                'expected_managed_adapter' if _is_adapter_direction(direction, adapter_directions)
+                'expected_managed_adapter'
+                if _is_adapter_direction(direction, adapter_directions)
                 else 'diagnostic'
             ),
         })
@@ -577,10 +585,16 @@ def build_pair_report(
     unresolved_payload_copy_risk = [
         {
             'name': difference['name'],
-            'reason': 'Managed-only kernel could carry tensor payload; kernel trace cannot prove otherwise',
+            'reason': (
+                'Managed-only kernel could carry tensor payload; kernel trace '
+                'cannot prove otherwise'
+            ),
         }
         for difference in kernel_only_differences
-        if difference['name'] in explicit_risk_names or looks_like_payload_kernel(difference['name'])
+        if (
+            difference['name'] in explicit_risk_names or
+            looks_like_payload_kernel(difference['name'])
+        )
     ]
     _, evidence_unresolved = _evidence_flags(boundary_evidence)
     unresolved_payload_copy_risk.extend(evidence_unresolved)
@@ -607,7 +621,10 @@ def build_pair_report(
     # Explicit boundary evidence outranks all heuristic classification.
     for item in confirmed_boundary:
         memory_copy_failures.append({
-            'reason': 'pointer/lifetime and trace evidence confirmed a Managed boundary payload copy',
+            'reason': (
+                'pointer/lifetime and trace evidence confirmed a Managed boundary '
+                'payload copy'
+            ),
             'evidence': item,
         })
 
@@ -654,10 +671,10 @@ def build_pair_report(
             'cpu_fallback_is_diagnostic_only': True,
         },
         'self': {
-            'reference': self_report_from_summary(reference, reference_lane, platform, reference_frames,
-                                                  profiler_complete),
-            'managed': self_report_from_summary(managed, 'managed', platform, managed_frames,
-                                                profiler_complete),
+            'reference': self_report_from_summary(
+                reference, reference_lane, platform, reference_frames, profiler_complete),
+            'managed': self_report_from_summary(
+                managed, 'managed', platform, managed_frames, profiler_complete),
         },
         # These two top-level sections make paired reports useful without
         # requiring consumers to know the historical field names.

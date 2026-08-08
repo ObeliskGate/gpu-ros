@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compare Config C and Managed Nsight Systems CUDA trace exports.
+"""
+Compare Config C and Managed Nsight Systems CUDA trace exports.
 
 The historical command line and JSON keys are retained.  The closure decision
 now uses explicit memory-copy records as the primary copy evidence.  Kernel
@@ -24,8 +25,8 @@ resolved, rather than an automatic ``FAIL``.
 
 import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 
 try:
     from copy_audit_common import (
@@ -108,7 +109,8 @@ def byte_count(event):
 
 
 def summarize(events, payload_sizes):
-    """Summarize stable kernel names and memory-copy signatures.
+    """
+    Summarize stable kernel names and memory-copy signatures.
 
     This wrapper keeps the old Python API used by downstream audit notebooks.
     New consumers should use ``copy_audit_common.summarize_events`` directly.
@@ -127,7 +129,8 @@ def compare(
         profiler_complete=True,
         kernel_payload_risk_names=None,
         binding_reports=None):
-    """Build the machine-readable transport audit comparison.
+    """
+    Build the machine-readable transport audit comparison.
 
     ``config_c_events`` and ``managed_events`` are raw Nsight rows.  The
     resulting report keeps the historical ``pass``/``criteria``/``memcpy``

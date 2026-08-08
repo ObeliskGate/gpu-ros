@@ -458,8 +458,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       }
     }
     input_reports.push_back(BindingTensorReport{
-      tensor.name(), tensor.byte_size(), storage, PointerString(data),
-      PointerString(ort_pointer), pointer_identity, lifetime_path});
+        tensor.name(), tensor.byte_size(), storage, PointerString(data),
+        PointerString(ort_pointer), pointer_identity, lifetime_path});
   }
 
   std::vector<const char *> output_name_ptrs;
@@ -712,8 +712,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       tensor.storage = std::move(host_data);
     }
     output_reports.push_back(BindingTensorReport{
-      tensor.name, byte_count, output_storage, PointerString(storage_pointer),
-      PointerString(ort_output_pointer), output_pointer_identity, output_lifetime_path});
+        tensor.name, byte_count, output_storage, PointerString(storage_pointer),
+        PointerString(ort_output_pointer), output_pointer_identity, output_lifetime_path});
     results.push_back(std::move(tensor));
   }
   WriteBindingReport(input_reports, output_reports, output_placement);

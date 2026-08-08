@@ -17,8 +17,8 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 
 try:
     from copy_audit_common import (
