@@ -51,7 +51,8 @@ def _launch_setup(context):
     namespace = LaunchConfiguration('namespace').perform(context)
     execution_provider = LaunchConfiguration('execution_provider').perform(context)
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
-    ort_profile_frames = LaunchConfiguration('ort_profile_frames').perform(context)
+    ort_profile_frames = int(
+        LaunchConfiguration('ort_profile_frames').perform(context))
     binding_report_path = LaunchConfiguration('binding_report_path').perform(context)
     confidence_threshold = float(
         LaunchConfiguration('confidence_threshold').perform(context))
