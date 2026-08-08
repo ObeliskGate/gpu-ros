@@ -36,8 +36,8 @@ rclcpp_components_register_nodes(yolov8_decoder_node
 
 option(
   BUILD_NVIDIA_YOLOV8_POL_TEST
-  "Build the existing NVIDIA std YOLOv8 proof-of-life test"
-  ON
+  "Build the existing NVIDIA std YOLOv8 proof-of-life test (opt-in)"
+  OFF
 )
 option(
   BUILD_YOLOV8_MIGRAPHX_POL_TEST

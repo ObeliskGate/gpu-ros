@@ -22,6 +22,12 @@ build:
   symlink-install: true
 test:
   merge-install: true
+  # The legacy NVIDIA YOLOv8 POL imports isaac_ros_test and is not part of
+  # the AMD test matrix. Keep this exclusion effective even for a workspace
+  # whose CMake cache was configured before the AMD option was set to OFF.
+  ctest-args:
+    - -E
+    - test_isaac_ros_std_yolov8_pol_test
   base-paths:
     - src/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu_ros_managed/gpu_ros_managed_hip

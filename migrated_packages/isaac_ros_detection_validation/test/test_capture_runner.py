@@ -34,6 +34,9 @@ NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH = (
 UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_transport_audit.sh'
 )
+AMD_COLCON_DEFAULTS_PATH = (
+    Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
+)
 
 
 def test_capture_runner_is_executable_and_has_valid_bash_syntax():
@@ -169,6 +172,20 @@ def test_unified_amd_audit_uses_attach_trace_without_warmup_fallback():
     assert 'fixed_input_playback_pending=true' in (
         Path(__file__).parents[1] / 'scripts' /
         'run_amd_phase2a_fixed_input_capture.sh').read_text()
+
+
+def test_unified_amd_audit_matches_capture_runner_argument_contract():
+    """Use one argument for RT-DETR and two for the YOLOv8 lane."""
+    script = UNIFIED_AMD_AUDIT_SCRIPT_PATH.read_text()
+    assert 'local capture_args=("${output_name}")' in script
+    assert 'capture_args=(yolov8 "${output_name}")' in script
+    assert '"${CAPTURE_RUNNER}" "${capture_args[@]}"' in script
+
+
+def test_amd_profile_excludes_legacy_nvidia_yolov8_pol_test():
+    profile = AMD_COLCON_DEFAULTS_PATH.read_text()
+    assert '-DBUILD_NVIDIA_YOLOV8_POL_TEST=OFF' in profile
+    assert 'test_isaac_ros_std_yolov8_pol_test' in profile
 
 
 def test_unified_audit_help_does_not_require_ros_environment():

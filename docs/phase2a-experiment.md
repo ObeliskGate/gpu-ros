@@ -245,6 +245,10 @@ It does not clean an explicitly selected custom cache path.
 
 Run the AMD test set:
 
+The AMD profile excludes the legacy NVIDIA YOLOv8 POL test. That test imports
+`isaac_ros_test` and belongs only to an explicit NVIDIA test configuration;
+its registration is not part of AMD closure.
+
 ~~~bash
 colcon test \
   --merge-install \

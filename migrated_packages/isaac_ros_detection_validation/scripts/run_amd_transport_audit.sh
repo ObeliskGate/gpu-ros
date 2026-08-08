@@ -208,6 +208,13 @@ run_lane() {
   local capture_status
   local profiler_status
   local trace_files
+  local capture_args=("${output_name}")
+
+  # The RT-DETR capture runner uses its one-argument form, while the
+  # YOLOv8 runner is selected with an explicit leading "yolov8" argument.
+  if [[ ${MODEL} == yolov8 ]]; then
+    capture_args=(yolov8 "${output_name}")
+  fi
 
   echo "Starting AMD ${MODEL} ${transport} lane..."
   CAPTURE_TRANSPORT="${transport}" \
@@ -221,7 +228,7 @@ run_lane() {
   CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS="${TRACE_ATTACH_TIMEOUT_SECONDS}" \
   CAPTURE_STOP_GRACE_SECONDS=60 \
   CAPTURE_STOP_TERM_SECONDS=20 \
-  "${CAPTURE_RUNNER}" "${MODEL}" "${output_name}" >"${command_log}" 2>&1 &
+  "${CAPTURE_RUNNER}" "${capture_args[@]}" >"${command_log}" 2>&1 &
   CAPTURE_PID=$!
   ACTIVE_RELEASE_FILE="${release_file}"
 
