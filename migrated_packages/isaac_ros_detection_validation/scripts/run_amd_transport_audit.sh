@@ -112,10 +112,10 @@ for command_name in awk find grep ros2 rocprofv3 sed sleep sort tee; do
 done
 
 ROCPROF_ATTACH_ARGS=()
-ROCPROF_ATTACH_MODE=interactive
+ROCPROF_ATTACH_MODE=target-tool-attach
 if rocprofv3 --help 2>&1 | grep -q -- '--attach-sync-output'; then
   ROCPROF_ATTACH_ARGS+=(--attach-sync-output)
-  ROCPROF_ATTACH_MODE=sync-output
+  ROCPROF_ATTACH_MODE="target-tool-attach+sync-output"
 fi
 if rocprofv3 --help 2>&1 | grep -q -- '--attach-duration-msec'; then
   ROCPROF_ATTACH_ARGS+=(
@@ -299,6 +299,11 @@ run_lane() {
   fi
 
   echo "Starting AMD ${MODEL} ${transport} lane..."
+  # ROCprofiler-SDK process attachment requires the target process to opt in
+  # before it is attached.  Keep this compatibility setting scoped to the
+  # capture lane; do not export it from the container or modify the user's
+  # shell environment.
+  ROCP_TOOL_ATTACH=1 \
   CAPTURE_TRANSPORT="${transport}" \
   CAPTURE_EXECUTION_PROVIDER=migraphx \
   CAPTURE_OUTPUT_ROOT="${BAG_ROOT}" \
@@ -500,6 +505,7 @@ fi
   echo "Managed captured frames: ${MANAGED_FRAMES}"
   echo "rocprof command: rocprofv3 --attach <component_container_mt PID> --memory-copy-trace --kernel-trace --output-format json"
   echo "rocprof attach mode: ${ROCPROF_ATTACH_MODE}"
+  echo "rocprof target opt-in: ROCP_TOOL_ATTACH=1 (scoped to each capture lane)"
   echo "Trace output is required to be stable before parsing."
   echo "Warm-up is excluded: rocprofv3 attaches only after the warm-up handshake."
   echo "Managed-only H2D/D2H records are reported as expected explicit adapter staging."

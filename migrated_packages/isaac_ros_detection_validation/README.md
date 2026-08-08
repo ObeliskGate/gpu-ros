@@ -105,7 +105,8 @@ records are the primary copy evidence. Kernel names containing `copy`,
 
 The result status is `PASS`, `FAIL`, or `INCONCLUSIVE`: an explicit
 Managed-only tensor-sized memory-copy record is `FAIL`, while an unresolved
-kernel-only payload risk is `INCONCLUSIVE`. RT-DETR CPU fallback is retained
+kernel-only payload risk or a memory-copy record without a byte count is
+`INCONCLUSIVE`. RT-DETR CPU fallback is retained
 as ORT placement diagnostics and does not fail closure. Config A is a manual
 sanity reference only when Config C is inconclusive.
 
@@ -140,7 +141,9 @@ the attach non-interactive. After fixed-input playback and drain, the capture
 runner waits for the audit runner to finish detach before stopping the target
 graph. If synchronous output is unavailable, it waits for stable non-empty
 JSON output before parsing. Only the subsequent fixed-input playback is
-included in the rocprof trace.
+included in the rocprof trace. ROCprofiler-SDK 1.0 also requires the attached
+target to opt in with `ROCP_TOOL_ATTACH=1`; the runner scopes that variable to
+each capture lane and does not require a persistent shell export.
 Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H
 records are separately reported as explicit adapter staging; an additional
 tensor-sized inference-boundary copy fails the audit. This is not a claim that

@@ -138,6 +138,27 @@ def test_uninterpretable_profiler_records_are_inconclusive():
     assert result['criteria']['profiler_data_complete'] is False
 
 
+def test_memory_copy_without_byte_count_is_inconclusive():
+    result = ROC.compare(
+        [kernel('provider_kernel')],
+        [
+            kernel('provider_kernel'),
+            {
+                'kind': 'memory_copy',
+                'operation': 'hipMemcpyDtoD',
+                'src_agent': 'GPU',
+                'dst_agent': 'GPU',
+            },
+        ],
+        set(),
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['memory_copy_records_explainable'] is False
+    assert result['unresolved_memory_copy_evidence'][0]['lane'] == 'managed'
+    assert result['unresolved_memory_copy_evidence'][0]['bytes'] is None
+
+
 def test_pointer_lifetime_boundary_evidence_fails():
     binding = {
         'first_frame': True,

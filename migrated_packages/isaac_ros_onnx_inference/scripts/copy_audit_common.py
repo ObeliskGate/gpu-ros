@@ -360,6 +360,8 @@ def summarize_events(
     payload_counts = Counter()
     frame_copy_counts: Dict[Any, Counter] = defaultdict(Counter)
     unknown_count = 0
+    unknown_direction_copy_count = 0
+    incomplete_memory_copy_records: List[Dict[str, Any]] = []
     for event in normalized:
         if event['event_type'] == 'unknown':
             unknown_count += 1
@@ -368,6 +370,13 @@ def summarize_events(
             continue
         direction = event['direction'] or 'unknown'
         size = event['bytes']
+        if direction == 'unknown':
+            unknown_direction_copy_count += 1
+        if size is None:
+            incomplete_memory_copy_records.append({
+                **_copy_record_for_json(event),
+                'reason': 'memory_copy record has no byte count',
+            })
         memory_totals[direction]['count'] += 1
         memory_totals[direction]['bytes'] += int(size or 0)
         sig = signature(event)
@@ -401,6 +410,8 @@ def summarize_events(
         'payload_normalized_per_frame': payload_per_frame,
         'frame_ids_observed': len(frame_copy_counts),
         'unknown_event_count': unknown_count,
+        'unknown_direction_copy_count': unknown_direction_copy_count,
+        'incomplete_memory_copy_records': incomplete_memory_copy_records,
         'normalized_events': normalized,
     }
 
@@ -495,12 +506,24 @@ def build_pair_report(
     reference = summarize_events(reference_events, payload_set, platform, reference_frames)
     managed = summarize_events(managed_events, payload_set, platform, managed_frames)
 
+    incomplete_memory_copy_evidence = []
+    for lane, summary in (
+        (reference_lane, reference),
+        ('managed', managed),
+    ):
+        for record in summary['incomplete_memory_copy_records']:
+            incomplete_memory_copy_evidence.append({
+                'lane': lane,
+                **record,
+            })
+
     def has_explainable_events(summary):
         return summary['kernel_event_count'] > 0 or bool(summary['memcopies'])
 
     trace_data_complete = (
         profiler_complete and has_explainable_events(reference) and
-        has_explainable_events(managed))
+        has_explainable_events(managed) and
+        not incomplete_memory_copy_evidence)
     adapter_directions = {str(direction).upper() for direction in managed_adapter_directions}
     memory_copy_failures: List[Dict[str, Any]] = []
 
@@ -665,6 +688,7 @@ def build_pair_report(
             'managed_has_no_extra_memcpy_signature': not managed_extra_memcopies,
             'managed_has_no_extra_payload_copy_rate': payload_rate_pass,
             'memory_copy_evidence_complete': memory_copy_evidence_complete,
+            'memory_copy_records_explainable': not incomplete_memory_copy_evidence,
             'profiler_data_complete': trace_data_complete,
             'pointer_lifetime_evidence_complete': pointer_lifetime_complete,
             'kernel_differences_are_diagnostic': True,
@@ -684,6 +708,7 @@ def build_pair_report(
             managed, 'managed', platform, managed_frames, profiler_complete),
         'kernel_only_differences': kernel_only_differences,
         'unresolved_payload_copy_risk': unresolved_payload_copy_risk,
+        'unresolved_memory_copy_evidence': incomplete_memory_copy_evidence,
         'pointer_lifetime_evidence': {
             'complete': pointer_lifetime_complete,
             'errors': binding_report_errors,
@@ -698,6 +723,7 @@ def build_pair_report(
             'signature_count_deltas': signature_deltas,
             'managed_extra_signatures': managed_extra_memcopies,
             'memory_total_deltas': memory_total_deltas,
+            'unresolved_records': incomplete_memory_copy_evidence,
             'normalized_per_frame': {
                 reference_lane: reference['normalized_per_frame'],
                 'managed': managed['normalized_per_frame'],
@@ -762,4 +788,6 @@ def self_report_from_summary(
         'normalized_per_frame': summary['normalized_per_frame'],
         'payload_normalized_per_frame': summary['payload_normalized_per_frame'],
         'unknown_event_count': summary['unknown_event_count'],
+        'unknown_direction_copy_count': summary['unknown_direction_copy_count'],
+        'incomplete_memory_copy_records': summary['incomplete_memory_copy_records'],
     }

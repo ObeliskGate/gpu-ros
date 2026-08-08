@@ -170,7 +170,8 @@ def test_unified_amd_audit_uses_attach_trace_without_warmup_fallback():
     assert '--kernel-trace' in script
     assert '--output-format json' in script
     assert '--attach-sync-output' in script
-    assert 'ROCP_TOOL_ATTACH' not in script
+    assert 'ROCP_TOOL_ATTACH=1' in script
+    assert 'ROCP_TOOL_ATTACH=1 \\\n  CAPTURE_TRANSPORT=' in script
     assert 'fixed_input_playback_pending=true' in (
         Path(__file__).parents[1] / 'scripts' /
         'run_amd_phase2a_fixed_input_capture.sh').read_text()

@@ -187,6 +187,12 @@ def main():
     for direction, values in result['managed']['memory_totals'].items():
         print(
             f"Managed {direction}: count={values['count']} bytes={values['bytes']}")
+    for item in result['unresolved_memory_copy_evidence']:
+        print(
+            'Unresolved memory-copy record: '
+            f"lane={item['lane']} operation={item['operation']} "
+            f"direction={item['direction']} bytes={item['bytes']} "
+            f"reason={item['reason']}")
     for item in result['adapter_copy_evidence']:
         print(
             'Expected Managed adapter copy: '

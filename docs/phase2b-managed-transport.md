@@ -120,7 +120,8 @@ signatures. Explicit `memory_copy` records are the primary copy evidence.
 Kernel traces are retained to discover and explain possible payload movement;
 a kernel name containing `copy`, `memcpy`, or `blit` is not automatically a
 copy failure. A confirmed Managed-only tensor-sized memory copy is `FAIL`; an
-unresolved payload risk is `INCONCLUSIVE`.
+unresolved payload risk or a memory-copy record without a byte count is
+`INCONCLUSIVE`.
 
 ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
@@ -162,13 +163,16 @@ The unified AMD audit performs the post-warm-up attach itself:
   rtdetr_amd_transport_audit_20260808
 ```
 
-It uses `rocprofv3 --attach <PID>` with memory-copy and kernel tracing. It does
-not set `ROCP_TOOL_ATTACH`. The runner uses `--attach-duration-msec` when
-available so attachment is non-interactive. After fixed-input playback and
-drain, the capture process signals completion while keeping the graph alive;
-the audit runner detaches rocprofv3 and acknowledges completion before the
-capture process stops the graph. It uses `--attach-sync-output` when supported
-and otherwise waits for stable non-empty JSON output before parsing.
+It uses `rocprofv3 --attach <PID>` with memory-copy and kernel tracing. The
+installed ROCprofiler-SDK 1.0 requires the target process to opt in with
+`ROCP_TOOL_ATTACH=1`; the runner sets that variable only for each capture lane
+and does not modify the surrounding Apptainer or shell environment. The
+runner uses `--attach-duration-msec` when available so attachment is
+non-interactive. After fixed-input playback and drain, the capture process
+signals completion while keeping the graph alive; the audit runner detaches
+rocprofv3 and acknowledges completion before the capture process stops the
+graph. It uses `--attach-sync-output` when supported and otherwise waits for
+stable non-empty JSON output before parsing.
 Attach/detach or missing JSON output remains a hard tooling failure. Warm-up
 events are not used as a substitute for a fixed-input trace.
 
