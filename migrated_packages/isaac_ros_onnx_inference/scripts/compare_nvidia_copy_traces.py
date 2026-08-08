@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compare explicit CUDA copy records for two fixed-input NVIDIA lanes.
+"""
+Compare explicit CUDA copy records for two fixed-input NVIDIA lanes.
 
 This report is deliberately a Config C versus Config D diagnostic.  A
 positive D-minus-C H2D or D2H delta is evidence that the standard ROS 2 path
@@ -385,8 +386,8 @@ def main() -> int:
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
     print(
-        f"{args.reference_label} frames={args.reference_frames}; "
-        f"{args.candidate_label} frames={args.candidate_frames}")
+        f'{args.reference_label} frames={args.reference_frames}; '
+        f'{args.candidate_label} frames={args.candidate_frames}')
     print('Explicit memory-copy delta (candidate minus reference):')
     for row in result['memory_total_deltas']:
         print(
