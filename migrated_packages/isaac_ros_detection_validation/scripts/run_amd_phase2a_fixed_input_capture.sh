@@ -417,11 +417,43 @@ stop_process() {
   wait "${pid}" 2>/dev/null || true
 }
 
+stop_recorder() {
+  local pid="$1"
+  local attempt
+
+  if [[ -z ${pid} ]] || ! process_alive "${pid}"; then
+    return
+  fi
+
+  # rosbag2's stop service finalizes the storage plugin and writes
+  # metadata.yaml. Signals remain a fallback for older or incomplete CLI
+  # installations, but SIGKILL must not be the normal bag shutdown path.
+  echo "Stopping recorder via /rosbag2_recorder/stop service..."
+  if timeout --signal=TERM --kill-after=5s 60s \
+    ros2 service call \
+    /rosbag2_recorder/stop \
+    rosbag2_interfaces/srv/Stop \
+    "{}" >>"${RECORD_LOG}" 2>&1; then
+    for ((attempt = 1; attempt <= STOP_GRACE_SECONDS * 4; attempt++)); do
+      if ! process_alive "${pid}"; then
+        return 0
+      fi
+      sleep 0.25
+    done
+    echo "Recorder stop service returned, but recorder is still alive; " \
+      "falling back to signals." >&2
+  else
+    echo "WARNING: recorder stop service failed; falling back to signals." >&2
+  fi
+
+  stop_process "${pid}" "recorder"
+}
+
 cleanup() {
   local status=$?
   trap - EXIT
   set +e
-  stop_process "${RECORD_PID}" "recorder"
+  stop_recorder "${RECORD_PID}"
   stop_process "${WARMUP_PID}" "warm-up player"
   stop_process "${LAUNCH_PID}" "graph"
   wait_for_no_publishers "${DETECTION_TOPIC:-/detections_output}" 10 || true
@@ -777,6 +809,7 @@ fi
 
 RECORD_COMMAND=(
   ros2 bag record
+  --disable-keyboard-controls
   --output "${OUTPUT_PATH}"
   --topics "${DETECTION_TOPIC}"
 )
@@ -817,7 +850,7 @@ if [[ -n ${TRACE_ATTACH_PLAYBACK_DONE_FILE} ]]; then
   echo "Profiler detach complete; stopping graph."
 fi
 
-stop_process "${RECORD_PID}" "recorder"
+stop_recorder "${RECORD_PID}"
 RECORD_PID=""
 stop_process "${LAUNCH_PID}" "graph"
 LAUNCH_PID=""
