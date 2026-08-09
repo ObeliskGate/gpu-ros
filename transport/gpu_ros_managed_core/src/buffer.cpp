@@ -95,6 +95,27 @@ BufferState::~BufferState()
   phase = BufferPhase::kReleasing;
   if (!owner && events.empty()) {return;}
 
+  // A ready buffer with no producer/reader events has no asynchronous GPU
+  // work to wait for. Releasing it on a detached thread would create one
+  // thread per tensor at high throughput, even though the only required
+  // preparation is selecting the owning device for the allocator deleter.
+  // Keep the owner orphaned if device selection fails; the allocation must not
+  // be returned to the backend in that case.
+  if (events.empty()) {
+    if (!must_orphan) {
+      try {
+        backend_ops->select_device(allocation_device.ordinal);
+        owner.reset();
+        return;
+      } catch (...) {
+        // Fall through to the safe orphan path below.
+      }
+    }
+    std::lock_guard<std::mutex> lock(orphan_mutex());
+    orphan_storage().push_back(std::move(owner));
+    return;
+  }
+
   auto & value = tracker();
   {
     std::lock_guard<std::mutex> lock(value.mutex);

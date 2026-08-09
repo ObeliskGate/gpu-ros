@@ -248,6 +248,31 @@ void test_blocking_copy_api()
   assert(owner_releases == 2);
 }
 
+void test_synchronized_owner_releases_without_worker_thread()
+{
+  auto ops = std::make_shared<FakeOps>();
+  std::atomic<int> owner_releases{0};
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto memory = make_owned_memory(owner_releases);
+  {
+    auto buffer = grm::detail::DeviceBufferFactory::make_ready(
+      device, memory.pointer, 64, std::move(memory.owner), ops);
+    buffer.reset();
+  }
+  assert(owner_releases == 1);
+
+  auto failed_ops = std::make_shared<FakeOps>();
+  failed_ops->fail_select = true;
+  std::atomic<int> orphaned_owner_releases{0};
+  auto orphaned_memory = make_owned_memory(orphaned_owner_releases);
+  {
+    auto buffer = grm::detail::DeviceBufferFactory::make_ready(
+      device, orphaned_memory.pointer, 64, std::move(orphaned_memory.owner), failed_ops);
+    buffer.reset();
+  }
+  assert(orphaned_owner_releases == 0);
+}
+
 void test_blocking_h2d_failure_safe_orphan()
 {
   auto ops = std::make_shared<FakeOps>();
@@ -520,6 +545,7 @@ int main()
   test_pool_facade_can_be_destroyed_before_block();
   test_pending_cleanup_drain();
   test_blocking_copy_api();
+  test_synchronized_owner_releases_without_worker_thread();
   test_blocking_h2d_failure_safe_orphan();
   return 0;
 }
