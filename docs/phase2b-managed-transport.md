@@ -206,5 +206,23 @@ The resulting Managed bags are candidates for comparison against the
 corresponding standard AMD bags or the existing NVIDIA reference, using the
 unchanged Detection2D comparator and stamp matching.
 
+The AMD Managed HIP throughput benchmarks are separate from the CUDA Managed
+benchmark graphs. Run both after the AMD package tests, fixed-input validation,
+and MIGraphX warm-up checks:
+
+~~~bash
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2b_amd_managed_graph.py
+
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_yolov8_phase2b_amd_managed_graph.py
+~~~
+
+These graphs include the explicit `StdToManagedHipTensorListNode` H2D staging
+and `ManagedHipToStdTensorListNode` D2H staging around the Managed ORT
+boundary. They are the AMD Managed throughput entries; the existing
+`isaac_ros_rtdetr_managed_graph.py` and `isaac_ros_yolov8_managed_graph.py`
+remain CUDA/NVIDIA graphs.
+
 Concrete hardware, dates, benchmark values, copy audits, timings, and
 shutdown limitations belong in phase2b-results.md.

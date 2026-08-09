@@ -44,6 +44,7 @@ YOLOV8_CMAKE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_yolov8_std' / 'CMakeLists.txt'
 )
+BENCHMARKS_ROOT = Path(__file__).parents[3] / 'migrated_packages' / 'benchmarks'
 
 
 def test_capture_runner_is_executable_and_has_valid_bash_syntax():
@@ -95,6 +96,22 @@ def test_amd_capture_runner_has_managed_launches():
     assert 'yolov8_ort_managed_amd.launch.py' in script
     assert '--disable-keyboard-controls' in script
     assert '/rosbag2_recorder/stop' in script
+
+
+def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():
+    """Keep AMD Managed HIP throughput entry points separate from CUDA graphs."""
+    benchmark_paths = (
+        BENCHMARKS_ROOT / 'isaac_ros_rtdetr_phase2b_amd_managed_graph.py',
+        BENCHMARKS_ROOT / 'isaac_ros_yolov8_phase2b_amd_managed_graph.py',
+    )
+    for benchmark_path in benchmark_paths:
+        assert benchmark_path.is_file()
+        script = benchmark_path.read_text()
+        assert '"execution_provider": "migraphx"' in script
+        assert '"transport": "managed"' in script
+        assert 'StdToManagedHipTensorListNode' in script
+        assert 'ManagedHipToStdTensorListNode' in script
+        assert 'execution_provider": "cuda"' not in script
 
 
 def test_amd_capture_runner_rejects_an_invalid_name_before_starting_ros():
