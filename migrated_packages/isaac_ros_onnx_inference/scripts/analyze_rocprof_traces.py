@@ -22,7 +22,7 @@ from collections import Counter
 import json
 from pathlib import Path
 import sys
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 try:
     from copy_audit_common import (

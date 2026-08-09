@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Strict ROCprofiler-v3 JSON loader used by the AMD copy audit.
+"""
+Strict ROCprofiler-v3 JSON loader used by the AMD copy audit.
 
 The ROCprofiler JSON wrapper contains both activity records and lookup tables.
 This module intentionally reads only the activity sections needed by the audit:
@@ -29,8 +30,8 @@ local to a process.
 
 from __future__ import annotations
 
-import csv
 from collections import Counter
+import csv
 import json
 from pathlib import Path
 import re
@@ -547,7 +548,8 @@ def _section_state(
 
 
 def load_rocprof_json(paths: Sequence[Path]) -> RocprofCapture:
-    """Parse official ROCprofiler JSON activity sections from ``paths``.
+    """
+    Parse official ROCprofiler JSON activity sections from ``paths``.
 
     Structural errors raise :class:`RocprofJsonError` and are tooling errors.
     Record-level errors are retained in ``capture.diagnostics`` and malformed
@@ -732,7 +734,8 @@ def _csv_direction(operation: Any) -> str:
 
 
 def summarize_csv(paths: Sequence[Path]) -> Dict[str, Any]:
-    """Summarize CSV only for cross-checking JSON direction/agent/count.
+    """
+    Summarize CSV only for cross-checking JSON direction/agent/count.
 
     No byte total from this function is used as audit evidence.  JSON remains
     the authoritative source for byte counts and all closure decisions.

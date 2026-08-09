@@ -45,6 +45,14 @@ option(
   OFF
 )
 
+# The AMD profile deliberately does not provide isaac_ros_test, which is only
+# needed by the legacy NVIDIA POL. Force the legacy option off for the AMD
+# MIGraphX profile so a stale CMake cache cannot re-register that test.
+if(NOT BUILD_NITROS_TRANSPORT AND ORT_ENABLE_MIGRAPHX)
+  set(BUILD_NVIDIA_YOLOV8_POL_TEST OFF CACHE BOOL
+    "Build the existing NVIDIA std YOLOv8 proof-of-life test (opt-in)" FORCE)
+endif()
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

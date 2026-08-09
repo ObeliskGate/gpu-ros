@@ -40,6 +40,10 @@ ROCPROF_HIP_PROBE_SCRIPT_PATH = (
 AMD_COLCON_DEFAULTS_PATH = (
     Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
 )
+YOLOV8_CMAKE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_yolov8_std' / 'CMakeLists.txt'
+)
 
 
 def test_capture_runner_is_executable_and_has_valid_bash_syntax():
@@ -233,8 +237,11 @@ def test_capture_runner_holds_graph_until_profiler_detaches():
 
 def test_amd_profile_excludes_legacy_nvidia_yolov8_pol_test():
     profile = AMD_COLCON_DEFAULTS_PATH.read_text()
+    cmake = YOLOV8_CMAKE_PATH.read_text()
     assert '-DBUILD_NVIDIA_YOLOV8_POL_TEST=OFF' in profile
     assert 'test_isaac_ros_std_yolov8_pol_test' in profile
+    assert 'NOT BUILD_NITROS_TRANSPORT AND ORT_ENABLE_MIGRAPHX' in cmake
+    assert 'set(BUILD_NVIDIA_YOLOV8_POL_TEST OFF CACHE BOOL' in cmake
 
 
 def test_unified_audit_help_does_not_require_ros_environment():
