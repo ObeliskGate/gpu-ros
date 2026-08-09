@@ -17,6 +17,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
@@ -39,6 +40,10 @@ private:
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorListIO> io_;
+  // OnnxInferenceCore owns mutable binding/profiling state and is explicitly
+  // not thread-safe. Keep the inference and publish sequence serialized even
+  // when the node is hosted by component_container_mt.
+  std::mutex inference_mutex_;
   size_t ort_profile_frames_{0};
   size_t inference_count_{0};
   bool output_probe_runtime_logged_{false};

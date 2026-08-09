@@ -128,21 +128,40 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorListView inputs)
     RCLCPP_WARN_ONCE(get_logger(), "Received tensor but inference core is not initialized.");
     return;
   }
-  TensorListOutput output;
-  output.header = inputs.header();
-  output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
-  ++inference_count_;
-  if (!output_probe_runtime_logged_) {
-    const std::string output_probe = core_->OutputBindingProbeReport();
-    if (!output_probe.empty()) {
-      RCLCPP_INFO(get_logger(), "Output binding result: %s", output_probe.c_str());
+
+  std::lock_guard<std::mutex> lock(inference_mutex_);
+  try {
+    TensorListOutput output;
+    output.header = inputs.header();
+    output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+    ++inference_count_;
+    if (!output_probe_runtime_logged_) {
+      const std::string output_probe = core_->OutputBindingProbeReport();
+      if (!output_probe.empty()) {
+        RCLCPP_INFO(get_logger(), "Output binding result: %s", output_probe.c_str());
+      }
+      output_probe_runtime_logged_ = true;
     }
-    output_probe_runtime_logged_ = true;
+    if (ort_profile_frames_ > 0 && inference_count_ >= ort_profile_frames_) {
+      FinalizeOrtProfile("configured frame limit");
+    }
+    io_->Publish(std::move(output));
+  } catch (const Ort::Exception & e) {
+    const char * message = e.what();
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "ONNX Runtime dropped an input frame: error_code=%d message=%s",
+      static_cast<int>(e.GetOrtErrorCode()),
+      (message != nullptr && message[0] != '\0') ? message : "<empty>");
+  } catch (const std::exception & e) {
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Inference dropped an input frame: %s", e.what());
+  } catch (...) {
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Inference dropped an input frame after an unknown exception");
   }
-  if (ort_profile_frames_ > 0 && inference_count_ >= ort_profile_frames_) {
-    FinalizeOrtProfile("configured frame limit");
-  }
-  io_->Publish(std::move(output));
 }
 
 }  // namespace nvidia::isaac_ros::onnx_inference
