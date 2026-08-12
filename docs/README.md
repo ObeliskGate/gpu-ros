@@ -16,7 +16,7 @@ and unstructured work logs belong in inner_docs/ instead.
 | ROS 2 | Jazzy |
 | Isaac ROS | 4.5 |
 | ONNX Runtime | 1.23.1 |
-| gpu_ros_managed | Pinned by dependencies/gpu_ros_managed.repos |
+| gpu_ros_managed | Revision in dependencies/gpu_ros_managed.repos for clean imports |
 
 gpu_ros_managed is a required sibling repository. Import it from the
 workspace src directory:
@@ -25,8 +25,10 @@ workspace src directory:
 vcs import < amd_ros_object_detection/dependencies/gpu_ros_managed.repos
 ~~~
 
-An existing checkout may be selected with GPU_ROS_MANAGED_DIR, but it must
-still match the pinned revision.
+An existing checkout may be selected with GPU_ROS_MANAGED_DIR. The NVIDIA
+helper reports its commit without blocking standard Phase 1 Config D runs,
+which do not use managed transport. For a reproducible managed-transport run,
+set GPU_ROS_MANAGED_EXPECTED_COMMIT to the revision being audited.
 
 ## Document types
 

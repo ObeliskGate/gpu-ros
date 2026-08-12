@@ -21,7 +21,8 @@ historical until explicitly rerun and labeled as 4.5.
 - Docker and NVIDIA Container Toolkit
 - Git
 - NGC API key
-- gpu_ros_managed checkout at the pinned revision
+- gpu_ros_managed checkout (the exact revision is enforced only for a managed
+  transport reproduction)
 
 NITROS requires the CUDA memory-pool API. If
 cudaDeviceGetDefaultMemPool is unsupported, startup may fail as a cascade of
@@ -48,9 +49,16 @@ Then run:
 ./docker/phase1-nvidia.sh shell
 ~~~
 
-The helper checks the pinned image, ORT 1.23.1, the sibling checkout and its
-pinned commit, the benchmark packages, and the configured asset root. It
-checks the asset root itself, not the contents of every model and dataset.
+The helper checks the pinned image, ORT 1.23.1, the sibling checkout, the
+benchmark packages, and the configured asset root. It reports the sibling
+commit by default. To enforce the manifest revision for a managed-transport
+reproduction, set it explicitly before starting the runtime:
+
+~~~bash
+export GPU_ROS_MANAGED_EXPECTED_COMMIT=d33381358f2259b9ad16e8847b5a6dccd0357ebc
+~~~
+
+It checks the asset root itself, not the contents of every model and dataset.
 
 ## Prepare assets
 

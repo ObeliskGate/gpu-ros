@@ -8,7 +8,7 @@ ENV_FILE="${ROOT_DIR}/.env"
 EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64"
 EXPECTED_ORT="1.23.1"
 MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
-EXPECTED_MANAGED_COMMIT="d33381358f2259b9ad16e8847b5a6dccd0357ebc"
+EXPECTED_MANAGED_COMMIT="${GPU_ROS_MANAGED_EXPECTED_COMMIT:-}"
 
 cd "${ROOT_DIR}"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
@@ -36,11 +36,18 @@ check_host() {
   }
   local managed_commit
   managed_commit="$(git -C "${MANAGED_DIR}" rev-parse HEAD)"
-  echo "gpu_ros_managed commit: ${managed_commit}"
-  [[ "${managed_commit}" = "${EXPECTED_MANAGED_COMMIT}" ]] || {
-    echo "ERROR: gpu_ros_managed is not at the pinned commit." >&2
-    exit 1
-  }
+  if [[ -n "${EXPECTED_MANAGED_COMMIT}" ]]; then
+    echo "gpu_ros_managed commit: ${managed_commit}"
+    [[ "${managed_commit}" = "${EXPECTED_MANAGED_COMMIT}" ]] || {
+      echo "ERROR: gpu_ros_managed is not at the requested commit." >&2
+      echo "       expected: ${EXPECTED_MANAGED_COMMIT}" >&2
+      echo "       actual:   ${managed_commit}" >&2
+      exit 1
+    }
+  else
+    echo "gpu_ros_managed commit: ${managed_commit} (not pin-checked)"
+    echo "Set GPU_ROS_MANAGED_EXPECTED_COMMIT to enforce a managed-transport pin."
+  fi
   echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${EXPECTED_ORT}"
 }
 
