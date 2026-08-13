@@ -41,6 +41,10 @@ AMD_HIGH_LOAD_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_managed_high_load.sh'
 )
 AMD_PHASE2_LAUNCHER_PATH = Path(__file__).parents[3] / 'docker' / 'phase2-amd.sh'
+HIP_PREPROCESS_SOURCE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_detection_common' / 'src' / 'hip_preprocess.hip'
+)
 MANAGED_HIP_POL_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' / 'isaac_ros_onnx_inference' /
     'test' / 'isaac_ros_onnx_managed_hip_pol_test.py'
@@ -126,6 +130,13 @@ def test_amd_launcher_requires_external_ort_for_formal_runs():
     assert 'require_external_ort' in script
     assert 'legacy build-only content' in script
     assert 'bootstrap|up|colcon|verify' in script
+
+
+def test_hip_preprocess_source_includes_full_runtime_header():
+    script = HIP_PREPROCESS_SOURCE_PATH.read_text()
+    assert '#include <hip/hip_runtime.h>' in script
+    assert 'hipLaunchKernelGGL' in script
+    assert 'blockIdx' in script
 
 
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():

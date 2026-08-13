@@ -4,6 +4,7 @@
 #include "isaac_ros_detection_common/hip_preprocess.hpp"
 
 #include <cmath>
+#include <hip/hip_runtime.h>
 #include <sstream>
 #include <stdexcept>
 
