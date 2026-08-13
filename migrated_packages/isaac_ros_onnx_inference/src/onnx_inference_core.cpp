@@ -862,7 +862,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
             continue;
           }
 
-          const auto metadata = session_->GetOutputTypeInfo(i).GetTensorTypeAndShapeInfo();
+          // TensorTypeAndShapeInfo does not own the underlying OrtTypeInfo.
+          const auto output_type_info = session_->GetOutputTypeInfo(i);
+          const auto metadata = output_type_info.GetTensorTypeAndShapeInfo();
           const auto shape = metadata.GetShape();
           const size_t element_count = metadata.GetElementCount();
           const size_t element_size = DtypeSize(metadata.GetElementType());

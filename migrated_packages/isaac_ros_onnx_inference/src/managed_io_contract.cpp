@@ -136,8 +136,11 @@ void ValidateOneSide(
               std::string(parameter_name) + " is missing model tensor '" + names[index] + "'");
     }
     const auto & contract = *found->second;
-    const auto info = (inputs ? session.GetInputTypeInfo(index) :
-      session.GetOutputTypeInfo(index)).GetTensorTypeAndShapeInfo();
+    // TensorTypeAndShapeInfo is a non-owning view into TypeInfo. Keep the
+    // owning TypeInfo alive until all dtype and shape checks are complete.
+    const auto type_info = inputs ? session.GetInputTypeInfo(index) :
+      session.GetOutputTypeInfo(index);
+    const auto info = type_info.GetTensorTypeAndShapeInfo();
     const auto actual_dtype = info.GetElementType();
     if (actual_dtype != contract.dtype) {
       throw std::invalid_argument(
