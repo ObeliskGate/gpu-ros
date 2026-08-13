@@ -290,6 +290,144 @@ void test_blocking_h2d_failure_safe_orphan()
   assert(owner_releases == 0);
 }
 
+void test_readiness_states_and_synchronized_writer()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 41, ops);
+  std::atomic<int> owner_releases{0};
+  auto memory = make_owned_memory(owner_releases, 32);
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 32, memory.owner, ops);
+  assert(buffer->readiness() == grm::BufferReadiness::kNotReady);
+  {
+    auto writer = buffer->get_write_handle(producer);
+    writer.finalize();
+  }
+  assert(buffer->readiness() == grm::BufferReadiness::kEventBackedReady);
+  buffer.reset();
+  memory.owner.reset();
+  wait_for_cleanup();
+  assert(owner_releases == 1);
+
+  std::atomic<int> sync_owner_releases{0};
+  auto sync_memory = make_owned_memory(sync_owner_releases, 32);
+  auto sync_buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, sync_memory.pointer, 32, sync_memory.owner, ops);
+  {
+    auto sync_writer = sync_buffer->get_synchronized_write_handle();
+    sync_writer.finalize_synchronously();
+  }
+  assert(sync_buffer->readiness() == grm::BufferReadiness::kSynchronouslyReady);
+  const int synchronizes_before_release = ops->synchronizes;
+  {
+    auto sync_lease = sync_buffer->get_blocking_ready_lease();
+    static_cast<void>(sync_lease);
+  }
+  assert(ops->synchronizes == synchronizes_before_release);
+  sync_buffer.reset();
+  sync_memory.owner.reset();
+  assert(sync_owner_releases == 1);
+}
+
+void test_producer_owner_is_retained_until_event_cleanup()
+{
+  auto ops = std::make_shared<FakeOps>();
+  std::atomic<int> allocation_releases{0};
+  std::atomic<int> source_releases{0};
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 51, ops);
+  auto memory = make_owned_memory(allocation_releases, 32);
+  auto source_owner = std::shared_ptr<const void>(
+    new int(7), [&source_releases](const void * value) {
+      ++source_releases;
+      delete static_cast<const int *>(value);
+    });
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 32, memory.owner, ops);
+  {
+    auto writer = buffer->get_write_handle(producer);
+    writer.retain_owner(source_owner);
+    writer.finalize();
+  }
+  source_owner.reset();
+  assert(source_releases == 0);
+  buffer.reset();
+  memory.owner.reset();
+  wait_for_cleanup();
+  assert(source_releases == 1);
+  assert(allocation_releases == 1);
+}
+
+void test_synchronized_pool_cancel_and_failed_block_never_recycles()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  {
+    auto reservation = pool.acquire_synchronized_for(10ms);
+    assert(reservation);
+    reservation->writer.cancel();
+  }
+  assert(pool.available() == 1);
+
+  {
+    auto reservation = pool.acquire_synchronized_for(10ms);
+    assert(reservation);
+    reservation->writer.fail();
+    assert(reservation->buffer->failed());
+  }
+  assert(pool.available() == 0);
+  assert(!pool.shutdown(1ms));
+}
+
+void test_synchronized_pool_timeout_and_capacity_recovery()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto pool = grm::detail::PoolFactory::make(device, 32, 2, ops);
+  auto first = pool.acquire_synchronized_for(10ms);
+  auto second = pool.acquire_synchronized_for(10ms);
+  assert(first && second);
+  auto timed_out = pool.acquire_synchronized_for(1ms);
+  assert(!timed_out);
+  first->writer.cancel();
+  second->writer.cancel();
+  first.reset();
+  second.reset();
+  assert(pool.available() == 2);
+  assert(pool.shutdown(10ms));
+}
+
+void test_failed_async_writer_never_recycles()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 61, ops);
+  auto pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  {
+    auto block = std::make_unique<grm::PoolBlock>(pool.acquire(producer));
+    block->writer.fail();
+    assert(block->buffer->failed());
+  }
+  assert(pool.available() == 0);
+  assert(!pool.shutdown(1ms));
+}
+
+void test_async_writer_cancel_returns_reservation()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 62, ops);
+  auto pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  {
+    auto block = std::make_unique<grm::PoolBlock>(pool.acquire(producer));
+    block->writer.cancel();
+  }
+  assert(pool.available() == 1);
+  assert(pool.shutdown(10ms));
+}
+
 void test_state_machine_and_multiple_readers()
 {
   auto ops = std::make_shared<FakeOps>();
@@ -532,6 +670,8 @@ int main()
   static_assert(std::is_move_constructible_v<grm::ReadHandle>);
   static_assert(!std::is_move_assignable_v<grm::ReadHandle>);
   static_assert(!std::is_move_assignable_v<grm::BlockingReadyLease>);
+  static_assert(std::is_move_constructible_v<grm::SynchronizedWriteHandle>);
+  static_assert(!std::is_move_assignable_v<grm::SynchronizedWriteHandle>);
 
   test_state_machine_and_multiple_readers();
   wait_for_cleanup();
@@ -547,5 +687,11 @@ int main()
   test_blocking_copy_api();
   test_synchronized_owner_releases_without_worker_thread();
   test_blocking_h2d_failure_safe_orphan();
+  test_readiness_states_and_synchronized_writer();
+  test_producer_owner_is_retained_until_event_cleanup();
+  test_synchronized_pool_cancel_and_failed_block_never_recycles();
+  test_synchronized_pool_timeout_and_capacity_recovery();
+  test_failed_async_writer_never_recycles();
+  test_async_writer_cancel_returns_reservation();
   return 0;
 }

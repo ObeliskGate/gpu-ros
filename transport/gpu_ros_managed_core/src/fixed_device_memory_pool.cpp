@@ -70,6 +70,40 @@ std::unique_ptr<PoolBlock> acquire_impl(
     state->device, pointer, state->block_size, std::move(block_token), state->ops);
   return std::make_unique<PoolBlock>(buffer, buffer->get_write_handle(stream));
 }
+
+std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_impl(
+  const std::shared_ptr<detail::PoolState> & state,
+  std::chrono::milliseconds * timeout)
+{
+  size_t index;
+  {
+    std::unique_lock<std::mutex> lock(state->mutex);
+    const auto ready = [&] {return state->stopping || !state->free_blocks.empty();};
+    if (timeout) {
+      if (!state->cv.wait_for(lock, *timeout, ready)) {return nullptr;}
+    } else {
+      state->cv.wait(lock, ready);
+    }
+    if (state->stopping) {throw std::runtime_error("Pool is shutting down");}
+    index = state->free_blocks.back();
+    state->free_blocks.pop_back();
+  }
+
+  auto block_token = std::shared_ptr<void>(
+    state->base + index * state->block_size,
+    [state, index](void *) {
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->free_blocks.push_back(index);
+      }
+      state->cv.notify_all();
+    });
+  auto * pointer = static_cast<uint8_t *>(block_token.get());
+  auto buffer = detail::DeviceBufferFactory::make_fresh(
+    state->device, pointer, state->block_size, std::move(block_token), state->ops);
+  return std::make_unique<SynchronizedPoolBlock>(
+    buffer, buffer->get_synchronized_write_handle());
+}
 }  // namespace
 
 PoolBlock FixedDeviceMemoryPool::acquire(const DeviceStream & stream)
@@ -81,6 +115,16 @@ std::unique_ptr<PoolBlock> FixedDeviceMemoryPool::acquire_for(
   const DeviceStream & stream, std::chrono::milliseconds timeout)
 {
   return acquire_impl(state_, stream, &timeout);
+}
+SynchronizedPoolBlock FixedDeviceMemoryPool::acquire_synchronized()
+{
+  auto result = acquire_synchronized_impl(state_, nullptr);
+  return std::move(*result);
+}
+std::unique_ptr<SynchronizedPoolBlock> FixedDeviceMemoryPool::acquire_synchronized_for(
+  std::chrono::milliseconds timeout)
+{
+  return acquire_synchronized_impl(state_, &timeout);
 }
 size_t FixedDeviceMemoryPool::available() const noexcept
 {

@@ -29,6 +29,7 @@ public:
   }
   void publish(MessageT && message) {publisher_->publish(std::move(message));}
   void publish(std::unique_ptr<MessageT> message) {publisher_->publish(std::move(message));}
+  void reset() noexcept {publisher_.reset();}
 
 private:
   typename rclcpp::Publisher<MessageT>::SharedPtr publisher_;
@@ -52,6 +53,7 @@ public:
         callback(ViewT(std::move(message)));
       }, options);
   }
+  void reset() noexcept {subscription_.reset();}
 
 private:
   typename rclcpp::Subscription<MessageT>::SharedPtr subscription_;

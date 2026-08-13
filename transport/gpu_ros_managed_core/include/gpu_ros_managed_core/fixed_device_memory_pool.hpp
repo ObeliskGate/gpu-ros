@@ -28,6 +28,16 @@ struct PoolBlock
   PoolBlock & operator=(PoolBlock &&) = delete;
 };
 
+struct SynchronizedPoolBlock
+{
+  std::shared_ptr<DeviceBuffer> buffer;
+  SynchronizedWriteHandle writer;
+  SynchronizedPoolBlock(std::shared_ptr<DeviceBuffer> b, SynchronizedWriteHandle w)
+  : buffer(std::move(b)), writer(std::move(w)) {}
+  SynchronizedPoolBlock(SynchronizedPoolBlock &&) noexcept = default;
+  SynchronizedPoolBlock & operator=(SynchronizedPoolBlock &&) = delete;
+};
+
 class FixedDeviceMemoryPool
 {
 public:
@@ -38,6 +48,9 @@ public:
   PoolBlock acquire(const DeviceStream & stream);
   std::unique_ptr<PoolBlock> acquire_for(
     const DeviceStream & stream, std::chrono::milliseconds timeout);
+  SynchronizedPoolBlock acquire_synchronized();
+  std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_for(
+    std::chrono::milliseconds timeout);
   size_t available() const noexcept;
   size_t capacity() const noexcept;
   bool shutdown(std::chrono::milliseconds timeout);

@@ -17,6 +17,13 @@
 
 namespace gpu_ros_managed
 {
+enum class BufferReadiness
+{
+  kNotReady,
+  kSynchronouslyReady,
+  kEventBackedReady
+};
+
 namespace detail
 {
 struct BufferState;
@@ -33,10 +40,44 @@ public:
   ~WriteHandle() noexcept;
   uint8_t * data() const noexcept;
   size_t size() const noexcept;
+  // Retain a source owner (for example a ROS Image) until this producer's
+  // completion event has made the device buffer safe to release.
+  void retain_owner(std::shared_ptr<const void> owner);
   void finalize();
+  // Mark a producer operation failed when the caller knows that no
+  // trustworthy completion event can be recorded. The allocation is then
+  // orphan-safe and cannot be returned to a pool.
+  void fail() noexcept;
+  // Cancel a reservation before any producer work is submitted. The fresh
+  // buffer can then be returned to a fixed pool for reuse.
+  void cancel();
 
 private:
   explicit WriteHandle(std::shared_ptr<detail::BufferState> state);
+  std::shared_ptr<detail::BufferState> state_;
+  bool responsible_{true};
+  friend class DeviceBuffer;
+};
+
+class SynchronizedWriteHandle
+{
+public:
+  SynchronizedWriteHandle(SynchronizedWriteHandle && other) noexcept;
+  SynchronizedWriteHandle(const SynchronizedWriteHandle &) = delete;
+  SynchronizedWriteHandle & operator=(const SynchronizedWriteHandle &) = delete;
+  SynchronizedWriteHandle & operator=(SynchronizedWriteHandle &&) = delete;
+  ~SynchronizedWriteHandle() noexcept;
+  uint8_t * data() const noexcept;
+  size_t size() const noexcept;
+  // ORT-style writers must call finalize_synchronously only after the
+  // external operation has synchronously completed. Destruction without an
+  // explicit finalize/cancel marks the buffer failed and non-recyclable.
+  void finalize_synchronously();
+  void cancel();
+  void fail() noexcept;
+
+private:
+  explicit SynchronizedWriteHandle(std::shared_ptr<detail::BufferState> state);
   std::shared_ptr<detail::BufferState> state_;
   bool responsible_{true};
   friend class DeviceBuffer;
@@ -86,7 +127,10 @@ public:
   explicit DeviceBuffer(std::shared_ptr<detail::BufferState> state) : state_(std::move(state)) {}
   size_t size() const noexcept;
   DeviceId device_id() const noexcept;
+  BufferReadiness readiness() const noexcept;
+  bool failed() const noexcept;
   WriteHandle get_write_handle(const DeviceStream & producer_stream);
+  SynchronizedWriteHandle get_synchronized_write_handle();
   ReadHandle get_read_handle(const DeviceStream & consumer_stream) const;
   BlockingReadyLease get_blocking_ready_lease() const;
   // A successful blocking H2D copy is the complete producer operation and

@@ -32,6 +32,8 @@ struct BufferState
   NativeStream writer_stream{0};
   Event producer_event{0};
   std::vector<Event> reader_events;
+  BufferReadiness readiness{BufferReadiness::kNotReady};
+  std::vector<std::shared_ptr<const void>> producer_owners;
   // Set when an operation using the allocation may have been submitted but no
   // trustworthy completion event exists. Such allocations must never be
   // returned to an allocator or pool.
@@ -61,9 +63,9 @@ size_t & count_for(ReleaseTracker & value, BackendKind backend)
   return backend == BackendKind::kCuda ? value.cuda : value.hip;
 }
 
-std::vector<std::shared_ptr<void>> & orphan_storage()
+std::vector<std::shared_ptr<const void>> & orphan_storage()
 {
-  static auto * value = new std::vector<std::shared_ptr<void>>;
+  static auto * value = new std::vector<std::shared_ptr<const void>>;
   return *value;
 }
 std::mutex & orphan_mutex()
@@ -89,11 +91,13 @@ BufferState::~BufferState()
   if (producer_event != 0) {events.push_back(producer_event);}
   events.insert(events.end(), reader_events.begin(), reader_events.end());
   auto owner = std::move(allocation_owner);
+  auto producer_owners = std::make_shared<std::vector<std::shared_ptr<const void>>>(
+    std::move(this->producer_owners));
   auto backend_ops = ops;
   const auto allocation_device = device;
   const bool must_orphan = release_must_orphan;
   phase = BufferPhase::kReleasing;
-  if (!owner && events.empty()) {return;}
+  if (!owner && producer_owners->empty() && events.empty()) {return;}
 
   // A ready buffer with no producer/reader events has no asynchronous GPU
   // work to wait for. Releasing it on a detached thread would create one
@@ -106,6 +110,7 @@ BufferState::~BufferState()
       try {
         backend_ops->select_device(allocation_device.ordinal);
         owner.reset();
+        producer_owners->clear();
         return;
       } catch (...) {
         // Fall through to the safe orphan path below.
@@ -113,6 +118,9 @@ BufferState::~BufferState()
     }
     std::lock_guard<std::mutex> lock(orphan_mutex());
     orphan_storage().push_back(std::move(owner));
+    for (auto & source_owner : *producer_owners) {
+      orphan_storage().push_back(std::move(source_owner));
+    }
     return;
   }
 
@@ -123,7 +131,8 @@ BufferState::~BufferState()
   }
   try {
     std::thread(
-      [events, owner, backend_ops, allocation_device, must_orphan]() mutable {
+      [events, owner, producer_owners, backend_ops,
+        allocation_device, must_orphan]() mutable {
         bool safe = !must_orphan;
         bool device_selected = false;
         try {
@@ -146,11 +155,15 @@ BufferState::~BufferState()
           // once, including after an earlier synchronization failure.
           backend_ops->destroy_event(event);
         }
-        if (safe || !owner) {
+        if (safe) {
           owner.reset();
+          producer_owners->clear();
         } else {
           std::lock_guard<std::mutex> lock(orphan_mutex());
           orphan_storage().push_back(std::move(owner));
+          for (auto & source_owner : *producer_owners) {
+            orphan_storage().push_back(std::move(source_owner));
+          }
         }
         auto & release_tracker = tracker();
         {
@@ -167,9 +180,12 @@ BufferState::~BufferState()
     for (const Event event : events) {
       if (event != 0) {backend_ops->destroy_event(event);}
     }
-    if (owner) {
+    if (owner || !producer_owners->empty()) {
       std::lock_guard<std::mutex> lock(orphan_mutex());
-      orphan_storage().push_back(std::move(owner));
+      if (owner) {orphan_storage().push_back(std::move(owner));}
+      for (auto & source_owner : *producer_owners) {
+        orphan_storage().push_back(std::move(source_owner));
+      }
     }
     {
       std::lock_guard<std::mutex> tracker_lock(value.mutex);
@@ -218,6 +234,16 @@ WriteHandle::~WriteHandle() noexcept
 }
 uint8_t * WriteHandle::data() const noexcept {return state_ ? state_->data : nullptr;}
 size_t WriteHandle::size() const noexcept {return state_ ? state_->size : 0;}
+void WriteHandle::retain_owner(std::shared_ptr<const void> owner)
+{
+  if (!owner) {throw std::invalid_argument("WriteHandle owner is null");}
+  if (!responsible_ || !state_) {throw std::logic_error("WriteHandle is no longer active");}
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kWriting) {
+    throw std::logic_error("WriteHandle owner must be retained while writing");
+  }
+  state_->producer_owners.push_back(std::move(owner));
+}
 void WriteHandle::finalize()
 {
   if (!responsible_ || !state_) {return;}
@@ -234,6 +260,7 @@ void WriteHandle::finalize()
     event = state_->ops->create_event();
     state_->ops->record_event(event, state_->writer_stream);
     state_->producer_event = event;
+    state_->readiness = BufferReadiness::kEventBackedReady;
     state_->phase = detail::BufferPhase::kReady;
     responsible_ = false;
   } catch (...) {
@@ -242,6 +269,81 @@ void WriteHandle::finalize()
     state_->release_must_orphan = true;
     responsible_ = false;
     throw;
+  }
+}
+void WriteHandle::fail() noexcept
+{
+  if (!responsible_ || !state_) {return;}
+  try {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    state_->phase = detail::BufferPhase::kFailed;
+    state_->readiness = BufferReadiness::kNotReady;
+    state_->release_must_orphan = true;
+    responsible_ = false;
+  } catch (...) {
+    // Do not release an allocation when its state cannot be made failed.
+  }
+}
+
+void WriteHandle::cancel()
+{
+  if (!responsible_ || !state_) {return;}
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kWriting) {
+    throw std::logic_error("WriteHandle can only cancel a reservation");
+  }
+  state_->phase = detail::BufferPhase::kFresh;
+  responsible_ = false;
+}
+
+SynchronizedWriteHandle::SynchronizedWriteHandle(
+  std::shared_ptr<detail::BufferState> state)
+: state_(std::move(state)) {}
+SynchronizedWriteHandle::SynchronizedWriteHandle(SynchronizedWriteHandle && other) noexcept
+: state_(std::move(other.state_)), responsible_(other.responsible_)
+{
+  other.responsible_ = false;
+}
+SynchronizedWriteHandle::~SynchronizedWriteHandle() noexcept
+{
+  if (responsible_ && state_) {fail();}
+}
+uint8_t * SynchronizedWriteHandle::data() const noexcept
+{return state_ ? state_->data : nullptr;}
+size_t SynchronizedWriteHandle::size() const noexcept
+{return state_ ? state_->size : 0;}
+void SynchronizedWriteHandle::finalize_synchronously()
+{
+  if (!responsible_ || !state_) {return;}
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kWriting) {
+    throw std::logic_error("SynchronizedWriteHandle cannot finalize a non-writing buffer");
+  }
+  state_->readiness = BufferReadiness::kSynchronouslyReady;
+  state_->phase = detail::BufferPhase::kReady;
+  responsible_ = false;
+}
+void SynchronizedWriteHandle::cancel()
+{
+  if (!responsible_ || !state_) {return;}
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kWriting) {
+    throw std::logic_error("SynchronizedWriteHandle can only cancel a reservation");
+  }
+  state_->phase = detail::BufferPhase::kFresh;
+  responsible_ = false;
+}
+void SynchronizedWriteHandle::fail() noexcept
+{
+  if (!responsible_ || !state_) {return;}
+  try {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    state_->phase = detail::BufferPhase::kFailed;
+    state_->readiness = BufferReadiness::kNotReady;
+    state_->release_must_orphan = true;
+    responsible_ = false;
+  } catch (...) {
+    // Do not release an allocation when its state cannot be made failed.
   }
 }
 
@@ -336,6 +438,17 @@ size_t BlockingReadyLease::size() const noexcept {return state_ ? state_->size :
 
 size_t DeviceBuffer::size() const noexcept {return state_->size;}
 DeviceId DeviceBuffer::device_id() const noexcept {return state_->device;}
+BufferReadiness DeviceBuffer::readiness() const noexcept
+{
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  return state_->phase == detail::BufferPhase::kReady ?
+    state_->readiness : BufferReadiness::kNotReady;
+}
+bool DeviceBuffer::failed() const noexcept
+{
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  return state_->phase == detail::BufferPhase::kFailed;
+}
 WriteHandle DeviceBuffer::get_write_handle(const DeviceStream & stream)
 {
   const auto & native = detail::StreamAccess::get(stream);
@@ -347,6 +460,16 @@ WriteHandle DeviceBuffer::get_write_handle(const DeviceStream & stream)
   state_->phase = detail::BufferPhase::kWriting;
   state_->writer_stream = native.native;
   return WriteHandle(state_);
+}
+SynchronizedWriteHandle DeviceBuffer::get_synchronized_write_handle()
+{
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  if (state_->phase != detail::BufferPhase::kFresh) {
+    throw std::logic_error(
+            "DeviceBuffer synchronized writer can only be acquired once");
+  }
+  state_->phase = detail::BufferPhase::kWriting;
+  return SynchronizedWriteHandle(state_);
 }
 ReadHandle DeviceBuffer::get_read_handle(const DeviceStream & stream) const
 {
@@ -373,6 +496,7 @@ void DeviceBuffer::copy_from_host_blocking(const void * source, size_t bytes)
       state_->ops->copy_host_to_device(
         state_->device.ordinal, state_->data, source, bytes);
     }
+    state_->readiness = BufferReadiness::kSynchronouslyReady;
     state_->phase = detail::BufferPhase::kReady;
   } catch (...) {
     state_->phase = detail::BufferPhase::kFailed;
@@ -425,6 +549,8 @@ std::shared_ptr<DeviceBuffer> make_buffer(
   state->allocation_owner = std::move(owner);
   state->ops = std::move(ops);
   state->phase = phase;
+  state->readiness = phase == detail::BufferPhase::kReady ?
+    BufferReadiness::kSynchronouslyReady : BufferReadiness::kNotReady;
   return std::shared_ptr<DeviceBuffer>(new DeviceBuffer(std::move(state)));
 }
 }  // namespace
