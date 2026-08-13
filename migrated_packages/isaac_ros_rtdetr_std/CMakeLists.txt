@@ -25,7 +25,7 @@ find_package(gpu_ros_managed_tensor_list QUIET)
 ament_auto_add_library(rtdetr_image_encoder_node SHARED src/rtdetr_image_encoder_node.cpp)
 target_include_directories(rtdetr_image_encoder_node PRIVATE ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(rtdetr_image_encoder_node
-  ${OpenCV_LIBRARIES} isaac_ros_detection_common)
+  ${OpenCV_LIBRARIES} isaac_ros_detection_common::core)
 rclcpp_components_register_nodes(rtdetr_image_encoder_node
   "nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode")
 
@@ -43,12 +43,12 @@ target_link_libraries(rtdetr_decoder_node rtdetr_decoder_core)
 
 if(TARGET gpu_ros_managed::hip AND TARGET gpu_ros_managed::ros AND
   TARGET gpu_ros_managed::core AND TARGET gpu_ros_managed::tensor_list AND
-  TARGET isaac_ros_detection_common_hip)
+  TARGET isaac_ros_detection_common::hip)
   ament_auto_add_library(rtdetr_managed_hip_nodes SHARED
     src/rtdetr_managed_hip_nodes.cpp)
   target_link_libraries(rtdetr_managed_hip_nodes
     gpu_ros_managed::hip gpu_ros_managed::ros gpu_ros_managed::core
-    gpu_ros_managed::tensor_list isaac_ros_detection_common_hip rtdetr_decoder_core)
+    gpu_ros_managed::tensor_list isaac_ros_detection_common::hip rtdetr_decoder_core)
   rclcpp_components_register_nodes(rtdetr_managed_hip_nodes
     "nvidia::isaac_ros::rtdetr_std::RtDetrManagedHipImageEncoderNode"
     "nvidia::isaac_ros::rtdetr_std::RtDetrManagedHipPreprocessorNode"

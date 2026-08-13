@@ -24,7 +24,7 @@ find_package(gpu_ros_managed_tensor_list QUIET)
 ament_auto_add_library(yolov8_image_encoder_core SHARED src/yolov8_image_encoder.cpp)
 target_include_directories(yolov8_image_encoder_core PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(yolov8_image_encoder_core
-  ${OpenCV_LIBRARIES} isaac_ros_detection_common)
+  ${OpenCV_LIBRARIES} isaac_ros_detection_common::core)
 
 ament_auto_add_library(yolov8_image_encoder_node SHARED src/yolov8_image_encoder_node.cpp)
 target_link_libraries(yolov8_image_encoder_node yolov8_image_encoder_core)
@@ -42,12 +42,12 @@ rclcpp_components_register_nodes(yolov8_decoder_node
 
 if(TARGET gpu_ros_managed::hip AND TARGET gpu_ros_managed::ros AND
   TARGET gpu_ros_managed::core AND TARGET gpu_ros_managed::tensor_list AND
-  TARGET isaac_ros_detection_common_hip)
+  TARGET isaac_ros_detection_common::hip)
   ament_auto_add_library(yolov8_managed_hip_nodes SHARED
     src/yolov8_managed_hip_nodes.cpp)
   target_link_libraries(yolov8_managed_hip_nodes
     gpu_ros_managed::hip gpu_ros_managed::ros gpu_ros_managed::core
-    gpu_ros_managed::tensor_list isaac_ros_detection_common_hip yolov8_decoder_core)
+    gpu_ros_managed::tensor_list isaac_ros_detection_common::hip yolov8_decoder_core)
   rclcpp_components_register_nodes(yolov8_managed_hip_nodes
     "nvidia::isaac_ros::yolov8_std::YoloV8ManagedHipImageEncoderNode"
     "nvidia::isaac_ros::yolov8_std::YoloV8ManagedHipDecoderNode")

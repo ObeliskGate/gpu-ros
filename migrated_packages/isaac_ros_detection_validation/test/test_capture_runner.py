@@ -45,6 +45,18 @@ HIP_PREPROCESS_SOURCE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_detection_common' / 'src' / 'hip_preprocess.hip'
 )
+DETECTION_COMMON_CMAKE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_detection_common' / 'CMakeLists.txt'
+)
+YOLOV8_CMAKE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_yolov8_std' / 'CMakeLists.txt'
+)
+RTDETR_CMAKE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_rtdetr_std' / 'CMakeLists.txt'
+)
 ONNX_INFERENCE_CORE_SOURCE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_onnx_inference' / 'src' / 'onnx_inference_core.cpp'
@@ -58,10 +70,6 @@ ROCPROF_HIP_PROBE_SCRIPT_PATH = (
 )
 AMD_COLCON_DEFAULTS_PATH = (
     Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
-)
-YOLOV8_CMAKE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'isaac_ros_yolov8_std' / 'CMakeLists.txt'
 )
 BENCHMARKS_ROOT = Path(__file__).parents[3] / 'migrated_packages' / 'benchmarks'
 
@@ -147,6 +155,19 @@ def test_strict_ort_outputs_are_mutable_for_pointer_identity_check():
     source = ONNX_INFERENCE_CORE_SOURCE_PATH.read_text()
     assert 'auto ort_outputs = binding.GetOutputValues();' in source
     assert 'const auto ort_outputs = binding.GetOutputValues();' not in source
+
+
+def test_detection_common_exports_namespaced_targets_to_downstream_packages():
+    common = DETECTION_COMMON_CMAKE_PATH.read_text()
+    yolov8 = YOLOV8_CMAKE_PATH.read_text()
+    rtdetr = RTDETR_CMAKE_PATH.read_text()
+    assert 'NAMESPACE isaac_ros_detection_common::' in common
+    assert 'EXPORT_NAME core' in common
+    assert 'EXPORT_NAME hip' in common
+    assert 'isaac_ros_detection_common::core' in yolov8
+    assert 'isaac_ros_detection_common::hip' in yolov8
+    assert 'isaac_ros_detection_common::core' in rtdetr
+    assert 'isaac_ros_detection_common::hip' in rtdetr
 
 
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():
