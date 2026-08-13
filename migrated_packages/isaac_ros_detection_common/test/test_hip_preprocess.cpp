@@ -135,5 +135,6 @@ TEST(HipPreprocess, NoResizeChannelConversionIsElementwiseExact)
   using namespace nvidia::isaac_ros::detection_common;
   const auto image = MakeImage(ImageEncoding::kBgra8);
   EXPECT_NO_THROW(CompareHipAndCpu(
-      ImageEncoding::kBgra8, kNone, image.width, image.height, true));
+      ImageEncoding::kBgra8, PreprocessNormalization::kNone,
+      image.width, image.height, true));
 }
