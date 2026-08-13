@@ -58,6 +58,7 @@ if(hip_FOUND)
     target_link_libraries(
       gpu_ros_managed_hip_dso_identity_test
       PRIVATE
+        gpu_ros_managed::core
         gpu_ros_managed_hip_dso_producer
         gpu_ros_managed_hip_dso_consumer)
     target_compile_features(gpu_ros_managed_hip_dso_identity_test PRIVATE cxx_std_17)
