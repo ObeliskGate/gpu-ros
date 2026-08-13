@@ -39,6 +39,7 @@ public:
 
 private:
   using Image = sensor_msgs::msg::Image;
+  using Tensor = isaac_ros_tensor_list_interfaces::msg::Tensor;
   using TensorList = isaac_ros_tensor_list_interfaces::msg::TensorList;
 
   void InputCallback(const Image::ConstSharedPtr msg);
