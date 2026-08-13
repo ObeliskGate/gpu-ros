@@ -1,5 +1,16 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaac_ros_yolov8_std/yolov8_decoder.hpp"
 
@@ -153,7 +164,9 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8TensorList(
   }
   std::vector<int64_t> shape;
   shape.reserve(tensor.shape.dims.size());
-  for (const auto dimension : tensor.shape.dims) {shape.push_back(dimension);}
+  for (const auto dimension : tensor.shape.dims) {
+    shape.push_back(dimension);
+  }
   std::vector<float> values(tensor.data.size() / sizeof(float));
   std::memcpy(values.data(), tensor.data.data(), tensor.data.size());
   return DecodeYoloV8Values(message.header, values.data(), values.size(), shape, config);

@@ -1,3 +1,18 @@
+# Copyright 2026 Maintainer
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -372,15 +387,12 @@ def test_cli_report_only_uses_fixed_method_and_has_full_frame_metrics(tmp_path):
 
 
 def test_report_only_rejects_index_matching():
-    class Args:
-        report_only = True
-        match_policy = 'index'
-        min_score = 0.0
-        max_detections_per_frame = 0
-        ignore_unpaired_frames = False
+    values = dict(compare.REPORT_ONLY_DEFAULTS)
+    values.update(report_only=True, match_policy='index')
+    args = argparse.Namespace(**values)
 
     try:
-        compare.validate_report_only_args(Args())
+        compare.validate_report_only_args(args)
     except ValueError as exc:
         assert 'match_policy' in str(exc)
     else:

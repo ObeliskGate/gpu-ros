@@ -1,18 +1,29 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaac_ros_rtdetr_std/rtdetr_managed_hip_nodes.hpp"
 
-#include <functional>
+#include <hip/hip_runtime_api.h>
+
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-#include <hip/hip_runtime_api.h>
 
 #include "isaac_ros_detection_common/hip_preprocess.hpp"
 #include "isaac_ros_detection_common/image_preprocess.hpp"
@@ -69,7 +80,7 @@ std::shared_ptr<gpu_ros_managed::DeviceBuffer> RequireDeviceTensor(
   const auto & buffer = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
     tensor.storage());
   if (!buffer || buffer->device_id() != gpu_ros_managed::DeviceId{
-      gpu_ros_managed::BackendKind::kHip, device_id})
+        gpu_ros_managed::BackendKind::kHip, device_id})
   {
     throw std::invalid_argument("RT-DETR Managed tensor '" + name + "' has the wrong HIP device");
   }
@@ -80,7 +91,8 @@ std::shared_ptr<gpu_ros_managed::DeviceBuffer> RequireDeviceTensor(
 }
 
 template<typename T>
-void ValidateShape(const gpu_ros_managed::ManagedTensor & tensor,
+void ValidateShape(
+  const gpu_ros_managed::ManagedTensor & tensor,
   const std::vector<int64_t> & expected, const std::string & name)
 {
   if (tensor.shape() != expected || tensor.byte_size() !=
@@ -161,7 +173,7 @@ void RtDetrManagedHipImageEncoderNode::InputCallback(
     const auto remaining_timeout = [&reservation_deadline]() {
         const auto now = std::chrono::steady_clock::now();
         return now >= reservation_deadline ? std::chrono::milliseconds(0) :
-          std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
+               std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
       };
     output = output_pool_->acquire_for(stream_->stream(), remaining_timeout());
     if (!output) {
@@ -236,7 +248,7 @@ RtDetrManagedHipPreprocessorNode::RtDetrManagedHipPreprocessorNode(
     gpu_ros_managed::hip::make_fixed_device_pool(
       2U * sizeof(int64_t), pool_capacity_, gpu_device_id_));
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-    gpu_ros_managed::ManagedTensorListView>>(
+      gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &RtDetrManagedHipPreprocessorNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));
@@ -289,7 +301,7 @@ void RtDetrManagedHipPreprocessorNode::InputCallback(
     size_block->writer.finalize();
     publisher_.publish(gpu_ros_managed::ManagedTensorList(
         message.get().header(), std::vector<gpu_ros_managed::ManagedTensor>{
-          std::move(image_out), std::move(size_out)}));
+        std::move(image_out), std::move(size_out)}));
   } catch (const std::exception & error) {
     if (size_block) {size_block->writer.fail();}
     RCLCPP_WARN_THROTTLE(
@@ -310,7 +322,7 @@ RtDetrManagedHipDecoderNode::RtDetrManagedHipDecoderNode(
   config_.confidence_threshold = declare_parameter<double>("confidence_threshold", 0.9);
   publisher_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-    gpu_ros_managed::ManagedTensorListView>>(
+      gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &RtDetrManagedHipDecoderNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));

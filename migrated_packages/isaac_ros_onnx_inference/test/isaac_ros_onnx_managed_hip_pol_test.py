@@ -15,7 +15,9 @@
 """Proof-of-life for the AMD standard-ROS2 -> Managed HIP graphs."""
 
 from array import array
+import os
 import pathlib
+import shutil
 import time
 import unittest
 
@@ -31,8 +33,11 @@ from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray
 
 
-YOLO_MODEL_PATH = pathlib.Path('/tmp/yolov8_managed_hip_pol.onnx')
-RTDETR_MODEL_PATH = pathlib.Path('/tmp/rtdetr_managed_hip_pol.onnx')
+TEST_ARTIFACT_ROOT = pathlib.Path(
+    f'/tmp/isaac_ros_onnx_managed_hip_pol_{os.getpid()}')
+YOLO_MODEL_PATH = TEST_ARTIFACT_ROOT / 'yolov8.onnx'
+RTDETR_MODEL_PATH = TEST_ARTIFACT_ROOT / 'rtdetr.onnx'
+MIGRAPHX_CACHE_PATH = TEST_ARTIFACT_ROOT / 'migraphx_cache'
 YOLO_NAMESPACE = 'yolov8_managed_hip_pol'
 RTDETR_NAMESPACE = 'rtdetr_managed_hip_pol'
 
@@ -245,6 +250,8 @@ def _rtdetr_nodes():
 @pytest.mark.launch_test
 def generate_test_description():
     """Launch both static-output AMD Managed HIP proof-of-life graphs."""
+    TEST_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=False)
+    MIGRAPHX_CACHE_PATH.mkdir()
     _write_yolov8_model()
     _write_rtdetr_model()
     container = ComposableNodeContainer(
@@ -254,6 +261,13 @@ def generate_test_description():
         namespace='',
         composable_node_descriptions=_yolov8_nodes() + _rtdetr_nodes(),
         output='screen',
+        additional_env={
+            'ORT_MIGRAPHX_MODEL_CACHE_PATH': str(MIGRAPHX_CACHE_PATH),
+            'ORT_MIGRAPHX_FP16_ENABLE': '0',
+            'ORT_MIGRAPHX_BF16_ENABLE': '0',
+            'ORT_MIGRAPHX_FP8_ENABLE': '0',
+            'ORT_MIGRAPHX_INT8_ENABLE': '0',
+        },
     )
     return launch.LaunchDescription([
         container,
@@ -273,8 +287,7 @@ class TestManagedHipProofOfLife(unittest.TestCase):
     def tearDownClass(cls):
         cls.node.destroy_node()
         rclpy.shutdown()
-        YOLO_MODEL_PATH.unlink(missing_ok=True)
-        RTDETR_MODEL_PATH.unlink(missing_ok=True)
+        shutil.rmtree(TEST_ARTIFACT_ROOT, ignore_errors=True)
 
     def _wait_for_detection(self, namespace, image):
         received = []

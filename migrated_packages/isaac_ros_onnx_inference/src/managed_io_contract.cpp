@@ -1,5 +1,16 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaac_ros_onnx_inference/managed_io_contract.hpp"
 
@@ -18,9 +29,9 @@ namespace
 std::string Trim(std::string value)
 {
   const auto first = std::find_if_not(value.begin(), value.end(),
-    [](unsigned char c) {return std::isspace(c) != 0;});
+      [](unsigned char c) {return std::isspace(c) != 0;});
   const auto last = std::find_if_not(value.rbegin(), value.rend(),
-    [](unsigned char c) {return std::isspace(c) != 0;}).base();
+      [](unsigned char c) {return std::isspace(c) != 0;}).base();
   if (first >= last) {return {};}
   return std::string(first, last);
 }
@@ -115,7 +126,9 @@ void ValidateOneSide(
             std::to_string(names.size()));
   }
   std::unordered_map<std::string, const ManagedTensorContract *> by_name;
-  for (const auto & contract : contracts) {by_name.emplace(contract.name, &contract);}
+  for (const auto & contract : contracts) {
+    by_name.emplace(contract.name, &contract);
+  }
   for (size_t index = 0; index < names.size(); ++index) {
     const auto found = by_name.find(names[index]);
     if (found == by_name.end()) {
@@ -125,9 +138,12 @@ void ValidateOneSide(
     const auto & contract = *found->second;
     const auto info = (inputs ? session.GetInputTypeInfo(index) :
       session.GetOutputTypeInfo(index)).GetTensorTypeAndShapeInfo();
-    if (info.GetElementType() != contract.dtype) {
+    const auto actual_dtype = info.GetElementType();
+    if (actual_dtype != contract.dtype) {
       throw std::invalid_argument(
-              std::string(parameter_name) + " dtype mismatch for '" + contract.name + "'");
+              std::string(parameter_name) + " dtype mismatch for '" + contract.name +
+              "': model=" + std::to_string(static_cast<int>(actual_dtype)) +
+              ", contract=" + std::to_string(static_cast<int>(contract.dtype)));
     }
     const auto model_shape = info.GetShape();
     if (model_shape.size() != contract.shape.size()) {

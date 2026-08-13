@@ -1,15 +1,26 @@
 // Copyright 2026 Maintainer
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "isaac_ros_yolov8_std/yolov8_managed_hip_nodes.hpp"
+
+#include <hip/hip_runtime_api.h>
 
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <stdexcept>
 #include <utility>
-
-#include <hip/hip_runtime_api.h>
 
 #include "gpu_ros_managed_core/buffer.hpp"
 #include "isaac_ros_detection_common/hip_preprocess.hpp"
@@ -67,7 +78,7 @@ std::shared_ptr<gpu_ros_managed::DeviceBuffer> DeviceTensorBuffer(
   const auto & buffer = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
     tensor.storage());
   if (!buffer || buffer->device_id() != gpu_ros_managed::DeviceId{
-      gpu_ros_managed::BackendKind::kHip, device_id})
+        gpu_ros_managed::BackendKind::kHip, device_id})
   {
     throw std::invalid_argument("YOLOv8 Managed tensor has the wrong HIP device");
   }
@@ -146,7 +157,7 @@ void YoloV8ManagedHipImageEncoderNode::InputCallback(
     const auto remaining_timeout = [&reservation_deadline]() {
         const auto now = std::chrono::steady_clock::now();
         return now >= reservation_deadline ? std::chrono::milliseconds(0) :
-          std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
+               std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
       };
     output = output_pool_->acquire_for(stream_->stream(), remaining_timeout());
     if (!output) {
@@ -199,7 +210,7 @@ YoloV8ManagedHipDecoderNode::YoloV8ManagedHipDecoderNode(
   config_.num_classes = declare_parameter<int64_t>("num_classes", 80);
   publisher_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-    gpu_ros_managed::ManagedTensorListView>>(
+      gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &YoloV8ManagedHipDecoderNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));
@@ -210,7 +221,8 @@ void YoloV8ManagedHipDecoderNode::InputCallback(
 {
   try {
     const auto & tensor = message.get_tensor(config_.tensor_name);
-    const auto buffer = DeviceTensorBuffer(tensor, config_.tensor_name, read_stream_.stream().device_id().ordinal);
+    const auto buffer = DeviceTensorBuffer(tensor, config_.tensor_name,
+        read_stream_.stream().device_id().ordinal);
     if (tensor.shape().size() != 3U || tensor.shape()[0] != 1 ||
       tensor.shape()[1] != 4 + config_.num_classes)
     {

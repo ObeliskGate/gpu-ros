@@ -130,5 +130,5 @@ TEST(YoloV8ImageEncoderTest, RejectsInvalidImageStorage)
   const auto image = MakeImage(
     sensor_msgs::image_encodings::RGB8, 2, 1, 5, {1U, 2U, 3U, 4U, 5U});
 
-  EXPECT_THROW(EncodeYoloV8Image(image, Config()), std::runtime_error);
+  EXPECT_THROW(EncodeYoloV8Image(image, Config()), std::invalid_argument);
 }

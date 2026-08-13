@@ -541,7 +541,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
 
   std::vector<const char *> output_name_ptrs;
   output_name_ptrs.reserve(output_names_.size());
-  for (const auto & name : output_names_) {output_name_ptrs.push_back(name.c_str());}
+  for (const auto & name : output_names_) {
+    output_name_ptrs.push_back(name.c_str());
+  }
 
   std::vector<std::unique_ptr<gpu_ros_managed::SynchronizedPoolBlock>> reservations;
   std::vector<Ort::Value> bound_output_values;
@@ -550,7 +552,10 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
   auto cancel_reservations = [&]() noexcept {
       for (auto & reservation : reservations) {
         if (reservation) {
-          try {reservation->writer.cancel();} catch (...) {}
+          try {
+            reservation->writer.cancel();
+          } catch (...) {
+          }
         }
       }
     };
@@ -676,7 +681,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
   } catch (...) {
     strict_healthy_ = false;
     if (submitted_to_ort) {
-      for (auto & reservation : reservations) {reservation->writer.fail();}
+      for (auto & reservation : reservations) {
+        reservation->writer.fail();
+      }
     } else {
       cancel_reservations();
     }

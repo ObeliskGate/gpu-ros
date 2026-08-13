@@ -48,9 +48,11 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   const std::string managed_io_contract =
     declare_parameter<std::string>("managed_io_contract", "");
   const auto managed_input_contracts =
-    declare_parameter<std::vector<std::string>>("managed_input_contracts", {});
+    declare_parameter<std::vector<std::string>>(
+      "managed_input_contracts", std::vector<std::string>{});
   const auto managed_output_contracts =
-    declare_parameter<std::vector<std::string>>("managed_output_contracts", {});
+    declare_parameter<std::vector<std::string>>(
+      "managed_output_contracts", std::vector<std::string>{});
   const int64_t managed_pool_capacity =
     declare_parameter<int64_t>("managed_pool_capacity", 16);
   const int64_t managed_pool_wait_timeout_ms =
