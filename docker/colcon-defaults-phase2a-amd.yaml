@@ -5,6 +5,7 @@ build:
     - src/gpu_ros_managed/gpu_ros_managed_cuda
     - src/gpu_ros_managed/gpu_ros_managed_hip
     - src/gpu_ros_managed/gpu_ros_managed_ros
+    - migrated_packages/isaac_ros_detection_common
     - migrated_packages/isaac_ros_detection_validation
   cmake-args:
     - --no-warn-unused-cli
@@ -32,9 +33,11 @@ test:
     - src/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu_ros_managed/gpu_ros_managed_hip
     - src/gpu_ros_managed/gpu_ros_managed_ros
+    - migrated_packages/isaac_ros_detection_common
     - migrated_packages/isaac_ros_detection_validation
   packages-select:
     - gpu_ros_managed_core
     - gpu_ros_managed_hip
     - gpu_ros_managed_ros
+    - isaac_ros_detection_common
     - isaac_ros_detection_validation

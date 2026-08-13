@@ -499,8 +499,6 @@ ros2 run isaac_ros_onnx_inference analyze_rocprof_traces.py \
   "${STD_TRACE_ARGS[@]}" "${MANAGED_TRACE_ARGS[@]}" \
   --std-frames "${STD_FRAMES}" --managed-frames "${MANAGED_FRAMES}" \
   --std-manifest "${STD_MANIFEST}" --managed-manifest "${MANAGED_MANIFEST}" \
-  --expected-adapter-direction H2D \
-  --expected-adapter-direction D2H \
   --std-binding-report "${STD_BINDING}" \
   --managed-binding-report "${MANAGED_BINDING}" \
   "${PAYLOAD_ARGS[@]}" \
@@ -515,6 +513,7 @@ ros2 run isaac_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag "${BAG_ROOT}/std" \
   --candidate-bag "${BAG_ROOT}/managed" \
   --match-policy stamp \
+  --report-only \
   --output-json "${REPORT_ROOT}/detection_comparison.json" \
   2>&1 | tee "${LOG_ROOT}/detection_comparison.log"
 DETECTION_STATUS=${PIPESTATUS[0]}
@@ -546,7 +545,8 @@ fi
   echo "rocprof target opt-in: ROCP_TOOL_ATTACH=1 (scoped to each capture lane)"
   echo "Trace output is required to be stable before parsing."
   echo "Warm-up is excluded: rocprofv3 attaches only after the warm-up handshake."
-  echo "Managed-only H2D/D2H records are reported as expected explicit adapter staging."
+  echo "Direct Managed HIP production lane expects no application TensorList staging copies."
+  echo "Use --require-adapter-directions only for the staged-control lane."
   echo "Managed-only tensor-sized inference-boundary copies fail; ambiguous payload kernels are INCONCLUSIVE."
   echo "Kernel names containing copy/memcpy/blit are diagnostic unless trace evidence resolves their role."
   echo "CPU fallback is recorded in the ORT provider report and is not a closure failure."

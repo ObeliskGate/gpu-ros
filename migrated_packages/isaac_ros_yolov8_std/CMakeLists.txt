@@ -15,10 +15,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake_auto REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn)
 ament_auto_find_build_dependencies()
+find_package(isaac_ros_detection_common REQUIRED)
+find_package(gpu_ros_managed_core QUIET)
+find_package(gpu_ros_managed_hip QUIET)
+find_package(gpu_ros_managed_ros QUIET)
+find_package(gpu_ros_managed_tensor_list QUIET)
 
 ament_auto_add_library(yolov8_image_encoder_core SHARED src/yolov8_image_encoder.cpp)
 target_include_directories(yolov8_image_encoder_core PUBLIC ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(yolov8_image_encoder_core ${OpenCV_LIBRARIES})
+target_link_libraries(yolov8_image_encoder_core
+  ${OpenCV_LIBRARIES} isaac_ros_detection_common)
 
 ament_auto_add_library(yolov8_image_encoder_node SHARED src/yolov8_image_encoder_node.cpp)
 target_link_libraries(yolov8_image_encoder_node yolov8_image_encoder_core)
@@ -33,6 +39,21 @@ ament_auto_add_library(yolov8_decoder_node SHARED src/yolov8_decoder_node.cpp)
 target_link_libraries(yolov8_decoder_node yolov8_decoder_core)
 rclcpp_components_register_nodes(yolov8_decoder_node
   "nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode")
+
+if(TARGET gpu_ros_managed::hip AND TARGET gpu_ros_managed::ros AND
+  TARGET gpu_ros_managed::core AND TARGET gpu_ros_managed::tensor_list AND
+  TARGET isaac_ros_detection_common_hip)
+  ament_auto_add_library(yolov8_managed_hip_nodes SHARED
+    src/yolov8_managed_hip_nodes.cpp)
+  target_link_libraries(yolov8_managed_hip_nodes
+    gpu_ros_managed::hip gpu_ros_managed::ros gpu_ros_managed::core
+    gpu_ros_managed::tensor_list isaac_ros_detection_common_hip yolov8_decoder_core)
+  rclcpp_components_register_nodes(yolov8_managed_hip_nodes
+    "nvidia::isaac_ros::yolov8_std::YoloV8ManagedHipImageEncoderNode"
+    "nvidia::isaac_ros::yolov8_std::YoloV8ManagedHipDecoderNode")
+else()
+  message(STATUS "YOLOv8 Managed HIP plugins disabled: HIP managed/common targets unavailable")
+endif()
 
 option(
   BUILD_NVIDIA_YOLOV8_POL_TEST

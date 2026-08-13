@@ -18,6 +18,7 @@
 import argparse
 from collections import defaultdict, deque
 from dataclasses import dataclass
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -31,6 +32,23 @@ from vision_msgs.msg import Detection2D, Detection2DArray
 
 
 DETECTION2D_ARRAY_TYPE = 'vision_msgs/msg/Detection2DArray'
+COMPARISON_SCHEMA = 'phase2b_detection_report_only_v1'
+REPORT_ONLY_DEFAULTS = {
+    'match_policy': 'stamp',
+    'min_score': 0.0,
+    'max_detections_per_frame': 0,
+    'ignore_unpaired_frames': False,
+    'min_mean_iou': 0.80,
+    'max_mean_score_delta': 0.20,
+    'min_frame_pass_rate': 0.70,
+    'min_paired_frames': 20,
+    'min_class_match_rate': 1.0,
+}
+
+
+def comparator_source_sha256() -> str:
+    """Return the source hash recorded with every comparison report."""
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -55,6 +73,10 @@ class FrameComparison:
     matched_count: int
     unmatched_count: int
     passed: bool
+    unmatched_reference_count: int = 0
+    unmatched_candidate_count: int = 0
+    iou_values: Sequence[float] = ()
+    score_delta_values: Sequence[float] = ()
 
 
 @dataclass(frozen=True)
@@ -173,6 +195,28 @@ def iou(
     return intersection / union if union > 0.0 else 0.0
 
 
+def unpaired_detection_counts(
+    reference: Sequence[DetectionFrame],
+    candidate: Sequence[DetectionFrame],
+    pairs: Sequence[Tuple[DetectionFrame, DetectionFrame]],
+) -> Tuple[int, int]:
+    """Count detections belonging to frames that were not paired."""
+    paired_reference_indices = {frame.index for frame, _ in pairs}
+    paired_candidate_indices = {frame.index for _, frame in pairs}
+    return (
+        sum(
+            len(frame.detections)
+            for frame in reference
+            if frame.index not in paired_reference_indices
+        ),
+        sum(
+            len(frame.detections)
+            for frame in candidate
+            if frame.index not in paired_candidate_indices
+        ),
+    )
+
+
 def read_detection_frames(
     bag_path: str,
     topic: str,
@@ -251,18 +295,20 @@ def pair_frames(
 def match_detections(
     reference_detections: Sequence[Detection2D],
     candidate_detections: Sequence[Detection2D],
-) -> Tuple[List[float], List[float], int, int]:
+) -> Tuple[List[float], List[float], int, int, int]:
     if not reference_detections and not candidate_detections:
-        return [], [], 0, 0
+        return [], [], 0, 0, 0
     if not reference_detections or not candidate_detections:
-        return [], [], max(len(reference_detections), len(candidate_detections)), 0
+        return [], [], len(reference_detections), len(candidate_detections), 0
 
     candidate_pairs = []
     for ref_index, ref_det in enumerate(reference_detections):
         ref_box = to_xyxy(ref_det)
         for cand_index, cand_det in enumerate(candidate_detections):
             candidate_pairs.append((iou(ref_box, to_xyxy(cand_det)), ref_index, cand_index))
-    candidate_pairs.sort(reverse=True)
+    # Explicitly include the source indices in the tie-breaker.  Class is
+    # intentionally not part of the pairing decision.
+    candidate_pairs.sort(key=lambda pair: (-pair[0], pair[1], pair[2]))
 
     used_reference = set()
     used_candidate = set()
@@ -286,11 +332,15 @@ def match_detections(
         ):
             class_matches += 1
 
-    unmatched_count = (
-        len(reference_detections) - len(used_reference) +
-        len(candidate_detections) - len(used_candidate)
+    unmatched_reference_count = len(reference_detections) - len(used_reference)
+    unmatched_candidate_count = len(candidate_detections) - len(used_candidate)
+    return (
+        ious,
+        score_deltas,
+        unmatched_reference_count,
+        unmatched_candidate_count,
+        class_matches,
     )
-    return ious, score_deltas, unmatched_count, class_matches
 
 
 def compare_frame(
@@ -298,8 +348,14 @@ def compare_frame(
     candidate: DetectionFrame,
     thresholds: Thresholds,
 ) -> FrameComparison:
-    ious, score_deltas, unmatched_count, class_matches = match_detections(
-        reference.detections, candidate.detections)
+    (
+        ious,
+        score_deltas,
+        unmatched_reference_count,
+        unmatched_candidate_count,
+        class_matches,
+    ) = match_detections(reference.detections, candidate.detections)
+    unmatched_count = unmatched_reference_count + unmatched_candidate_count
 
     if not ious and unmatched_count == 0:
         mean_iou = 1.0
@@ -332,6 +388,10 @@ def compare_frame(
         matched_count=matched_count,
         unmatched_count=unmatched_count,
         passed=passed,
+        unmatched_reference_count=unmatched_reference_count,
+        unmatched_candidate_count=unmatched_candidate_count,
+        iou_values=tuple(ious),
+        score_delta_values=tuple(score_deltas),
     )
 
 
@@ -356,7 +416,34 @@ def comparison_to_dict(comparison: FrameComparison) -> Dict[str, Any]:
         'class_match_rate': finite_or_none(comparison.class_match_rate),
         'matched_count': comparison.matched_count,
         'unmatched_count': comparison.unmatched_count,
+        'unmatched_reference_count': comparison.unmatched_reference_count,
+        'unmatched_candidate_count': comparison.unmatched_candidate_count,
+        'iou_values': [finite_or_none(value) for value in comparison.iou_values],
+        'score_delta_values': [
+            finite_or_none(value) for value in comparison.score_delta_values],
         'pass': comparison.passed,
+    }
+
+
+def distribution(values: Sequence[float]) -> Dict[str, Any]:
+    """Return a JSON-safe aggregate distribution for finite values."""
+    finite_values = [value for value in values if math.isfinite(value)]
+    if not finite_values:
+        return {
+            'count': 0,
+            'min': None,
+            'p05': None,
+            'median': None,
+            'p95': None,
+            'max': None,
+        }
+    return {
+        'count': len(finite_values),
+        'min': float(np.min(finite_values)),
+        'p05': percentile(finite_values, 5),
+        'median': float(np.median(finite_values)),
+        'p95': percentile(finite_values, 95),
+        'max': float(np.max(finite_values)),
     }
 
 
@@ -393,6 +480,8 @@ def summarize(
     unpaired_candidate_frames: int,
     thresholds: Thresholds,
     ignore_unpaired_frames: bool = False,
+    unpaired_reference_detections: int = 0,
+    unpaired_candidate_detections: int = 0,
 ) -> Dict[str, Any]:
     total_evaluated_frames = (
         len(comparisons) +
@@ -410,11 +499,25 @@ def summarize(
             'ignore_unpaired_frames': ignore_unpaired_frames,
             'frame_pass_rate': 0.0,
             'paired_frame_pass_rate': 0.0,
+            'matched_detections': 0,
+            'unmatched_detections': (
+                unpaired_reference_detections + unpaired_candidate_detections),
+            'unmatched_reference_detections': unpaired_reference_detections,
+            'unmatched_candidate_detections': unpaired_candidate_detections,
+            'unmatched_frames': unpaired_reference_frames + unpaired_candidate_frames,
+            'aggregate_distributions': {
+                'iou': distribution([]),
+                'score_delta': distribution([]),
+                'class_match_rate': distribution([]),
+            },
             'pass': False,
         }
 
-    ious = [c.mean_iou for c in comparisons]
-    finite_deltas = [c.mean_score_delta for c in comparisons if math.isfinite(c.mean_score_delta)]
+    pair_ious = [value for comparison in comparisons for value in comparison.iou_values]
+    pair_score_deltas = [
+        value for comparison in comparisons for value in comparison.score_delta_values]
+    ious = pair_ious or [c.mean_iou for c in comparisons]
+    finite_deltas = [value for value in pair_score_deltas if math.isfinite(value)]
     class_rates = [c.class_match_rate for c in comparisons]
     paired_passed_count = int(sum(c.passed for c in comparisons))
     paired_frame_pass_rate = paired_passed_count / len(comparisons)
@@ -422,8 +525,17 @@ def summarize(
         paired_passed_count / total_evaluated_frames
         if total_evaluated_frames > 0 else 0.0
     )
-    unmatched_total = int(sum(c.unmatched_count for c in comparisons))
-    unmatched_frames = int(sum(c.unmatched_count > 0 for c in comparisons))
+    unmatched_reference_total = int(
+        unpaired_reference_detections +
+        sum(c.unmatched_reference_count for c in comparisons))
+    unmatched_candidate_total = int(
+        unpaired_candidate_detections +
+        sum(c.unmatched_candidate_count for c in comparisons))
+    unmatched_total = unmatched_reference_total + unmatched_candidate_total
+    matched_total = int(sum(c.matched_count for c in comparisons))
+    unmatched_frames = int(
+        unpaired_reference_frames + unpaired_candidate_frames +
+        sum(c.unmatched_count > 0 for c in comparisons))
 
     mean_score_delta = float(np.mean(finite_deltas)) if finite_deltas else float('inf')
     mean_iou = float(np.mean(ious))
@@ -450,23 +562,40 @@ def summarize(
         'p05_iou': finite_or_none(percentile(ious, 5)),
         'median_iou': finite_or_none(float(np.median(ious))),
         'p95_iou': finite_or_none(percentile(ious, 95)),
+        'max_iou': finite_or_none(float(np.max(ious))),
         'mean_score_delta': finite_or_none(mean_score_delta),
+        'p05_score_delta': finite_or_none(percentile(finite_deltas, 5)),
         'median_score_delta': finite_or_none(
             float(np.median(finite_deltas)) if finite_deltas else float('inf')),
         'p95_score_delta': finite_or_none(percentile(finite_deltas, 95)),
         'max_score_delta': finite_or_none(
             float(np.max(finite_deltas)) if finite_deltas else float('inf')),
         'mean_class_match_rate': finite_or_none(mean_class_match_rate),
+        'p05_class_match_rate': finite_or_none(percentile(class_rates, 5)),
+        'median_class_match_rate': finite_or_none(float(np.median(class_rates))),
+        'p95_class_match_rate': finite_or_none(percentile(class_rates, 95)),
         'min_class_match_rate': finite_or_none(float(np.min(class_rates))),
         'frame_pass_rate': frame_pass_rate,
         'paired_frame_pass_rate': paired_frame_pass_rate,
         'unmatched_detections': unmatched_total,
+        'matched_detections': matched_total,
+        'unmatched_reference_detections': unmatched_reference_total,
+        'unmatched_candidate_detections': unmatched_candidate_total,
         'unmatched_frames': unmatched_frames,
+        'aggregate_distributions': {
+            'iou': distribution(ious),
+            'score_delta': distribution(finite_deltas),
+            'class_match_rate': distribution(class_rates),
+        },
         'pass': passed,
     }
 
 
-def print_summary(summary: Dict[str, Any], thresholds: Thresholds) -> None:
+def print_summary(
+    summary: Dict[str, Any],
+    thresholds: Thresholds,
+    report_only: bool = False,
+) -> None:
     print(f"Paired frames: {summary['paired_frames']}")
     print(f"Total evaluated frames: {summary['total_evaluated_frames']}")
     print(f"Reference frames: {summary['reference_frames']}")
@@ -500,7 +629,7 @@ def print_summary(summary: Dict[str, Any], thresholds: Thresholds) -> None:
           f'max_mean_score_delta={thresholds.max_mean_score_delta:.4f}, '
           f'min_frame_pass_rate={thresholds.min_frame_pass_rate:.4f}, '
           f'min_class_match_rate={thresholds.min_class_match_rate:.4f}')
-    print('PASS' if summary['pass'] else 'FAIL')
+    print('REPORT_ONLY' if report_only else ('PASS' if summary['pass'] else 'FAIL'))
 
 
 def write_report(path: str, report: Dict[str, Any]) -> None:
@@ -540,30 +669,72 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='Do not count unpaired frames against the overall frame pass rate.',
     )
+    parser.add_argument(
+        '--report-only',
+        action='store_true',
+        help=(
+            'Write the fixed stamp-paired comparison report without producing '
+            'an aggregate PASS/FAIL result.'),
+    )
     return parser.parse_args()
+
+
+def validate_report_only_args(args: argparse.Namespace) -> None:
+    """Enforce the fixed method used for formal real-model comparisons."""
+    if not args.report_only:
+        return
+
+    violations = []
+    for name, expected in REPORT_ONLY_DEFAULTS.items():
+        actual = getattr(args, name)
+        if actual != expected:
+            violations.append(f'{name}={actual!r} (expected {expected!r})')
+    if violations:
+        raise ValueError(
+            '--report-only requires the fixed comparison method: ' +
+            ', '.join(violations))
+
+
+def report_only_method() -> Dict[str, Any]:
+    return {
+        'frame_pairing': (
+            'exact source header stamp; duplicate stamps paired FIFO in bag order'),
+        'detection_pairing': (
+            'descending IoU deterministic greedy one-to-one; only IoU > 0; '
+            'class excluded from pairing'),
+        'box_normalization': 'center/size converted to x1/y1/x2/y2',
+        'confidence_filter': 'none',
+        'top_k_truncation': 'none',
+        'pair_metrics': 'IoU, absolute score delta, and class ID equality',
+        'per_frame_diagnostic_thresholds': 'CLI defaults, fixed for this schema',
+        'aggregate_pass_fail': 'not produced',
+    }
 
 
 def main() -> int:
     args = parse_args()
-    detection_filters = DetectionFilters(
-        min_score=args.min_score,
-        max_detections_per_frame=args.max_detections_per_frame,
-    )
-    thresholds = Thresholds(
-        min_mean_iou=args.min_mean_iou,
-        max_mean_score_delta=args.max_mean_score_delta,
-        min_frame_pass_rate=args.min_frame_pass_rate,
-        min_paired_frames=args.min_paired_frames,
-        min_class_match_rate=args.min_class_match_rate,
-    )
 
     try:
+        validate_report_only_args(args)
+        detection_filters = DetectionFilters(
+            min_score=args.min_score,
+            max_detections_per_frame=args.max_detections_per_frame,
+        )
+        thresholds = Thresholds(
+            min_mean_iou=args.min_mean_iou,
+            max_mean_score_delta=args.max_mean_score_delta,
+            min_frame_pass_rate=args.min_frame_pass_rate,
+            min_paired_frames=args.min_paired_frames,
+            min_class_match_rate=args.min_class_match_rate,
+        )
         reference_frames = read_detection_frames(
             args.reference_bag, args.reference_topic, detection_filters, args.storage_id)
         candidate_frames = read_detection_frames(
             args.candidate_bag, args.candidate_topic, detection_filters, args.storage_id)
         pairs, unpaired_reference, unpaired_candidate = pair_frames(
             reference_frames, candidate_frames, args.match_policy)
+        unpaired_reference_detections, unpaired_candidate_detections = (
+            unpaired_detection_counts(reference_frames, candidate_frames, pairs))
         comparisons = [compare_frame(ref, cand, thresholds) for ref, cand in pairs]
         summary = summarize(
             comparisons,
@@ -573,9 +744,23 @@ def main() -> int:
             unpaired_candidate,
             thresholds,
             ignore_unpaired_frames=args.ignore_unpaired_frames,
+            unpaired_reference_detections=unpaired_reference_detections,
+            unpaired_candidate_detections=unpaired_candidate_detections,
         )
+        if args.report_only:
+            report_summary = dict(summary)
+            report_summary.pop('pass', None)
+            status = 'REPORT_ONLY'
+        else:
+            report_summary = summary
+            status = 'PASS' if summary['pass'] else 'FAIL'
+
         report = {
-            'status': 'PASS' if summary['pass'] else 'FAIL',
+            'status': status,
+            'comparison_schema': COMPARISON_SCHEMA if args.report_only else None,
+            'comparison_method': report_only_method() if args.report_only else None,
+            'comparator_source_sha256': comparator_source_sha256(),
+            'cli_arguments': sys.argv[1:],
             'inputs': {
                 'reference_bag': args.reference_bag,
                 'candidate_bag': args.candidate_bag,
@@ -595,16 +780,21 @@ def main() -> int:
                 'min_paired_frames': thresholds.min_paired_frames,
                 'min_class_match_rate': thresholds.min_class_match_rate,
             },
-            'summary': summary,
+            'summary': report_summary,
+            'per_frame': [comparison_to_dict(comparison) for comparison in comparisons],
             'worst_frames': worst_frame_details(comparisons, args.max_frame_details),
         }
-        print_summary(summary, thresholds)
+        print_summary(summary, thresholds, report_only=args.report_only)
         write_report(args.output_json, report)
-        return 0 if summary['pass'] else 1
+        return 0 if args.report_only or summary['pass'] else 1
     except Exception as exc:  # noqa: BLE001 - CLI should convert all failures to a clear exit.
         report = {
             'status': 'ERROR',
             'error': str(exc),
+            'comparison_schema': COMPARISON_SCHEMA if args.report_only else None,
+            'comparison_method': report_only_method() if args.report_only else None,
+            'comparator_source_sha256': comparator_source_sha256(),
+            'cli_arguments': sys.argv[1:],
             'inputs': {
                 'reference_bag': args.reference_bag,
                 'candidate_bag': args.candidate_bag,

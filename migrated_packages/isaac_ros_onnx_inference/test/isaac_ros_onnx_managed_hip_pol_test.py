@@ -53,8 +53,8 @@ def _write_yolov8_model():
             helper.make_node('Add', ['output_base', 'image_zero'], ['output0']),
         ],
         'yolov8_managed_hip_pol',
-        [helper.make_tensor_value_info('images', TensorProto.FLOAT, [1, 3, 640, 640])],
-        [helper.make_tensor_value_info('output0', TensorProto.FLOAT, output_shape)],
+        [helper.make_tensor_value_info('images', TensorProto.FLOAT, [-1, 3, 640, 640])],
+        [helper.make_tensor_value_info('output0', TensorProto.FLOAT, [-1, 84, 8400])],
         initializer=[
             helper.make_tensor('output_base', TensorProto.FLOAT, output_shape, output_values),
             helper.make_tensor('zero', TensorProto.FLOAT, [], [0.0]),
@@ -70,8 +70,18 @@ def _write_yolov8_model():
 
 def _write_rtdetr_model():
     """Write a deterministic static-output RT-DETR-shaped model."""
+    labels_shape = [1, 300]
+    boxes_shape = [1, 300, 4]
+    scores_shape = [1, 300]
+    labels_values = [0] * 300
+    labels_values[0] = 7
+    boxes_values = [0.0] * (300 * 4)
+    boxes_values[:4] = [10.0, 20.0, 30.0, 50.0]
+    scores_values = [0.0] * 300
+    scores_values[0] = 0.95
     graph = helper.make_graph(
         [
+            helper.make_node('Identity', ['labels_base'], ['labels']),
             helper.make_node('ReduceMean', ['images'], ['image_mean'], keepdims=0),
             helper.make_node('Mul', ['image_mean', 'zero'], ['image_zero']),
             helper.make_node('Add', ['boxes_base', 'image_zero'], ['boxes']),
@@ -79,20 +89,18 @@ def _write_rtdetr_model():
         ],
         'rtdetr_managed_hip_pol',
         [
-            helper.make_tensor_value_info('images', TensorProto.FLOAT, [1, 3, 640, 640]),
-            helper.make_tensor_value_info('orig_target_sizes', TensorProto.INT64, [1, 2]),
+            helper.make_tensor_value_info('images', TensorProto.FLOAT, [-1, 3, 640, 640]),
+            helper.make_tensor_value_info('orig_target_sizes', TensorProto.INT64, [-1, 2]),
         ],
         [
-            helper.make_tensor_value_info('labels', TensorProto.INT64, [1, 1]),
-            helper.make_tensor_value_info('boxes', TensorProto.FLOAT, [1, 1, 4]),
-            helper.make_tensor_value_info('scores', TensorProto.FLOAT, [1, 1]),
+            helper.make_tensor_value_info('labels', TensorProto.INT64, [-1, 300]),
+            helper.make_tensor_value_info('boxes', TensorProto.FLOAT, [-1, 300, 4]),
+            helper.make_tensor_value_info('scores', TensorProto.FLOAT, [-1, 300]),
         ],
         initializer=[
-            helper.make_tensor('labels', TensorProto.INT64, [1, 1], [7]),
-            helper.make_tensor(
-                'boxes_base', TensorProto.FLOAT, [1, 1, 4],
-                [10.0, 20.0, 30.0, 50.0]),
-            helper.make_tensor('scores_base', TensorProto.FLOAT, [1, 1], [0.95]),
+            helper.make_tensor('labels_base', TensorProto.INT64, labels_shape, labels_values),
+            helper.make_tensor('boxes_base', TensorProto.FLOAT, boxes_shape, boxes_values),
+            helper.make_tensor('scores_base', TensorProto.FLOAT, scores_shape, scores_values),
             helper.make_tensor('zero', TensorProto.FLOAT, [], [0.0]),
         ],
     )
@@ -104,52 +112,22 @@ def _write_rtdetr_model():
     onnx.save(model, RTDETR_MODEL_PATH)
 
 
-def _stager(namespace, name, input_topic, output_topic):
-    """Create the standard TensorList -> Managed HIP component."""
-    return ComposableNode(
-        package='isaac_ros_onnx_inference',
-        plugin=(
-            'nvidia::isaac_ros::onnx_inference::'
-            'StdToManagedHipTensorListNode'),
-        name=name,
-        namespace=namespace,
-        parameters=[{'gpu_device_id': 0}],
-        remappings=[
-            ('tensor_input', input_topic),
-            ('tensor_output', output_topic),
-        ],
-    )
-
-
-def _unstager(namespace, name, input_topic, output_topic):
-    """Create the Managed HIP -> standard TensorList component."""
-    return ComposableNode(
-        package='isaac_ros_onnx_inference',
-        plugin=(
-            'nvidia::isaac_ros::onnx_inference::'
-            'ManagedHipToStdTensorListNode'),
-        name=name,
-        namespace=namespace,
-        parameters=[{'gpu_device_id': 0}],
-        remappings=[
-            ('tensor_input', input_topic),
-            ('tensor_output', output_topic),
-        ],
-    )
-
-
 def _yolov8_nodes():
     namespace = YOLO_NAMESPACE
     return [
         ComposableNode(
             package='isaac_ros_yolov8_std',
-            plugin='nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode',
+            plugin=(
+                'nvidia::isaac_ros::yolov8_std::'
+                'YoloV8ManagedHipImageEncoderNode'),
             name='image_encoder', namespace=namespace,
             parameters=[{
                 'tensor_name': 'images', 'output_width': 640, 'output_height': 640,
+                'gpu_device_id': 0,
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
             }],
         ),
-        _stager(namespace, 'to_managed', 'encoded_tensor', 'managed_input'),
         ComposableNode(
             package='isaac_ros_onnx_inference',
             plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
@@ -159,23 +137,31 @@ def _yolov8_nodes():
                 'execution_provider': 'migraphx',
                 'gpu_device_id': 0,
                 'transport': 'managed',
+                'managed_io_contract': 'hip_managed_strict',
+                'managed_input_contracts': ['images=float32[1,3,640,640]'],
+                'managed_output_contracts': ['output0=float32[1,84,8400]'],
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
             }],
             remappings=[
-                ('tensor_input', 'managed_input'),
+                ('tensor_input', 'managed_tensor_output'),
                 ('tensor_output', 'managed_output'),
             ],
         ),
-        _unstager(namespace, 'to_standard', 'managed_output', 'tensor_sub'),
         ComposableNode(
             package='isaac_ros_yolov8_std',
-            plugin='nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode',
+            plugin=(
+                'nvidia::isaac_ros::yolov8_std::'
+                'YoloV8ManagedHipDecoderNode'),
             name='decoder', namespace=namespace,
             parameters=[{
                 'tensor_name': 'output0',
+                'gpu_device_id': 0,
                 'confidence_threshold': 0.25,
                 'nms_threshold': 0.45,
                 'num_classes': 80,
             }],
+            remappings=[('managed_tensor_input', 'managed_output')],
         ),
     ]
 
@@ -185,19 +171,35 @@ def _rtdetr_nodes():
     return [
         ComposableNode(
             package='isaac_ros_rtdetr_std',
-            plugin='nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode',
+            plugin=(
+                'nvidia::isaac_ros::rtdetr_std::'
+                'RtDetrManagedHipImageEncoderNode'),
             name='image_encoder', namespace=namespace,
             parameters=[{
                 'tensor_name': 'input_tensor', 'output_width': 640, 'output_height': 640,
+                'gpu_device_id': 0,
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
             }],
+            remappings=[('managed_tensor_output', 'managed_tensor_image')],
         ),
         ComposableNode(
             package='isaac_ros_rtdetr_std',
-            plugin='nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode',
+            plugin=(
+                'nvidia::isaac_ros::rtdetr_std::'
+                'RtDetrManagedHipPreprocessorNode'),
             name='preprocessor', namespace=namespace,
-            parameters=[{'image_width': 640, 'image_height': 640}],
+            parameters=[{
+                'image_width': 640,
+                'image_height': 640,
+                'model_input_width': 640,
+                'model_input_height': 640,
+                'gpu_device_id': 0,
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
+            }],
+            remappings=[('managed_tensor_input', 'managed_tensor_image')],
         ),
-        _stager(namespace, 'to_managed', 'tensor_pub', 'managed_input'),
         ComposableNode(
             package='isaac_ros_onnx_inference',
             plugin='nvidia::isaac_ros::onnx_inference::OnnxInferenceNode',
@@ -207,18 +209,35 @@ def _rtdetr_nodes():
                 'execution_provider': 'migraphx',
                 'gpu_device_id': 0,
                 'transport': 'managed',
+                'managed_io_contract': 'hip_managed_strict',
+                'managed_input_contracts': [
+                    'images=float32[1,3,640,640]',
+                    'orig_target_sizes=int64[1,2]',
+                ],
+                'managed_output_contracts': [
+                    'labels=int64[1,300]',
+                    'boxes=float32[1,300,4]',
+                    'scores=float32[1,300]',
+                ],
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
             }],
             remappings=[
-                ('tensor_input', 'managed_input'),
+                ('tensor_input', 'managed_tensor_output'),
                 ('tensor_output', 'managed_output'),
             ],
         ),
-        _unstager(namespace, 'to_standard', 'managed_output', 'tensor_sub'),
         ComposableNode(
             package='isaac_ros_rtdetr_std',
-            plugin='nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode',
+            plugin=(
+                'nvidia::isaac_ros::rtdetr_std::'
+                'RtDetrManagedHipDecoderNode'),
             name='decoder', namespace=namespace,
-            parameters=[{'confidence_threshold': 0.5}],
+            parameters=[{
+                'gpu_device_id': 0,
+                'confidence_threshold': 0.5,
+            }],
+            remappings=[('managed_tensor_input', 'managed_output')],
         ),
     ]
 
@@ -243,7 +262,7 @@ def generate_test_description():
 
 
 class TestManagedHipProofOfLife(unittest.TestCase):
-    """Verify both explicit host/Managed staging graphs produce detections."""
+    """Verify both direct strict Managed HIP graphs produce detections."""
 
     @classmethod
     def setUpClass(cls):
@@ -283,7 +302,7 @@ class TestManagedHipProofOfLife(unittest.TestCase):
             self.node.destroy_publisher(publisher)
 
     def test_yolov8_managed_hip_graph(self):
-        """Exercise HIP input binding, static output binding, and D2H adapter."""
+        """Exercise HIP preprocessing, strict output binding, and D2H decoding."""
         image = Image()
         image.height = 640
         image.width = 640

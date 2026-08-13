@@ -78,6 +78,9 @@ def parse_args() -> argparse.Namespace:
         '--expected-adapter-direction', action='append', default=[],
         choices=['H2D', 'D2H', 'D2D', 'H2H', 'unknown'],
         help='Direction expected from Managed adapter staging; not proof by itself')
+    parser.add_argument(
+        '--require-adapter-directions', action='store_true',
+        help='Require every expected adapter direction (staged-control lane only)')
     parser.add_argument('--boundary-evidence', type=Path)
     parser.add_argument('--std-binding-report', type=Path)
     parser.add_argument('--managed-binding-report', type=Path)
@@ -457,7 +460,7 @@ def main() -> int:
                 std_frames=args.std_frames,
                 managed_frames=args.managed_frames,
                 adapter_directions=args.expected_adapter_direction or ('H2D', 'D2H'),
-                require_adapter_directions=True,
+                require_adapter_directions=args.require_adapter_directions,
                 boundary_evidence=load_boundary_evidence(args.boundary_evidence),
                 kernel_payload_risk_names=args.kernel_payload_risk,
                 binding_reports=load_binding_reports(

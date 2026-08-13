@@ -218,8 +218,34 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
   execution_provider_(cfg.ep),
   gpu_device_id_(cfg.gpu_device_id),
   binding_report_path_(cfg.binding_report_path),
-  transport_(cfg.transport)
+  transport_(cfg.transport),
+  strict_managed_(cfg.managed_io_contract == "hip_managed_strict"),
+  managed_pool_capacity_(cfg.managed_pool_capacity),
+  managed_pool_wait_timeout_(cfg.managed_pool_wait_timeout)
 {
+  if (!cfg.managed_io_contract.empty() && !strict_managed_) {
+    throw std::invalid_argument(
+            "managed_io_contract must be empty or hip_managed_strict");
+  }
+  if (cfg.gpu_device_id < 0) {
+    throw std::invalid_argument("gpu_device_id must be non-negative");
+  }
+  if (strict_managed_) {
+    if (cfg.transport != "managed" || cfg.ep != ExecutionProvider::kMigraphx) {
+      throw std::invalid_argument(
+              "hip_managed_strict requires transport=managed and execution_provider=migraphx");
+    }
+    if (managed_pool_capacity_ == 0) {
+      throw std::invalid_argument("managed_pool_capacity must be positive");
+    }
+    if (managed_pool_wait_timeout_.count() < 0) {
+      throw std::invalid_argument("managed_pool_wait_timeout must be non-negative");
+    }
+    managed_input_contracts_ = ParseManagedTensorContracts(
+      cfg.managed_input_contracts, "managed_input_contracts");
+    managed_output_contracts_ = ParseManagedTensorContracts(
+      cfg.managed_output_contracts, "managed_output_contracts");
+  }
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
   if (!cfg.ort_profile_prefix.empty()) {
     session_options_.EnableProfiling(cfg.ort_profile_prefix.c_str());
@@ -251,15 +277,71 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
       shape.begin(), shape.end(), [](const int64_t dimension) {return dimension > 0;});
     if (probe.metadata_shape_is_static) {
       probe.decision =
+        strict_managed_ ?
+        "strict contract requires preallocated Managed HIP output" :
         execution_provider_ == ExecutionProvider::kMigraphx ?
         "metadata shape is static; probe preallocated Managed HIP output first" :
         "metadata shape is static; output probe is not needed for this EP";
     } else {
       probe.decision =
+        strict_managed_ ?
+        "strict contract resolves symbolic metadata to a preallocated Managed HIP output" :
         "metadata shape is dynamic; use ORT-owned output and adopt after synchronization";
     }
     output_binding_probes_.push_back(std::move(probe));
   }
+
+  if (strict_managed_) {
+#ifdef GPU_ROS_MANAGED_HIP
+    ValidateManagedTensorContracts(*session_, managed_input_contracts_, managed_output_contracts_);
+    const auto reorder = [](
+      const std::vector<std::string> & names,
+      const std::vector<ManagedTensorContract> & contracts) {
+        std::vector<ManagedTensorContract> ordered;
+        ordered.reserve(names.size());
+        for (const auto & name : names) {
+          const auto found = std::find_if(
+            contracts.begin(), contracts.end(),
+            [&name](const ManagedTensorContract & contract) {return contract.name == name;});
+          if (found == contracts.end()) {
+            throw std::invalid_argument("Managed contract is missing model tensor '" + name + "'");
+          }
+          ordered.push_back(*found);
+        }
+        return ordered;
+      };
+    managed_input_contracts_ = reorder(input_names_, managed_input_contracts_);
+    managed_output_contracts_ = reorder(output_names_, managed_output_contracts_);
+    managed_output_pools_.reserve(managed_output_contracts_.size());
+    for (const auto & contract : managed_output_contracts_) {
+      managed_output_pools_.push_back(std::make_unique<gpu_ros_managed::FixedDeviceMemoryPool>(
+          gpu_ros_managed::hip::make_fixed_device_pool(
+            ManagedTensorByteSize(contract), managed_pool_capacity_, gpu_device_id_)));
+    }
+#else
+    throw std::runtime_error(
+            "hip_managed_strict requires the gpu_ros_managed_hip backend");
+#endif
+  }
+}
+
+OnnxInferenceCore::~OnnxInferenceCore()
+{
+  static_cast<void>(shutdown(std::chrono::seconds(5)));
+}
+
+bool OnnxInferenceCore::shutdown(std::chrono::milliseconds timeout) noexcept
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  bool drained = true;
+  for (auto & pool : managed_output_pools_) {
+    if (!pool) {continue;}
+    const auto now = std::chrono::steady_clock::now();
+    const auto remaining = now >= deadline ? std::chrono::milliseconds(0) :
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+    if (!pool->shutdown(remaining)) {drained = false;}
+  }
+  return drained;
 }
 
 size_t OnnxInferenceCore::GetInputCount() const {return session_->GetInputCount();}
@@ -320,6 +402,24 @@ void OnnxInferenceCore::WriteBindingReport(
              << "\"\n"
              << "    }";
     };
+  const auto dtype_name = [](ONNXTensorElementDataType dtype) {
+      switch (dtype) {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return "float32";
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return "int64";
+        default: return "unknown";
+      }
+    };
+  const auto write_contract = [&report, &dtype_name](const ManagedTensorContract & contract) {
+      report << "    {\n"
+             << "      \"name\": \"" << JsonEscape(contract.name) << "\",\n"
+             << "      \"dtype\": \"" << dtype_name(contract.dtype) << "\",\n"
+             << "      \"shape\": [";
+      for (size_t index = 0; index < contract.shape.size(); ++index) {
+        if (index != 0) {report << ", ";}
+        report << contract.shape[index];
+      }
+      report << "]\n    }";
+    };
 
   report << "{\n"
          << "  \"schema_version\": 1,\n"
@@ -327,6 +427,22 @@ void OnnxInferenceCore::WriteBindingReport(
          << "  \"transport\": \"" << JsonEscape(transport_) << "\",\n"
          << "  \"output_placement\": \""
          << (output_placement == OutputPlacement::kDevice ? "device" : "host") << "\",\n"
+         << "  \"managed_io_contract\": \""
+         << (strict_managed_ ? "hip_managed_strict" : "compat") << "\",\n"
+         << "  \"managed_pool_capacity\": " << managed_pool_capacity_ << ",\n"
+         << "  \"managed_pool_wait_timeout_ms\": "
+         << managed_pool_wait_timeout_.count() << ",\n"
+         << "  \"managed_input_contracts\": [\n";
+  for (size_t index = 0; index < managed_input_contracts_.size(); ++index) {
+    if (index != 0) {report << ",\n";}
+    write_contract(managed_input_contracts_[index]);
+  }
+  report << "\n  ],\n  \"managed_output_contracts\": [\n";
+  for (size_t index = 0; index < managed_output_contracts_.size(); ++index) {
+    if (index != 0) {report << ",\n";}
+    write_contract(managed_output_contracts_[index]);
+  }
+  report << "\n  ],\n"
          << "  \"first_frame\": true,\n"
          << "  \"inputs\": [\n";
   for (size_t index = 0; index < inputs.size(); ++index) {
@@ -346,10 +462,239 @@ void OnnxInferenceCore::WriteBindingReport(
   binding_report_written_ = true;
 }
 
+std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
+  gpu_ros_managed::ManagedTensorListView inputs)
+{
+#ifndef GPU_ROS_MANAGED_HIP
+  static_cast<void>(inputs);
+  throw std::runtime_error("hip_managed_strict requires the HIP backend");
+#else
+  if (!strict_healthy_) {
+    throw std::runtime_error(
+            "hip_managed_strict core is unhealthy after a previous managed I/O failure");
+  }
+  if (inputs.tensors().size() != managed_input_contracts_.size()) {
+    throw std::invalid_argument(
+            "strict Managed input TensorList tensor count does not match the graph contract");
+  }
+
+  const auto device_memory_info = MakeHipDeviceMemoryInfo(
+    execution_provider_, gpu_device_id_);
+  ValidateDeviceMemoryInfo(
+    device_memory_info, "Cuda", gpu_device_id_, "strict Managed I/O", kAmdPciVendorId);
+
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char *> input_name_ptrs;
+  std::vector<gpu_ros_managed::BlockingReadyLease> input_leases;
+  std::vector<BindingTensorReport> input_reports;
+  ort_inputs.reserve(managed_input_contracts_.size());
+  input_name_ptrs.reserve(managed_input_contracts_.size());
+  input_leases.reserve(managed_input_contracts_.size());
+  input_reports.reserve(managed_input_contracts_.size());
+
+  for (const auto & contract : managed_input_contracts_) {
+    const auto & tensor = inputs.get_tensor(contract.name);
+    if (tensor.is_host()) {
+      throw std::invalid_argument(
+              "strict Managed input '" + contract.name + "' uses host storage");
+    }
+    if (ToOnnxDtype(tensor.data_type()) != contract.dtype ||
+      tensor.shape() != contract.shape || tensor.byte_size() != ManagedTensorByteSize(contract))
+    {
+      throw std::invalid_argument(
+              "strict Managed input '" + contract.name + "' does not match its contract");
+    }
+    const auto & buffer = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
+      tensor.storage());
+    if (!buffer) {throw std::invalid_argument("strict Managed input has null storage");}
+    const auto device = buffer->device_id();
+    if (device.backend != gpu_ros_managed::BackendKind::kHip ||
+      device.ordinal != gpu_device_id_)
+    {
+      throw std::invalid_argument(
+              "strict Managed input '" + contract.name + "' has the wrong HIP device");
+    }
+    const auto readiness = buffer->readiness();
+    if (readiness == gpu_ros_managed::BufferReadiness::kNotReady) {
+      throw std::invalid_argument(
+              "strict Managed input '" + contract.name +
+              "' is not ready");
+    }
+    input_leases.push_back(buffer->get_blocking_ready_lease());
+    const void * data = input_leases.back().data();
+    const auto memory_info = MakeHipDeviceMemoryInfo(execution_provider_, gpu_device_id_);
+    input_name_ptrs.push_back(contract.name.c_str());
+    ort_inputs.push_back(Ort::Value::CreateTensor(
+        memory_info, const_cast<void *>(data), tensor.byte_size(),
+        contract.shape.data(), contract.shape.size(), contract.dtype));
+    if (ort_inputs.back().GetTensorMutableRawData() != data) {
+      throw std::runtime_error(
+              "strict Managed input '" + contract.name + "' lost pointer identity");
+    }
+    input_reports.push_back(BindingTensorReport{
+        contract.name, tensor.byte_size(), "hip_device", PointerString(data),
+        PointerString(data), true,
+        readiness == gpu_ros_managed::BufferReadiness::kEventBackedReady ?
+        "event-backed Managed HIP input lease through ORT Run" :
+        "synchronously-ready Managed HIP input lease through ORT Run"});
+  }
+
+  std::vector<const char *> output_name_ptrs;
+  output_name_ptrs.reserve(output_names_.size());
+  for (const auto & name : output_names_) {output_name_ptrs.push_back(name.c_str());}
+
+  std::vector<std::unique_ptr<gpu_ros_managed::SynchronizedPoolBlock>> reservations;
+  std::vector<Ort::Value> bound_output_values;
+  reservations.reserve(managed_output_contracts_.size());
+  bound_output_values.reserve(managed_output_contracts_.size());
+  auto cancel_reservations = [&]() noexcept {
+      for (auto & reservation : reservations) {
+        if (reservation) {
+          try {reservation->writer.cancel();} catch (...) {}
+        }
+      }
+    };
+  try {
+    const auto reservation_deadline =
+      std::chrono::steady_clock::now() + managed_pool_wait_timeout_;
+    for (size_t index = 0; index < managed_output_contracts_.size(); ++index) {
+      const auto now = std::chrono::steady_clock::now();
+      const auto remaining = now >= reservation_deadline ?
+        std::chrono::milliseconds(0) :
+        std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
+      auto reservation = managed_output_pools_.at(index)->acquire_synchronized_for(
+        remaining);
+      if (!reservation) {
+        ++pool_exhaustion_drops_;
+        throw std::runtime_error(
+                "strict Managed output pool exhausted for '" +
+                managed_output_contracts_[index].name + "' after " +
+                std::to_string(managed_pool_wait_timeout_.count()) + " ms");
+      }
+      reservations.push_back(std::move(reservation));
+      auto & reserved = *reservations.back();
+      const auto & contract = managed_output_contracts_[index];
+      const size_t bytes = ManagedTensorByteSize(contract);
+      if (reserved.writer.size() < bytes) {
+        throw std::runtime_error("strict Managed output pool block is smaller than its contract");
+      }
+      bound_output_values.push_back(Ort::Value::CreateTensor(
+          device_memory_info, reserved.writer.data(), bytes,
+          contract.shape.data(), contract.shape.size(), contract.dtype));
+      if (bound_output_values.back().GetTensorMutableRawData() != reserved.writer.data()) {
+        throw std::runtime_error(
+                "strict Managed output '" + contract.name + "' lost pointer identity at bind");
+      }
+    }
+  } catch (...) {
+    cancel_reservations();
+    throw;
+  }
+
+  std::vector<BindingTensorReport> output_reports;
+  output_reports.reserve(managed_output_contracts_.size());
+  bool submitted_to_ort = false;
+  try {
+    Ort::IoBinding binding(*session_);
+    for (size_t index = 0; index < ort_inputs.size(); ++index) {
+      binding.BindInput(input_name_ptrs[index], ort_inputs[index]);
+    }
+    for (size_t index = 0; index < bound_output_values.size(); ++index) {
+      binding.BindOutput(output_name_ptrs[index], bound_output_values[index]);
+    }
+
+    binding.SynchronizeInputs();
+    // The output blocks become non-recyclable only once ORT Run may have
+    // submitted work that references them. Binding setup and input
+    // synchronization do not write the reserved outputs, so those failures
+    // can still safely cancel the reservations.
+    submitted_to_ort = true;
+    session_->Run(Ort::RunOptions{nullptr}, binding);
+    binding.SynchronizeOutputs();
+
+    const auto bound_names = binding.GetOutputNames();
+    if (bound_names != output_names_) {
+      throw std::runtime_error("strict Managed ORT output names changed at runtime");
+    }
+    const auto ort_outputs = binding.GetOutputValues();
+    if (ort_outputs.size() != managed_output_contracts_.size()) {
+      throw std::runtime_error("strict Managed ORT returned an unexpected output count");
+    }
+
+    for (size_t index = 0; index < ort_outputs.size(); ++index) {
+      const auto & contract = managed_output_contracts_[index];
+      const auto info = ort_outputs[index].GetTensorTypeAndShapeInfo();
+      const size_t element_count = info.GetElementCount();
+      const size_t element_size = ManagedTensorElementSize(contract.dtype);
+      if (element_count > std::numeric_limits<size_t>::max() / element_size ||
+        info.GetElementType() != contract.dtype || info.GetShape() != contract.shape ||
+        element_count * element_size != ManagedTensorByteSize(contract))
+      {
+        throw std::runtime_error(
+                "strict Managed ORT output '" + contract.name +
+                "' changed dtype, shape, or byte size after initialization");
+      }
+      const auto memory_info = ort_outputs[index].GetTensorMemoryInfo();
+      ValidateDeviceMemoryInfo(
+        memory_info, "Cuda", gpu_device_id_,
+        "strict Managed output '" + contract.name + "'", kAmdPciVendorId);
+      void * ort_pointer = ort_outputs[index].GetTensorMutableRawData();
+      if (ort_pointer != reservations[index]->writer.data()) {
+        throw std::runtime_error(
+                "strict Managed ORT output '" + contract.name +
+                "' did not write to its preallocated pool pointer");
+      }
+    }
+
+    for (auto & reservation : reservations) {
+      reservation->writer.finalize_synchronously();
+    }
+
+    std::vector<OutputTensor> results;
+    results.reserve(managed_output_contracts_.size());
+    for (size_t index = 0; index < managed_output_contracts_.size(); ++index) {
+      const auto & contract = managed_output_contracts_[index];
+      const auto & buffer = reservations[index]->buffer;
+      if (buffer->readiness() != gpu_ros_managed::BufferReadiness::kSynchronouslyReady) {
+        throw std::runtime_error(
+                "strict Managed output '" + contract.name + "' did not become synchronously ready");
+      }
+      output_reports.push_back(BindingTensorReport{
+          contract.name, ManagedTensorByteSize(contract), "hip_device",
+          PointerString(reservations[index]->writer.data()),
+          PointerString(reservations[index]->writer.data()), true,
+          "preallocated Managed HIP pool block finalized after IoBinding::SynchronizeOutputs"});
+      OutputTensor output;
+      output.name = contract.name;
+      output.dtype = contract.dtype;
+      output.shape = contract.shape;
+      output.storage = buffer;
+      results.push_back(std::move(output));
+    }
+    WriteBindingReport(input_reports, output_reports, OutputPlacement::kDevice);
+    return results;
+  } catch (...) {
+    strict_healthy_ = false;
+    if (submitted_to_ort) {
+      for (auto & reservation : reservations) {reservation->writer.fail();}
+    } else {
+      cancel_reservations();
+    }
+    throw;
+  }
+#endif
+}
+
 std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   gpu_ros_managed::ManagedTensorListView inputs,
   OutputPlacement output_placement)
 {
+  if (strict_managed_) {
+    if (output_placement != OutputPlacement::kDevice) {
+      throw std::invalid_argument("hip_managed_strict requires device output placement");
+    }
+    return RunStrictManagedInference(std::move(inputs));
+  }
   if (output_placement == OutputPlacement::kDevice &&
     execution_provider_ != ExecutionProvider::kCuda &&
     execution_provider_ != ExecutionProvider::kMigraphx)

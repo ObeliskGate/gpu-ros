@@ -121,43 +121,115 @@ Kernel traces are retained to discover and explain possible payload movement;
 a kernel name containing `copy`, `memcpy`, or `blit` is not automatically a
 copy failure. A confirmed Managed-only tensor-sized memory copy is `FAIL`; an
 unresolved payload risk or a memory-copy record without a byte count is
-`INCONCLUSIVE`. For the AMD Managed lane, failure to observe either expected
-adapter direction (H2D or D2H) is also `INCONCLUSIVE`, because an empty copy
-set cannot prove that the inference boundary was audited. Direction and bytes
-alone classify a record as staging-shaped; they do not prove that it came from
-the Managed adapter.
+`INCONCLUSIVE`. The direct AMD production lane expects no application-level
+adapter copies; the staged-control lane may explicitly require both H2D and
+D2H adapter directions. Direction and bytes alone classify a record as
+staging-shaped; they do not prove that it came from the Managed adapter.
 
 ORT profiles are provider-placement controls, not replacements for system
 copy traces. Bridge timing reports callback/readiness/publish cost, not copy
 latency.
 
-## AMD Phase 2B staging policy
+## AMD Phase 2B Managed HIP production policy
 
-The AMD graph makes host staging explicit at the ROS boundary:
+The production AMD graphs are direct, same-process Managed HIP paths. Their
+application-level topology is:
 
 ~~~text
-host TensorList -> StdToManagedHipTensorListNode
-  -> OnnxInferenceNode(transport=managed, execution_provider=migraphx)
-  -> ManagedHipToStdTensorListNode -> host TensorList
+YOLOv8:
+Image -> YoloV8ManagedHipImageEncoderNode
+      -> OnnxInferenceNode(transport=managed, hip_managed_strict)
+      -> YoloV8ManagedHipDecoderNode -> Detection2DArray
+
+RT-DETR:
+Image -> RtDetrManagedHipImageEncoderNode
+      -> RtDetrManagedHipPreprocessorNode
+      -> OnnxInferenceNode(transport=managed, hip_managed_strict)
+      -> RtDetrManagedHipDecoderNode -> Detection2DArray
 ~~~
 
-`StdToManagedHipTensorListNode` allocates HIP `DeviceBuffer` objects and uses
-the public blocking H2D API. `ManagedHipToStdTensorListNode` uses the public
-blocking D2H API. Neither adapter calls HIP runtime copy functions directly.
+Every intermediate TensorList is an in-process Managed HIP device buffer.
+Production launch files and direct benchmark graphs must not instantiate
+`StdToManagedHipTensorListNode` or `ManagedHipToStdTensorListNode`. The five
+production plugins are:
 
-Inside the Managed inference boundary, device-backed inputs are passed to ORT
-with their original pointer and a MIGraphX-compatible HIP device memory
-descriptor. Static output metadata is probed with preallocated Managed HIP
-buffers; if the external binding probe fails, the real failure is logged and
-ORT-owned device output is adopted only after synchronization. Dynamic output
-metadata follows the ORT-owned path without changing the ONNX graph.
+~~~text
+YoloV8ManagedHipImageEncoderNode
+YoloV8ManagedHipDecoderNode
+RtDetrManagedHipImageEncoderNode
+RtDetrManagedHipPreprocessorNode
+RtDetrManagedHipDecoderNode
+~~~
 
-The AMD audit records the explicit adapter H2D/D2H operations separately. It
-then audits the Managed TensorList inference boundary for additional
-tensor-sized copies. This does not claim that the complete pipeline has no
-memcpy: host encoders, decoders, explicit adapters, provider kernels, and CPU
-fallback remain outside that boundary. These AMD changes do not affect the
-independent Phase 2A standard ROS 2 path.
+The encoder performs asynchronous H2D plus the shared HIP preprocessing kernel
+and retains the ROS Image owner until the producer event is safe. The RT-DETR
+preprocessor aliases the image buffer and writes `orig_target_sizes` into a
+separate Managed HIP pool block. Decoders take device read leases and perform
+only the required D2H before calling the shared CPU decoder core.
+
+### Strict Managed I/O contract
+
+Production ORT uses `managed_io_contract=hip_managed_strict` and explicit
+contracts such as:
+
+~~~text
+images=float32[1,3,640,640]
+output0=float32[1,84,8400]
+orig_target_sizes=int64[1,2]
+labels=int64[1,300]
+boxes=float32[1,300,4]
+scores=float32[1,300]
+~~~
+
+The session validates model names, dtype, rank, concrete dimensions, and byte
+size during initialization. Symbolic model dimensions are resolved only by
+the explicit graph contract. Unknown dynamic outputs and contract mismatch
+fail initialization. Each output has a fixed Managed HIP pool; ORT is given a
+pre-bound `Ort::Value`, and after `SynchronizeOutputs()` the implementation
+checks output name, shape, dtype, memory info, and exact pointer identity before
+publishing the pool block. Strict mode never adopts ORT-owned output.
+
+`gpu_ros_managed` exposes three read-only readiness states: not ready,
+synchronously ready, and event-backed ready. HIP producers finalize with the
+real producer event. ORT synchronized writes use a separate synchronized-write
+handle and become ready only after ORT output synchronization. A submitted
+ORT failure marks the output block failed and the strict core unhealthy; it is
+not recycled. An unsubmitted reservation is canceled and returned to the pool.
+
+The production defaults are `managed_pool_capacity=16` and
+`managed_pool_wait_timeout_ms=100`. Pool exhaustion drops the frame and never
+switches transport, allocates a temporary buffer, or falls back to ORT-owned
+output. Encoder, preprocessor, and ORT pools drain during shutdown; a timeout
+is reported as a contract failure rather than force-releasing live storage.
+
+### Staged control lane
+
+The staged-control benchmarks are intentionally separate from production. They
+reuse the Managed HIP preprocessing path, strict ORT configuration, and shared
+standard decoder core, but insert the existing adapters around the inference
+boundary:
+
+~~~text
+Managed HIP preprocessing
+  -> ManagedHipToStdTensorListNode
+  -> standard TensorList materialization
+  -> StdToManagedHipTensorListNode
+  -> strict Managed ORT
+  -> ManagedHipToStdTensorListNode
+  -> shared standard decoder core
+~~~
+
+They are named
+`isaac_ros_yolov8_phase2b_amd_staged_control_graph.py` and
+`isaac_ros_rtdetr_phase2b_amd_staged_control_graph.py`. The only intentional
+difference from direct Managed is the adapter and ROS standard-message
+materialization cost.
+
+The AMD ROCprof audit defaults to the direct production interpretation: no
+adapter direction is required. For staged-control diagnostics, pass
+`--require-adapter-directions` to require the expected H2D and D2H evidence.
+In either mode ROCprof is copy/kernel evidence only; it is not readiness,
+owner, or lease safety evidence.
 
 The unified AMD audit performs the post-warm-up attach itself:
 
@@ -186,7 +258,8 @@ for a fixed-input trace.
 
 For real-model fixed-input capture, the existing single-terminal runner keeps
 `CAPTURE_TRANSPORT=std` as its Phase 2A default. Set
-`CAPTURE_TRANSPORT=managed` to select the Phase 2B Managed HIP launch files:
+`CAPTURE_TRANSPORT=managed` to select the Phase 2B direct Managed HIP launch
+files:
 
 ~~~bash
 CAPTURE_TRANSPORT=managed \
@@ -203,12 +276,22 @@ ros2 run isaac_ros_detection_validation \
 ~~~
 
 The resulting Managed bags are candidates for comparison against the
-corresponding standard AMD bags or the existing NVIDIA reference, using the
-unchanged Detection2D comparator and stamp matching.
+corresponding standard AMD bags or the existing NVIDIA reference. Formal
+comparisons use the fixed report-only mode so a post hoc threshold cannot turn
+the result into an aggregate PASS/FAIL claim:
 
-The AMD Managed HIP throughput benchmarks are separate from the CUDA Managed
-benchmark graphs. Run both after the AMD package tests, fixed-input validation,
-and MIGraphX warm-up checks:
+~~~bash
+ros2 run isaac_ros_detection_validation compare_detection2d_bags.py \
+  --reference-bag /path/to/reference \
+  --candidate-bag /path/to/managed \
+  --match-policy stamp \
+  --report-only \
+  --output-json /path/to/reports/detection_comparison.json
+~~~
+
+The AMD direct and staged-control throughput benchmarks are separate from the
+CUDA Managed benchmark graphs. Run the topology, preprocessing, POL, strict
+contract, and fixed-input checks before the real-model benchmark:
 
 ~~~bash
 launch_test \
@@ -216,13 +299,48 @@ launch_test \
 
 launch_test \
   migrated_packages/benchmarks/isaac_ros_yolov8_phase2b_amd_managed_graph.py
+
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2b_amd_staged_control_graph.py
+
+launch_test \
+  migrated_packages/benchmarks/isaac_ros_yolov8_phase2b_amd_staged_control_graph.py
 ~~~
 
-These graphs include the explicit `StdToManagedHipTensorListNode` H2D staging
-and `ManagedHipToStdTensorListNode` D2H staging around the Managed ORT
-boundary. They are the AMD Managed throughput entries; the existing
-`isaac_ros_rtdetr_managed_graph.py` and `isaac_ros_yolov8_managed_graph.py`
-remain CUDA/NVIDIA graphs.
+The `*_amd_managed_graph.py` files are the production direct entries and have
+no staging plugins. The `*_staged_control_graph.py` files are the explicit
+control lane. The existing `isaac_ros_rtdetr_managed_graph.py` and
+`isaac_ros_yolov8_managed_graph.py` remain CUDA/NVIDIA graphs.
+
+Run the three-lane benchmark matrix as three rounds of independent processes;
+the runner rotates `std`, `staged-control`, and direct Managed order and
+archives every JSON/log under a unique matrix directory:
+
+~~~bash
+ros2 run isaac_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
+  rtdetr rtdetr_phase2b_matrix_20260812
+ros2 run isaac_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
+  yolov8 yolov8_phase2b_matrix_20260812
+~~~
+
+The fixed-rate 10/30/60 Hz trials are part of each graph configuration. The
+separate high-load gate runs the production direct lane for at least ten
+minutes and 10,000 input images, and retains the input counter, detections bag,
+binding report, ORT profile, and lifecycle log:
+
+~~~bash
+ros2 run isaac_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
+  rtdetr rtdetr_managed_high_load_20260812
+~~~
+
+Formal real-model comparison uses exact source-header-stamp FIFO pairing,
+greedy one-to-one matching of all detections by descending positive IoU,
+class-independent pairing, and reports matched/unmatched counts, IoU, score
+delta, and class equality. The report records per-frame and aggregate
+distributions, the comparison schema, fixed CLI parameters, and comparator
+source hash; it does not produce an aggregate PASS/FAIL. Each archive also
+records topology, contract, binding, ORT profile, model/dataset hashes, and
+both repository revisions.
 
 Concrete hardware, dates, benchmark values, copy audits, timings, and
 shutdown limitations belong in phase2b-results.md.

@@ -34,6 +34,16 @@ NVIDIA_C_VS_D_AUDIT_SCRIPT_PATH = (
 UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_transport_audit.sh'
 )
+AMD_MATRIX_SCRIPT_PATH = (
+    Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_benchmark_matrix.sh'
+)
+AMD_HIGH_LOAD_SCRIPT_PATH = (
+    Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_managed_high_load.sh'
+)
+MANAGED_HIP_POL_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' / 'isaac_ros_onnx_inference' /
+    'test' / 'isaac_ros_onnx_managed_hip_pol_test.py'
+)
 ROCPROF_HIP_PROBE_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_rocprof_hip_copy_probe.sh'
 )
@@ -109,9 +119,26 @@ def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():
         script = benchmark_path.read_text()
         assert '"execution_provider": "migraphx"' in script
         assert '"transport": "managed"' in script
-        assert 'StdToManagedHipTensorListNode' in script
-        assert 'ManagedHipToStdTensorListNode' in script
+        assert '"managed_io_contract": "hip_managed_strict"' in script
+        assert 'StdToManagedHipTensorListNode' not in script
+        assert 'ManagedHipToStdTensorListNode' not in script
+        assert 'YoloV8ManagedHip' in script or 'RtDetrManagedHip' in script
         assert 'execution_provider": "cuda"' not in script
+
+
+def test_managed_hip_pol_uses_direct_strict_production_plugins():
+    script = MANAGED_HIP_POL_PATH.read_text()
+    assert 'hip_managed_strict' in script
+    assert 'YoloV8ManagedHipImageEncoderNode' in script
+    assert 'YoloV8ManagedHipDecoderNode' in script
+    assert 'RtDetrManagedHipImageEncoderNode' in script
+    assert 'RtDetrManagedHipPreprocessorNode' in script
+    assert 'RtDetrManagedHipDecoderNode' in script
+    assert 'labels=int64[1,300]' in script
+    assert 'boxes=float32[1,300,4]' in script
+    assert 'scores=float32[1,300]' in script
+    assert 'StdToManagedHipTensorListNode' not in script
+    assert 'ManagedHipToStdTensorListNode' not in script
 
 
 def test_amd_capture_runner_rejects_an_invalid_name_before_starting_ros():
@@ -152,6 +179,27 @@ def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
     assert AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
     subprocess.run(['bash', '-n', str(AUDIT_SCRIPT_PATH)], check=True)
     assert 'run_nvidia_transport_audit.sh' in AUDIT_SCRIPT_PATH.read_text()
+
+
+def test_amd_phase2b_matrix_runner_has_rotating_independent_lanes():
+    assert AMD_MATRIX_SCRIPT_PATH.stat().st_mode & 0o111
+    subprocess.run(['bash', '-n', str(AMD_MATRIX_SCRIPT_PATH)], check=True)
+    script = AMD_MATRIX_SCRIPT_PATH.read_text()
+    assert 'round_count=3' in script
+    assert 'lane_order_round_1=std,staged,direct' in script
+    assert 'lane_order_round_2=staged,direct,std' in script
+    assert 'lane_order_round_3=direct,std,staged' in script
+    assert 'launch_test' in script
+
+
+def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
+    assert AMD_HIGH_LOAD_SCRIPT_PATH.stat().st_mode & 0o111
+    subprocess.run(['bash', '-n', str(AMD_HIGH_LOAD_SCRIPT_PATH)], check=True)
+    script = AMD_HIGH_LOAD_SCRIPT_PATH.read_text()
+    assert 'DURATION_SECONDS < 600' in script
+    assert 'MIN_INPUT_MESSAGES < 10000' in script
+    assert 'count_ros_messages.py' in script
+    assert 'hip_managed_strict' in script
 
 
 def test_unified_nvidia_audit_runner_is_executable_and_has_valid_bash_syntax():
@@ -196,6 +244,8 @@ def test_unified_amd_audit_uses_attach_trace_without_warmup_fallback():
     assert '--attach-sync-output' in script
     assert 'ROCP_TOOL_ATTACH=1' in script
     assert 'ROCP_TOOL_ATTACH=1 \\\n  CAPTURE_TRANSPORT=' in script
+    assert '--report-only' in script
+    assert 'Direct Managed HIP production lane expects no application TensorList staging copies.' in script
     assert 'fixed_input_playback_pending=true' in (
         Path(__file__).parents[1] / 'scripts' /
         'run_amd_phase2a_fixed_input_capture.sh').read_text()

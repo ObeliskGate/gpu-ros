@@ -1,0 +1,377 @@
+#!/usr/bin/env bash
+# Copyright 2026 Maintainer
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: $0 <yolov8|rtdetr> <run-name>"
+  echo
+  echo "Run the direct Managed HIP production graph for at least 10 minutes and 10,000 inputs."
+  echo "The output directory must not already exist."
+  echo
+  echo "Overrides:"
+  echo "  PHASE2B_HIGH_LOAD_DURATION_SECONDS (default: 600)"
+  echo "  PHASE2B_HIGH_LOAD_MIN_INPUT_MESSAGES (default: 10000)"
+  echo "  PHASE2B_HIGH_LOAD_PLAYBACK_RATE (default: 1.0)"
+  echo "  OVG_ASSETS_ROOT, OVG_RESULTS_ROOT, OVG_WORKSPACE_ROOT"
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  usage
+  exit 0
+fi
+if [[ $# -ne 2 ]]; then
+  usage >&2
+  exit 2
+fi
+
+MODEL="$1"
+RUN_NAME="$2"
+case "${MODEL}" in
+  yolov8)
+    LAUNCH_FILE="yolov8_ort_managed_amd.launch.py"
+    NAMESPACE="yolov8_managed"
+    MODEL_RELATIVE_PATH="models/yolov8/yolov8s.onnx"
+    ;;
+  rtdetr)
+    LAUNCH_FILE="rtdetr_ort_managed_amd.launch.py"
+    NAMESPACE="rtdetr_managed"
+    MODEL_RELATIVE_PATH="models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
+    ;;
+  *)
+    echo "ERROR: model must be yolov8 or rtdetr, got '${MODEL}'." >&2
+    exit 2
+    ;;
+esac
+if [[ ! ${RUN_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "ERROR: run-name may contain only letters, numbers, '.', '_' and '-'" >&2
+  exit 2
+fi
+
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
+RESULT_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b-high-load"
+OUTPUT_ROOT="${RESULT_ROOT}/${RUN_NAME}"
+INPUT_BAG="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
+IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
+MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/${MODEL_RELATIVE_PATH}}"
+DURATION_SECONDS="${PHASE2B_HIGH_LOAD_DURATION_SECONDS:-600}"
+MIN_INPUT_MESSAGES="${PHASE2B_HIGH_LOAD_MIN_INPUT_MESSAGES:-10000}"
+PLAYBACK_RATE="${PHASE2B_HIGH_LOAD_PLAYBACK_RATE:-1.0}"
+DRAIN_SECONDS="${PHASE2B_HIGH_LOAD_DRAIN_SECONDS:-10}"
+PROFILE_PREFIX="${PHASE2B_HIGH_LOAD_ORT_PROFILE_PREFIX:-${OUTPUT_ROOT}/ort/profile}"
+BINDING_REPORT="${PHASE2B_HIGH_LOAD_BINDING_REPORT:-${OUTPUT_ROOT}/binding.json}"
+DETECTION_TOPIC="/${NAMESPACE}/detections_output"
+LAUNCH_PID=""
+COUNTER_PID=""
+RECORDER_PID=""
+PLAYBACK_PID=""
+
+if [[ -e ${OUTPUT_ROOT} ]]; then
+  echo "ERROR: refusing to overwrite high-load output: ${OUTPUT_ROOT}" >&2
+  exit 1
+fi
+if [[ ! -s ${MODEL_PATH} ]]; then
+  echo "ERROR: model is missing: ${MODEL_PATH}" >&2
+  exit 1
+fi
+if [[ ! -d ${INPUT_BAG} ]]; then
+  echo "ERROR: input bag is missing: ${INPUT_BAG}" >&2
+  exit 1
+fi
+if [[ ! ${DURATION_SECONDS} =~ ^[0-9]+$ ]] || ((DURATION_SECONDS < 600)); then
+  echo "ERROR: PHASE2B_HIGH_LOAD_DURATION_SECONDS must be at least 600." >&2
+  exit 2
+fi
+if [[ ! ${MIN_INPUT_MESSAGES} =~ ^[0-9]+$ ]] || ((MIN_INPUT_MESSAGES < 10000)); then
+  echo "ERROR: PHASE2B_HIGH_LOAD_MIN_INPUT_MESSAGES must be at least 10000." >&2
+  exit 2
+fi
+if [[ ! ${DRAIN_SECONDS} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: PHASE2B_HIGH_LOAD_DRAIN_SECONDS must be a non-negative integer." >&2
+  exit 2
+fi
+if [[ ! ${PLAYBACK_RATE} =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+  [[ ${PLAYBACK_RATE} == 0 || ${PLAYBACK_RATE} == 0.0 ]]; then
+  echo "ERROR: PHASE2B_HIGH_LOAD_PLAYBACK_RATE must be positive." >&2
+  exit 2
+fi
+
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+if [[ -f ${ROS_SETUP} ]]; then
+  set +u
+  # shellcheck disable=SC1090
+  source "${ROS_SETUP}"
+  set -u
+fi
+if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
+  set +u
+  # shellcheck disable=SC1090
+  source /opt/ros2_benchmark/setup.bash
+  set -u
+fi
+if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
+  set +u
+  # shellcheck disable=SC1090
+  source "${WORKSPACE_ROOT}/install/setup.bash"
+  set -u
+fi
+
+for command_name in awk date find git grep mkdir ros2 sha256sum sleep sort timeout xargs; do
+  if ! command -v "${command_name}" >/dev/null; then
+    echo "ERROR: required command is unavailable: ${command_name}" >&2
+    exit 1
+  fi
+done
+
+mkdir -p "${OUTPUT_ROOT}/logs" "${OUTPUT_ROOT}/ort" \
+  "$(dirname "${PROFILE_PREFIX}")" "$(dirname "${BINDING_REPORT}")"
+
+hash_path() {
+  local path="$1"
+  if [[ -f ${path} ]]; then
+    sha256sum "${path}" | awk '{print $1}'
+    return 0
+  fi
+  if [[ -d ${path} ]]; then
+    find "${path}" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
+    return 0
+  fi
+  echo "MISSING"
+}
+
+repo_revision() {
+  local path="$1"
+  if [[ -d ${path}/.git ]]; then
+    git -C "${path}" rev-parse HEAD
+  else
+    echo "MISSING"
+  fi
+}
+
+repo_diff_hash() {
+  local path="$1"
+  if [[ -d ${path}/.git ]]; then
+    git -C "${path}" diff --binary | sha256sum | awk '{print $1}'
+  else
+    echo "MISSING"
+  fi
+}
+
+ORT_LIBRARY_PATH="${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}"
+GPU_MANAGED_ROOT="${WORKSPACE_ROOT}/../gpu_ros_managed"
+for target in \
+  "${OUTPUT_ROOT}/input_counter.json" \
+  "${OUTPUT_ROOT}/detections" \
+  "${BINDING_REPORT}" \
+  "${OUTPUT_ROOT}/run_config.txt"; do
+  if [[ -e ${target} ]]; then
+    echo "ERROR: refusing to overwrite: ${target}" >&2
+    exit 1
+  fi
+done
+
+stop_process() {
+  local pid="$1"
+  local label="$2"
+  [[ -n ${pid} ]] || return 0
+  if ! kill -0 "${pid}" 2>/dev/null; then
+    wait "${pid}" 2>/dev/null || true
+    return 0
+  fi
+  echo "Stopping ${label} (PID ${pid})..."
+  kill -INT "${pid}" 2>/dev/null || true
+  for _ in {1..20}; do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      wait "${pid}" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.5
+  done
+  kill -TERM "${pid}" 2>/dev/null || true
+  wait "${pid}" 2>/dev/null || true
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  set +e
+  stop_process "${PLAYBACK_PID}" "playback"
+  stop_process "${RECORDER_PID}" "detection recorder"
+  stop_process "${COUNTER_PID}" "input counter"
+  stop_process "${LAUNCH_PID}" "Managed HIP graph"
+  exit "${status}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+LAUNCH_COMMAND=(
+  ros2 launch isaac_ros_onnx_inference "${LAUNCH_FILE}"
+  "model_file_path:=${MODEL_PATH}"
+  "image_topic:=${IMAGE_TOPIC}"
+  "namespace:=${NAMESPACE}"
+  "ort_profile_prefix:=${PROFILE_PREFIX}"
+  "binding_report_path:=${BINDING_REPORT}"
+)
+if [[ ${MODEL} == rtdetr ]]; then
+  LAUNCH_COMMAND+=(
+    input_image_width:=1280
+    input_image_height:=720
+    use_max_dim_for_orig_size:=true
+  )
+fi
+
+{
+  echo "schema_version=1"
+  echo "model=${MODEL}"
+  echo "model_path=${MODEL_PATH}"
+  echo "model_sha256=$(hash_path "${MODEL_PATH}")"
+  echo "input_bag=${INPUT_BAG}"
+  echo "dataset_tree_sha256=$(hash_path "${INPUT_BAG}")"
+  echo "input_topic=${IMAGE_TOPIC}"
+  echo "detection_topic=${DETECTION_TOPIC}"
+  echo "duration_seconds=${DURATION_SECONDS}"
+  echo "minimum_input_messages=${MIN_INPUT_MESSAGES}"
+  echo "playback_rate=${PLAYBACK_RATE}"
+  echo "managed_io_contract=hip_managed_strict"
+  echo "managed_pool_capacity=16"
+  echo "managed_pool_wait_timeout_ms=100"
+  echo "ort_root=${ONNXRUNTIME_ROOT:-}"
+  echo "ort_library_sha256=$(hash_path "${ORT_LIBRARY_PATH}")"
+  echo "application_revision=$(repo_revision "${WORKSPACE_ROOT}")"
+  echo "application_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
+  echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
+  printf 'command='
+  printf '%q ' "${LAUNCH_COMMAND[@]}"
+  echo
+} >"${OUTPUT_ROOT}/run_config.txt"
+
+echo "Starting direct Managed HIP graph..."
+setsid bash -c 'trap - INT TERM; exec "$@"' high-load-graph \
+  "${LAUNCH_COMMAND[@]}" >"${OUTPUT_ROOT}/logs/graph.log" 2>&1 &
+LAUNCH_PID=$!
+
+wait_for_topic() {
+  local topic="$1"
+  local kind="$2"
+  local pid="$3"
+  for _ in {1..1800}; do
+    if ros2 topic info "${topic}" 2>/dev/null | awk -v kind="${kind}" \
+      '$1 == kind && $2 == "count:" && $3 >= 1 {found=1} END {exit !found}'; then
+      return 0
+    fi
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      echo "ERROR: graph exited while waiting for ${kind} on ${topic}." >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+  echo "ERROR: timed out waiting for ${kind} on ${topic}." >&2
+  return 1
+}
+
+wait_for_topic "${IMAGE_TOPIC}" Subscription "${LAUNCH_PID}"
+wait_for_topic "${DETECTION_TOPIC}" Publisher "${LAUNCH_PID}"
+
+ros2 run isaac_ros_detection_validation count_ros_messages.py \
+  --topic "${IMAGE_TOPIC}" \
+  --output-json "${OUTPUT_ROOT}/input_counter.json" \
+  >"${OUTPUT_ROOT}/logs/input_counter.log" 2>&1 &
+COUNTER_PID=$!
+wait_for_topic "${IMAGE_TOPIC}" Subscription "${COUNTER_PID}"
+
+ros2 bag record --disable-keyboard-controls \
+  --output "${OUTPUT_ROOT}/detections" \
+  --topics "${DETECTION_TOPIC}" \
+  >"${OUTPUT_ROOT}/logs/recorder.log" 2>&1 &
+RECORDER_PID=$!
+wait_for_topic "${DETECTION_TOPIC}" Subscription "${RECORDER_PID}"
+
+echo "Running bounded high-load playback for ${DURATION_SECONDS}s..."
+set +e
+timeout --signal=INT --kill-after=30 "${DURATION_SECONDS}s" \
+  ros2 bag play "${INPUT_BAG}" --loop --rate "${PLAYBACK_RATE}" \
+  --topics "${IMAGE_TOPIC}" >"${OUTPUT_ROOT}/logs/playback.log" 2>&1 &
+PLAYBACK_PID=$!
+wait "${PLAYBACK_PID}"
+PLAYBACK_STATUS=$?
+PLAYBACK_PID=""
+set -e
+if ((PLAYBACK_STATUS != 124 && PLAYBACK_STATUS != 130 && PLAYBACK_STATUS != 143)); then
+  echo "ERROR: bounded playback exited unexpectedly with status ${PLAYBACK_STATUS}." >&2
+  exit 1
+fi
+
+echo "Playback duration reached; draining for ${DRAIN_SECONDS}s..."
+sleep "${DRAIN_SECONDS}"
+stop_process "${RECORDER_PID}" "detection recorder"
+RECORDER_PID=""
+stop_process "${COUNTER_PID}" "input counter"
+COUNTER_PID=""
+stop_process "${LAUNCH_PID}" "Managed HIP graph"
+LAUNCH_PID=""
+
+if [[ ! -s ${OUTPUT_ROOT}/input_counter.json ]]; then
+  echo "ERROR: input counter did not write a report." >&2
+  exit 1
+fi
+INPUT_COUNT="$(awk -F: '/"message_count"/ {gsub(/[^0-9]/, "", $2); print $2; exit}' \
+  "${OUTPUT_ROOT}/input_counter.json")"
+if [[ ! ${INPUT_COUNT:-} =~ ^[0-9]+$ ]] || ((INPUT_COUNT < MIN_INPUT_MESSAGES)); then
+  echo "ERROR: counted ${INPUT_COUNT:-0} input messages; required at least ${MIN_INPUT_MESSAGES}." >&2
+  exit 1
+fi
+
+if [[ ! -d ${OUTPUT_ROOT}/detections ]]; then
+  echo "ERROR: detection output bag was not created." >&2
+  exit 1
+fi
+DETECTION_INFO="$(ros2 bag info "${OUTPUT_ROOT}/detections")"
+echo "${DETECTION_INFO}" >"${OUTPUT_ROOT}/logs/detection_bag_info.txt"
+DETECTION_COUNT="$(awk '/^Messages:/ {print $2; exit}' <<<"${DETECTION_INFO}")"
+if [[ ! ${DETECTION_COUNT:-} =~ ^[0-9]+$ ]] ||
+  ((DETECTION_COUNT != INPUT_COUNT)); then
+  echo "ERROR: output messages=${DETECTION_COUNT:-0} do not equal input messages=${INPUT_COUNT}." >&2
+  exit 1
+fi
+if [[ ! -s ${BINDING_REPORT} ]]; then
+  echo "ERROR: strict Managed binding report was not produced: ${BINDING_REPORT}" >&2
+  exit 1
+fi
+PROFILE_DIR="$(dirname "${PROFILE_PREFIX}")"
+PROFILE_BASENAME="$(basename "${PROFILE_PREFIX}")"
+PROFILE_JSON="$(find "${PROFILE_DIR}" -maxdepth 1 -type f \
+  -name "${PROFILE_BASENAME}*.json" -size +0c -print -quit)"
+if [[ -z ${PROFILE_JSON} ]]; then
+  echo "ERROR: strict Managed ORT profile was not produced under ${PROFILE_DIR}." >&2
+  exit 1
+fi
+
+if grep -Eiq \
+  'hip.*(error|failed)|pool exhausted|did not drain|pending release|unhealthy|deadlock|unknown asynchronous' \
+  "${OUTPUT_ROOT}/logs/graph.log"; then
+  echo "ERROR: high-load graph log contains a HIP/lifecycle failure." >&2
+  exit 1
+fi
+
+{
+  echo "status=PASS"
+  echo "input_messages=${INPUT_COUNT}"
+  echo "output_messages=${DETECTION_COUNT}"
+  echo "minimum_input_messages=${MIN_INPUT_MESSAGES}"
+  echo "duration_seconds=${DURATION_SECONDS}"
+  echo "detection_bag=${OUTPUT_ROOT}/detections"
+  echo "binding_report=${BINDING_REPORT}"
+  echo "ort_profile_prefix=${PROFILE_PREFIX}"
+  echo "ort_profile=${PROFILE_JSON}"
+} >"${OUTPUT_ROOT}/summary.txt"
+
+trap - EXIT INT TERM
+echo "PASS: direct Managed HIP high-load run written to ${OUTPUT_ROOT}"

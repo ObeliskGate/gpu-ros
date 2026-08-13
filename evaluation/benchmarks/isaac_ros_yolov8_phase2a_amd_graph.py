@@ -156,6 +156,7 @@ class TestIsaacROSYoloV8Phase2aAmd(ROS2BenchmarkTest):
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
+        additional_fixed_publisher_rate_tests=[10.0, 30.0, 60.0],
         playback_message_buffer_size=1,
         pre_trial_run_wait_time_sec=5.0,
         log_folder=RESULTS_DIR,

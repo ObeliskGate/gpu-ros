@@ -15,11 +15,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(isaac_ros_detection_common REQUIRED)
+find_package(gpu_ros_managed_core QUIET)
+find_package(gpu_ros_managed_hip QUIET)
+find_package(gpu_ros_managed_ros QUIET)
+find_package(gpu_ros_managed_tensor_list QUIET)
 
 # RtDetrImageEncoderNode
 ament_auto_add_library(rtdetr_image_encoder_node SHARED src/rtdetr_image_encoder_node.cpp)
 target_include_directories(rtdetr_image_encoder_node PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(rtdetr_image_encoder_node ${OpenCV_LIBRARIES})
+target_link_libraries(rtdetr_image_encoder_node
+  ${OpenCV_LIBRARIES} isaac_ros_detection_common)
 rclcpp_components_register_nodes(rtdetr_image_encoder_node
   "nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode")
 
@@ -29,13 +35,37 @@ rclcpp_components_register_nodes(rtdetr_preprocessor_node
   "nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode")
 
 # RtDetrDecoderNode
+ament_auto_add_library(rtdetr_decoder_core SHARED src/rtdetr_decoder.cpp)
 ament_auto_add_library(rtdetr_decoder_node SHARED src/rtdetr_decoder_node.cpp)
 rclcpp_components_register_nodes(rtdetr_decoder_node
   "nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode")
+target_link_libraries(rtdetr_decoder_node rtdetr_decoder_core)
+
+if(TARGET gpu_ros_managed::hip AND TARGET gpu_ros_managed::ros AND
+  TARGET gpu_ros_managed::core AND TARGET gpu_ros_managed::tensor_list AND
+  TARGET isaac_ros_detection_common_hip)
+  ament_auto_add_library(rtdetr_managed_hip_nodes SHARED
+    src/rtdetr_managed_hip_nodes.cpp)
+  target_link_libraries(rtdetr_managed_hip_nodes
+    gpu_ros_managed::hip gpu_ros_managed::ros gpu_ros_managed::core
+    gpu_ros_managed::tensor_list isaac_ros_detection_common_hip rtdetr_decoder_core)
+  rclcpp_components_register_nodes(rtdetr_managed_hip_nodes
+    "nvidia::isaac_ros::rtdetr_std::RtDetrManagedHipImageEncoderNode"
+    "nvidia::isaac_ros::rtdetr_std::RtDetrManagedHipPreprocessorNode"
+    "nvidia::isaac_ros::rtdetr_std::RtDetrManagedHipDecoderNode")
+else()
+  message(STATUS "RT-DETR Managed HIP plugins disabled: HIP managed/common targets unavailable")
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_rtdetr_decoder test/test_rtdetr_decoder.cpp)
+  if(TARGET test_rtdetr_decoder)
+    target_link_libraries(test_rtdetr_decoder rtdetr_decoder_core)
+  endif()
 
   option(
     BUILD_MIGRAPHX_POL_TEST

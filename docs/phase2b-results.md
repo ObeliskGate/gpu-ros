@@ -1,7 +1,10 @@
 # Phase 2B Validation Results
 
-This report records the existing NVIDIA validation archive. Procedures and
-interpretation rules are in phase2b-managed-transport.md.
+This report records the historical NVIDIA validation archive. The revised AMD
+direct Managed HIP implementation is present, but no allocation-backed AMD
+real-model result is claimed until its required capture, contract, topology,
+and high-load gates complete. Procedures and interpretation rules are in
+phase2b-managed-transport.md.
 
 The unified NVIDIA/AMD audit tooling added afterward has not been run against
 new hardware traces in this change. Its implementation status is therefore
@@ -84,10 +87,10 @@ comparison output had already been written. Fixed-input captures also differed
 by one boundary frame in some runs. These issues do not change the completed
 pointer, copy-count, or paired-frame conclusions.
 
-The archived NVIDIA results above predate the AMD Managed HIP adapter and are
-not an AMD Phase 2B result. AMD validation must record the explicit host-to-
-Managed and Managed-to-host adapter copies separately, then verify that the
-Managed TensorList inference boundary adds no tensor-payload copy. The current
-implementation and its probe/fallback policy are documented in
-phase2b-managed-transport.md; MI350X model and copy-trace results remain to be
-archived after the allocation-backed validation run.
+The archived NVIDIA results above predate the AMD Managed HIP production path
+and are not an AMD Phase 2B result. AMD validation must first prove the direct
+topology and strict contract, then compare direct Managed with the standard and
+staged-control lanes. The production direct lane must not contain application
+TensorList staging; staged-control adapter copies are measured separately.
+MI350X model, memory-contract, high-load, and report-only comparison results
+remain to be archived after the allocation-backed validation run.

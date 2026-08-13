@@ -27,11 +27,53 @@
 #include <gtest/gtest.h>
 
 #include "isaac_ros_onnx_inference/onnx_inference_core.hpp"
+#include "isaac_ros_onnx_inference/managed_io_contract.hpp"
 
 using nvidia::isaac_ros::onnx_inference::ExecutionProvider;
 using nvidia::isaac_ros::onnx_inference::OnnxInferenceCore;
 using nvidia::isaac_ros::onnx_inference::OutputPlacement;
 using nvidia::isaac_ros::onnx_inference::ParseExecutionProvider;
+
+TEST(ManagedIoContractTest, ParsesConcreteFloatAndInt64Contracts)
+{
+  const auto contracts =
+    nvidia::isaac_ros::onnx_inference::ParseManagedTensorContracts(
+    {"images=float32[1,3,640,640]", "orig_target_sizes=int64[1,2]"},
+    "managed_input_contracts");
+  ASSERT_EQ(contracts.size(), 2U);
+  EXPECT_EQ(contracts[0].name, "images");
+  EXPECT_EQ(contracts[0].dtype, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  EXPECT_EQ(contracts[0].shape, (std::vector<int64_t>{1, 3, 640, 640}));
+  EXPECT_EQ(
+    nvidia::isaac_ros::onnx_inference::ManagedTensorByteSize(contracts[1]),
+    16U);
+}
+
+TEST(ManagedIoContractTest, RejectsDynamicAndDuplicateSpecifications)
+{
+  EXPECT_THROW(
+    nvidia::isaac_ros::onnx_inference::ParseManagedTensorContracts(
+      {"images=float32[1,-1,640,640]"}, "managed_input_contracts"),
+    std::invalid_argument);
+  EXPECT_THROW(
+    nvidia::isaac_ros::onnx_inference::ParseManagedTensorContracts(
+      {"images=float32[1]", "images=int64[1]"}, "managed_input_contracts"),
+    std::invalid_argument);
+  EXPECT_THROW(
+    nvidia::isaac_ros::onnx_inference::ParseManagedTensorContracts(
+      {"=float32[1]"}, "managed_input_contracts"),
+    std::invalid_argument);
+}
+
+TEST(ManagedIoContractTest, RejectsOverflowingByteSizes)
+{
+  const auto contracts =
+    nvidia::isaac_ros::onnx_inference::ParseManagedTensorContracts(
+    {"large=float32[9223372036854775807,2]"}, "managed_output_contracts");
+  EXPECT_THROW(
+    nvidia::isaac_ros::onnx_inference::ManagedTensorByteSize(contracts.front()),
+    std::overflow_error);
+}
 
 TEST(OnnxInferenceCoreTest, ParseEpCuda)
 {

@@ -62,4 +62,6 @@ the experiment documents.
   A/B/C/D matrix on AMD.
 - Phase 2A is the accepted standard ROS 2 reference. Phase 2B develops the
   reusable gpu_ros_managed device-buffer transport against that reference and
-  must not remove its independent availability.
+  must not remove its independent availability. The revised AMD Phase 2B
+  production lane is direct Managed HIP with a strict ORT I/O contract; the
+  adapter-based staged-control lane remains an explicit comparison graph.

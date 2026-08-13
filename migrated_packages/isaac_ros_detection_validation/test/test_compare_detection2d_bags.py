@@ -130,6 +130,8 @@ def test_one_sided_missing_detection_fails():
     result = compare.compare_frame(reference, candidate, thresholds())
     assert not result.passed
     assert result.unmatched_count == 1
+    assert result.unmatched_reference_count == 1
+    assert result.unmatched_candidate_count == 0
 
 
 def test_matching_scores_and_classes_pass():
@@ -168,6 +170,16 @@ def test_pair_frames_by_stamp():
     assert [(ref.index, cand.index) for ref, cand in pairs] == [(1, 0)]
     assert unpaired_reference == 1
     assert unpaired_candidate == 1
+
+
+def test_pair_frames_by_stamp_preserves_fifo_for_duplicate_stamps():
+    reference = [frame(0, 10, []), frame(1, 10, [])]
+    candidate = [frame(0, 10, []), frame(1, 10, [])]
+    pairs, unpaired_reference, unpaired_candidate = compare.pair_frames(
+        reference, candidate, 'stamp')
+    assert [(ref.index, cand.index) for ref, cand in pairs] == [(0, 0), (1, 1)]
+    assert unpaired_reference == 0
+    assert unpaired_candidate == 0
 
 
 def test_unpaired_frames_count_against_overall_frame_pass_rate():
@@ -312,3 +324,64 @@ def test_cli_compares_detection_bags(tmp_path):
     assert report['summary']['total_evaluated_frames'] == 1
     assert report['filters']['min_score'] == 0.0
     assert len(report['worst_frames']) == 1
+
+
+def test_cli_report_only_uses_fixed_method_and_has_full_frame_metrics(tmp_path):
+    topic = '/detections_output'
+    reference_bag = tmp_path / 'reference'
+    candidate_bag = tmp_path / 'candidate'
+    output_json = tmp_path / 'report.json'
+    stamp_ns = 10_000_000_000
+
+    message = make_msg(
+        stamp_ns,
+        [make_detection(10, 10, 4, 4, score=0.90, class_id='cup')],
+    )
+    write_detection_bag(reference_bag, topic, [message])
+    write_detection_bag(candidate_bag, topic, [message])
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            '--reference-bag', str(reference_bag),
+            '--candidate-bag', str(candidate_bag),
+            '--match-policy', 'stamp',
+            '--storage-id', 'sqlite3',
+            '--report-only',
+            '--output-json', str(output_json),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(output_json.read_text(encoding='utf-8'))
+    assert report['status'] == 'REPORT_ONLY'
+    assert report['comparison_schema'] == compare.COMPARISON_SCHEMA
+    assert report['comparison_method']['confidence_filter'] == 'none'
+    assert report['comparison_method']['top_k_truncation'] == 'none'
+    assert len(report['per_frame']) == 1
+    assert 'pass' not in report['summary']
+    assert 'aggregate_pass' not in report['summary']
+    assert report['summary']['unmatched_reference_detections'] == 0
+    assert report['summary']['unmatched_candidate_detections'] == 0
+    assert report['summary']['aggregate_distributions']['iou']['count'] == 1
+    assert len(report['comparator_source_sha256']) == 64
+
+
+def test_report_only_rejects_index_matching():
+    class Args:
+        report_only = True
+        match_policy = 'index'
+        min_score = 0.0
+        max_detections_per_frame = 0
+        ignore_unpaired_frames = False
+
+    try:
+        compare.validate_report_only_args(Args())
+    except ValueError as exc:
+        assert 'match_policy' in str(exc)
+    else:
+        raise AssertionError('Expected report-only index matching to fail')

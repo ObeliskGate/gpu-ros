@@ -99,7 +99,7 @@ The historical YOLOv8 entry point remains compatible:
 
 Each audit archives lane self reports, the paired copy report, ORT provider
 placement, first-frame pointer/lifetime binding reports, Nsight traces, and
-the existing stamp-matched detection comparator JSON. Explicit `memory_copy`
+the fixed stamp-matched, report-only detection comparator JSON. Explicit `memory_copy`
 records are the primary copy evidence. Kernel names containing `copy`,
 `memcpy`, or `blit` are diagnostic and do not automatically mean a copy.
 The ROCprofiler analyzer reads only the official `buffer_records` activity
@@ -110,9 +110,10 @@ tracing domains and output formats; a requested-but-missing or empty
 The result status is `PASS`, `FAIL`, or `INCONCLUSIVE`: an explicit
 Managed-only tensor-sized memory-copy record is `FAIL`, while an unresolved
 kernel-only payload risk or a memory-copy record without a byte count is
-`INCONCLUSIVE`; the AMD audit is also `INCONCLUSIVE` if the Managed trace does
-not contain the expected adapter H2D and D2H directions. H2D/D2H direction and
-bytes are reported as staging-shaped evidence, not proof of adapter ownership.
+`INCONCLUSIVE`. The direct AMD production lane does not require application
+adapter H2D/D2H records; the staged-control lane can opt into that requirement
+with `--require-adapter-directions`. H2D/D2H direction and bytes are reported
+as staging-shaped evidence, not proof of adapter ownership.
 RT-DETR CPU fallback is retained as ORT placement diagnostics and does not fail
 closure. Config A is a manual sanity reference only when Config C is
 inconclusive.
@@ -151,11 +152,26 @@ JSON output before parsing. Only the subsequent fixed-input playback is
 included in the rocprof trace. ROCprofiler-SDK 1.0 also requires the attached
 target to opt in with `ROCP_TOOL_ATTACH=1`; the runner scopes that variable to
 each capture lane and does not require a persistent shell export.
-Attach/detach or missing-output errors are hard failures. Managed-only H2D/D2H
-records are separately reported as staging-shaped evidence; an additional
+Attach/detach or missing-output errors are hard failures. Direct production
+expects no application-level staging; staged-control H2D/D2H records are
+reported separately as staging-shaped evidence, while an additional
 tensor-sized inference-boundary copy fails the audit. This is not a claim that
 the complete pipeline, adapters, decoders, provider kernels, or serialization
 never copy.
+
+The real-model benchmark matrix and high-load gate are separate commands:
+
+```bash
+ros2 run isaac_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
+  rtdetr rtdetr_phase2b_matrix_20260812
+
+ros2 run isaac_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
+  rtdetr rtdetr_managed_high_load_20260812
+```
+
+The matrix runs three rounds with rotating lane order. The high-load command
+enforces at least 600 seconds and 10,000 counted input images before writing a
+PASS summary.
 
 Before a formal audit on a new ROCm/MI350X environment, run the small HIP
 probe with the executable that actually exists in the sibling checkout. The

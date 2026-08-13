@@ -14,9 +14,11 @@
 
 #include "isaac_ros_onnx_inference/onnx_inference_node.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <memory>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -43,6 +45,16 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("binding_report_path", "");
   const std::string transport =
     declare_parameter<std::string>("transport", "std");
+  const std::string managed_io_contract =
+    declare_parameter<std::string>("managed_io_contract", "");
+  const auto managed_input_contracts =
+    declare_parameter<std::vector<std::string>>("managed_input_contracts", {});
+  const auto managed_output_contracts =
+    declare_parameter<std::vector<std::string>>("managed_output_contracts", {});
+  const int64_t managed_pool_capacity =
+    declare_parameter<int64_t>("managed_pool_capacity", 16);
+  const int64_t managed_pool_wait_timeout_ms =
+    declare_parameter<int64_t>("managed_pool_wait_timeout_ms", 100);
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
 
   if (ort_profile_frames < 0) {
@@ -52,10 +64,26 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument(
             "ort_profile_frames requires a non-empty ort_profile_prefix");
   }
+  if (gpu_device_id < 0 || managed_pool_capacity <= 0 ||
+    static_cast<uint64_t>(managed_pool_capacity) > std::numeric_limits<size_t>::max() ||
+    managed_pool_wait_timeout_ms < 0)
+  {
+    throw std::invalid_argument(
+            "gpu_device_id must be non-negative, managed_pool_capacity must be positive, "
+            "and managed_pool_wait_timeout_ms must be non-negative");
+  }
   ort_profile_frames_ = static_cast<size_t>(ort_profile_frames);
 
   if (transport == "nitros" && execution_provider != ExecutionProvider::kCuda) {
     throw std::invalid_argument("transport=nitros requires execution_provider=cuda");
+  }
+  if (!managed_io_contract.empty() && managed_io_contract != "hip_managed_strict") {
+    throw std::invalid_argument(
+            "managed_io_contract must be empty or hip_managed_strict");
+  }
+  if (managed_io_contract == "hip_managed_strict" && model_file_path.empty()) {
+    throw std::invalid_argument(
+            "hip_managed_strict requires a non-empty model_file_path");
   }
 
   io_ = CreateTensorListIO(this, transport);
@@ -76,17 +104,22 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   cfg.ort_profile_prefix = ort_profile_prefix;
   cfg.binding_report_path = binding_report_path;
   cfg.transport = transport;
+  cfg.managed_io_contract = managed_io_contract;
+  cfg.managed_input_contracts = managed_input_contracts;
+  cfg.managed_output_contracts = managed_output_contracts;
+  cfg.managed_pool_capacity = static_cast<size_t>(managed_pool_capacity);
+  cfg.managed_pool_wait_timeout = std::chrono::milliseconds(managed_pool_wait_timeout_ms);
   core_ = std::make_unique<OnnxInferenceCore>(cfg);
 
   RCLCPP_INFO(
     get_logger(),
     "Loaded model '%s' with %zu inputs, %zu outputs, EP=%s, transport=%s, "
-    "CPU fallback=allowed",
+    "managed_io_contract=%s",
     model_file_path.c_str(),
     core_->GetInputCount(),
     core_->GetOutputCount(),
     ep_str.c_str(),
-    transport.c_str());
+    transport.c_str(), managed_io_contract.empty() ? "compat" : managed_io_contract.c_str());
 
   const std::string output_probe = core_->OutputBindingProbeReport();
   if (!output_probe.empty()) {
@@ -103,6 +136,15 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
 OnnxInferenceNode::~OnnxInferenceNode()
 {
+  // Destroy the subscriber/publisher before draining fixed pools so no ROS
+  // callback can retain a TensorList buffer during pool shutdown.
+  io_.reset();
+  if (core_ && !core_->shutdown(std::chrono::seconds(5))) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Managed output pool shutdown did not drain within the configured timeout; "
+      "buffers remain orphan-safe and were not force-released.");
+  }
   FinalizeOrtProfile("shutdown");
 }
 

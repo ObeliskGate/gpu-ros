@@ -96,6 +96,10 @@ option(
   BUILD_MANAGED_HIP_TRANSPORT
   "Build explicit standard-ROS2 to Managed HIP TensorList adapters"
   ${ORT_ENABLE_MIGRAPHX})
+option(
+  BUILD_MIGRAPHX_POL_TEST
+  "Build the direct strict Managed HIP proof-of-life test"
+  OFF)
 
 # ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────
 option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" ON)
@@ -103,6 +107,7 @@ option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVI
 # ── Inference core library ────────────────────────────────────────────────────
 ament_auto_add_library(onnx_inference_core SHARED
   src/onnx_inference_core.cpp
+  src/managed_io_contract.cpp
 )
 target_link_libraries(onnx_inference_core onnxruntime::onnxruntime)
 target_compile_definitions(onnx_inference_core PRIVATE

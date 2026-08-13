@@ -18,9 +18,7 @@
 """
 Phase 2B AMD benchmark: RT-DETR with Managed HIP and MIGraphX.
 
-The graph uses the standard ROS 2 image and TensorList boundary, explicit
-host-to-device/device-to-host HIP staging, and Managed transport at the ORT
-inference boundary.
+The graph uses the direct same-process Managed HIP TensorList path end to end.
 """
 
 import os
@@ -70,42 +68,6 @@ def make_std_playback_node(namespace):
     )
 
 
-def make_stager(namespace):
-    """Create the standard TensorList to Managed HIP staging node."""
-    return ComposableNode(
-        name="StdToManagedHip",
-        namespace=namespace,
-        package="isaac_ros_onnx_inference",
-        plugin=(
-            "nvidia::isaac_ros::onnx_inference::"
-            "StdToManagedHipTensorListNode"
-        ),
-        parameters=[{"gpu_device_id": 0}],
-        remappings=[
-            ("tensor_input", "tensor_pub"),
-            ("tensor_output", "managed_tensor_input"),
-        ],
-    )
-
-
-def make_unstager(namespace):
-    """Create the Managed HIP to standard TensorList staging node."""
-    return ComposableNode(
-        name="ManagedHipToStd",
-        namespace=namespace,
-        package="isaac_ros_onnx_inference",
-        plugin=(
-            "nvidia::isaac_ros::onnx_inference::"
-            "ManagedHipToStdTensorListNode"
-        ),
-        parameters=[{"gpu_device_id": 0}],
-        remappings=[
-            ("tensor_input", "managed_tensor_output"),
-            ("tensor_output", "tensor_sub"),
-        ],
-    )
-
-
 def launch_setup(container_prefix, container_sigterm_timeout):
     """Build the AMD RT-DETR Managed HIP benchmark graph."""
     namespace = TestIsaacROSRtDetrPhase2bAmdManaged.generate_namespace()
@@ -114,23 +76,37 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="RtdetrImageEncoder",
         namespace=namespace,
         package="isaac_ros_rtdetr_std",
-        plugin="nvidia::isaac_ros::rtdetr_std::RtDetrImageEncoderNode",
+        plugin=(
+            "nvidia::isaac_ros::rtdetr_std::"
+            "RtDetrManagedHipImageEncoderNode"),
         parameters=[{
             "tensor_name": "input_tensor",
             "output_width": common.NETWORK_RESOLUTION["width"],
             "output_height": common.NETWORK_RESOLUTION["height"],
+            "gpu_device_id": 0,
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
         }],
+        remappings=[("managed_tensor_output", "managed_tensor_image")],
     )
     preprocessor = ComposableNode(
         name="RtdetrPreprocessor",
         namespace=namespace,
         package="isaac_ros_rtdetr_std",
-        plugin="nvidia::isaac_ros::rtdetr_std::RtDetrPreprocessorNode",
+        plugin=(
+            "nvidia::isaac_ros::rtdetr_std::"
+            "RtDetrManagedHipPreprocessorNode"),
         parameters=[{
             "image_width": common.NETWORK_RESOLUTION["width"],
             "image_height": common.NETWORK_RESOLUTION["height"],
+            "model_input_width": common.NETWORK_RESOLUTION["width"],
+            "model_input_height": common.NETWORK_RESOLUTION["height"],
             "use_max_dim_for_orig_size": True,
+            "gpu_device_id": 0,
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
         }],
+        remappings=[("managed_tensor_input", "managed_tensor_image")],
     )
     onnx = ComposableNode(
         name="OnnxInference",
@@ -146,18 +122,33 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "execution_provider": "migraphx",
             "gpu_device_id": 0,
             "transport": "managed",
+            "managed_io_contract": "hip_managed_strict",
+            "managed_input_contracts": [
+                "images=float32[1,3,640,640]",
+                "orig_target_sizes=int64[1,2]",
+            ],
+            "managed_output_contracts": [
+                "labels=int64[1,300]",
+                "boxes=float32[1,300,4]",
+                "scores=float32[1,300]",
+            ],
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
         }],
         remappings=[
-            ("tensor_input", "managed_tensor_input"),
-            ("tensor_output", "managed_tensor_output"),
+            ("tensor_input", "managed_tensor_output"),
+            ("tensor_output", "managed_tensor_output_ort"),
         ],
     )
     decoder = ComposableNode(
         name="RtdetrDecoder",
         namespace=namespace,
         package="isaac_ros_rtdetr_std",
-        plugin="nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode",
-        parameters=[{"confidence_threshold": 0.6}],
+        plugin=(
+            "nvidia::isaac_ros::rtdetr_std::"
+            "RtDetrManagedHipDecoderNode"),
+        parameters=[{"gpu_device_id": 0, "confidence_threshold": 0.6}],
+        remappings=[("managed_tensor_input", "managed_tensor_output_ort")],
     )
 
     container = ComposableNodeContainer(
@@ -172,9 +163,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             make_std_playback_node(namespace),
             image_encoder,
             preprocessor,
-            make_stager(namespace),
             onnx,
-            make_unstager(namespace),
             decoder,
             common.make_monitor_node(namespace),
         ],
@@ -200,6 +189,7 @@ class TestIsaacROSRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
+        additional_fixed_publisher_rate_tests=[10.0, 30.0, 60.0],
         playback_message_buffer_size=1,
         pre_trial_run_wait_time_sec=5.0,
         log_folder=RESULTS_DIR,
@@ -209,7 +199,7 @@ class TestIsaacROSRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
             "network_resolution": common.NETWORK_RESOLUTION,
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorList",
-            "staging": "explicit host-to-device/device-to-host",
+            "staging": "none; direct Managed HIP TensorList",
             "build_type": "Release",
             "result_directory": RESULTS_DIR,
         },

@@ -18,9 +18,7 @@
 """
 Phase 2B AMD benchmark: YOLOv8 with Managed HIP and MIGraphX.
 
-The graph uses the standard ROS 2 image and TensorList boundary, explicit
-host-to-device/device-to-host HIP staging, and Managed transport at the ORT
-inference boundary.
+The graph uses the direct same-process Managed HIP TensorList path end to end.
 """
 
 import os
@@ -70,42 +68,6 @@ def make_std_playback_node(namespace):
     )
 
 
-def make_stager(namespace):
-    """Create the standard TensorList to Managed HIP staging node."""
-    return ComposableNode(
-        name="StdToManagedHip",
-        namespace=namespace,
-        package="isaac_ros_onnx_inference",
-        plugin=(
-            "nvidia::isaac_ros::onnx_inference::"
-            "StdToManagedHipTensorListNode"
-        ),
-        parameters=[{"gpu_device_id": 0}],
-        remappings=[
-            ("tensor_input", "encoded_tensor"),
-            ("tensor_output", "managed_tensor_input"),
-        ],
-    )
-
-
-def make_unstager(namespace):
-    """Create the Managed HIP to standard TensorList staging node."""
-    return ComposableNode(
-        name="ManagedHipToStd",
-        namespace=namespace,
-        package="isaac_ros_onnx_inference",
-        plugin=(
-            "nvidia::isaac_ros::onnx_inference::"
-            "ManagedHipToStdTensorListNode"
-        ),
-        parameters=[{"gpu_device_id": 0}],
-        remappings=[
-            ("tensor_input", "managed_tensor_output"),
-            ("tensor_output", "tensor_sub"),
-        ],
-    )
-
-
 def model_path_for_test(test_class):
     """Return the required user-provided YOLOv8 model path."""
     model_path = os.path.join(
@@ -129,11 +91,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="Yolov8ImageEncoder",
         namespace=namespace,
         package="isaac_ros_yolov8_std",
-        plugin="nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode",
+        plugin=(
+            "nvidia::isaac_ros::yolov8_std::"
+            "YoloV8ManagedHipImageEncoderNode"),
         parameters=[{
             "tensor_name": common.ORT_INPUT_TENSOR_NAME,
             "output_width": common.NETWORK_RESOLUTION["width"],
             "output_height": common.NETWORK_RESOLUTION["height"],
+            "gpu_device_id": 0,
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
         }],
     )
     onnx = ComposableNode(
@@ -146,23 +113,32 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "execution_provider": "migraphx",
             "gpu_device_id": 0,
             "transport": "managed",
+            "managed_io_contract": "hip_managed_strict",
+            "managed_input_contracts": ["images=float32[1,3,640,640]"],
+            "managed_output_contracts": ["output0=float32[1,84,8400]"],
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
         }],
         remappings=[
-            ("tensor_input", "managed_tensor_input"),
-            ("tensor_output", "managed_tensor_output"),
+            ("tensor_input", "managed_tensor_output"),
+            ("tensor_output", "managed_tensor_output_ort"),
         ],
     )
     decoder = ComposableNode(
         name="Yolov8Decoder",
         namespace=namespace,
         package="isaac_ros_yolov8_std",
-        plugin="nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode",
+        plugin=(
+            "nvidia::isaac_ros::yolov8_std::"
+            "YoloV8ManagedHipDecoderNode"),
         parameters=[{
+            "gpu_device_id": 0,
             "tensor_name": common.ORT_OUTPUT_TENSOR_NAME,
             "confidence_threshold": 0.25,
             "nms_threshold": 0.45,
             "num_classes": 80,
         }],
+        remappings=[("managed_tensor_input", "managed_tensor_output_ort")],
     )
 
     container = ComposableNodeContainer(
@@ -176,9 +152,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(namespace),
             make_std_playback_node(namespace),
             image_encoder,
-            make_stager(namespace),
             onnx,
-            make_unstager(namespace),
             decoder,
             common.make_monitor_node(namespace),
         ],
@@ -204,6 +178,7 @@ class TestIsaacROSYoloV8Phase2bAmdManaged(ROS2BenchmarkTest):
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
+        additional_fixed_publisher_rate_tests=[10.0, 30.0, 60.0],
         playback_message_buffer_size=1,
         pre_trial_run_wait_time_sec=5.0,
         log_folder=RESULTS_DIR,
@@ -217,7 +192,7 @@ class TestIsaacROSYoloV8Phase2bAmdManaged(ROS2BenchmarkTest):
             ),
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorList",
-            "staging": "explicit host-to-device/device-to-host",
+            "staging": "none; direct Managed HIP TensorList",
             "build_type": "Release",
             "result_directory": RESULTS_DIR,
         },

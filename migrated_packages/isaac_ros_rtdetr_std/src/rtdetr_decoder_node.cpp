@@ -1,51 +1,58 @@
 // Copyright 2026 Maintainer
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Licensed under the Apache License, Version 2.0.
 
 #include "isaac_ros_rtdetr_std/rtdetr_decoder_node.hpp"
 
+#include <cstdint>
 #include <cstring>
+#include <functional>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "isaac_ros_rtdetr_std/rtdetr_decoder.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
-namespace nvidia
+namespace nvidia::isaac_ros::rtdetr_std
 {
-namespace isaac_ros
-{
-namespace rtdetr_std
-{
-
 namespace
 {
-
-// Copy a named tensor's raw bytes into a typed vector. Data is already on host.
 template<typename T>
 std::vector<T> TensorToVector(
-  const isaac_ros_tensor_list_interfaces::msg::TensorList & msg,
-  const std::string & tensor_name)
+  const isaac_ros_tensor_list_interfaces::msg::TensorList & message,
+  const std::string & name,
+  int expected_dtype,
+  const std::vector<uint32_t> & expected_shape)
 {
-  for (const auto & t : msg.tensors) {
-    if (t.name == tensor_name) {
-      std::vector<T> out(t.data.size() / sizeof(T));
-      std::memcpy(out.data(), t.data.data(), t.data.size());
-      return out;
+  for (const auto & tensor : message.tensors) {
+    if (tensor.name == name) {
+      size_t expected_elements = 1U;
+      for (const auto dimension : expected_shape) {
+        if (dimension == 0U ||
+          expected_elements > std::numeric_limits<size_t>::max() / dimension)
+        {
+          throw std::invalid_argument("RT-DETR tensor contract size overflow");
+        }
+        expected_elements *= dimension;
+      }
+      if (expected_elements > std::numeric_limits<size_t>::max() / sizeof(T)) {
+        throw std::invalid_argument("RT-DETR tensor byte size overflow");
+      }
+      const size_t expected_bytes = expected_elements * sizeof(T);
+      if (tensor.data_type != expected_dtype ||
+        static_cast<size_t>(tensor.shape.rank) != expected_shape.size() ||
+        tensor.shape.dims != expected_shape || tensor.data.size() != expected_bytes)
+      {
+        throw std::invalid_argument("RT-DETR tensor '" + name + "' has the wrong contract");
+      }
+      std::vector<T> values(tensor.data.size() / sizeof(T));
+      std::memcpy(values.data(), tensor.data.data(), tensor.data.size());
+      return values;
     }
   }
-  return {};
+  throw std::invalid_argument("RT-DETR tensor '" + name + "' not found");
 }
-
 }  // namespace
 
 RtDetrDecoderNode::RtDetrDecoderNode(const rclcpp::NodeOptions options)
@@ -63,46 +70,23 @@ RtDetrDecoderNode::RtDetrDecoderNode(const rclcpp::NodeOptions options)
 
 void RtDetrDecoderNode::InputCallback(const TensorList::SharedPtr msg)
 {
-  auto labels = TensorToVector<int64_t>(*msg, labels_tensor_name_);
-  auto boxes = TensorToVector<float>(*msg, boxes_tensor_name_);
-  auto scores = TensorToVector<float>(*msg, scores_tensor_name_);
-
-  vision_msgs::msg::Detection2DArray detections;
-  detections.header = msg->header;
-
-  for (size_t i = 0; i < scores.size(); ++i) {
-    if (scores.at(i) <= confidence_threshold_) {
-      continue;
-    }
-
-    vision_msgs::msg::Detection2D detection;
-    detection.header = msg->header;
-
-    vision_msgs::msg::ObjectHypothesisWithPose hyp;
-    hyp.hypothesis.class_id = std::to_string(labels.at(i));
-    hyp.hypothesis.score = scores.at(i);
-    detection.results.push_back(hyp);
-
-    // Boxes are stored as 4 contiguous (x1, y1, x2, y2) values.
-    constexpr size_t kBoxSize = 4;
-    const float x1 = boxes.at(kBoxSize * i);
-    const float y1 = boxes.at(kBoxSize * i + 1);
-    const float x2 = boxes.at(kBoxSize * i + 2);
-    const float y2 = boxes.at(kBoxSize * i + 3);
-
-    detection.bbox.center.position.x = (x1 + x2) / 2;
-    detection.bbox.center.position.y = (y1 + y2) / 2;
-    detection.bbox.size_x = (x2 - x1);
-    detection.bbox.size_y = (y2 - y1);
-
-    detections.detections.push_back(detection);
+  try {
+    const auto labels = TensorToVector<int64_t>(*msg, labels_tensor_name_, 7, {1, 300});
+    const auto boxes = TensorToVector<float>(*msg, boxes_tensor_name_, 9, {1, 300, 4});
+    const auto scores = TensorToVector<float>(*msg, scores_tensor_name_, 9, {1, 300});
+    RtDetrDecoderConfig config;
+    config.labels_tensor_name = labels_tensor_name_;
+    config.boxes_tensor_name = boxes_tensor_name_;
+    config.scores_tensor_name = scores_tensor_name_;
+    config.confidence_threshold = confidence_threshold_;
+    pub_->publish(DecodeRtDetrValues(
+      msg->header, labels.data(), labels.size(), boxes.data(), boxes.size(),
+      scores.data(), scores.size(), config));
+  } catch (const std::exception & error) {
+    RCLCPP_ERROR(get_logger(), "Failed to decode RT-DETR TensorList: %s", error.what());
   }
-
-  pub_->publish(detections);
 }
 
-}  // namespace rtdetr_std
-}  // namespace isaac_ros
-}  // namespace nvidia
+}  // namespace nvidia::isaac_ros::rtdetr_std
 
 RCLCPP_COMPONENTS_REGISTER_NODE(nvidia::isaac_ros::rtdetr_std::RtDetrDecoderNode)

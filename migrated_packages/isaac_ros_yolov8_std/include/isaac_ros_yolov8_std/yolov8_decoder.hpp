@@ -16,9 +16,12 @@
 #define ISAAC_ROS_YOLOV8_STD__YOLOV8_DECODER_HPP_
 
 #include <cstdint>
+#include <cstddef>
 #include <string>
+#include <vector>
 
 #include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
+#include "std_msgs/msg/header.hpp"
 #include "vision_msgs/msg/detection2_d_array.hpp"
 
 namespace nvidia
@@ -40,6 +43,13 @@ struct YoloV8DecoderConfig
 
 vision_msgs::msg::Detection2DArray DecodeYoloV8TensorList(
   const isaac_ros_tensor_list_interfaces::msg::TensorList & msg,
+  const YoloV8DecoderConfig & config);
+
+vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
+  const std_msgs::msg::Header & header,
+  const float * values,
+  size_t value_count,
+  const std::vector<int64_t> & shape,
   const YoloV8DecoderConfig & config);
 
 }  // namespace yolov8_std

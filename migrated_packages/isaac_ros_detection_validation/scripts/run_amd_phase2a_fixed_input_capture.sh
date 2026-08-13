@@ -286,12 +286,46 @@ source_setup "/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
 source_setup "/opt/ros2_benchmark/setup.bash"
 source_setup "${WORKSPACE_ROOT}/install/setup.bash"
 
-for command_name in awk ps ros2 setsid sleep tail timeout; do
+for command_name in awk find git ps ros2 setsid sha256sum sleep sort tail timeout xargs; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
   fi
 done
+
+hash_path() {
+  local path="$1"
+  if [[ -f ${path} ]]; then
+    sha256sum "${path}" | awk '{print $1}'
+    return 0
+  fi
+  if [[ -d ${path} ]]; then
+    find "${path}" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
+    return 0
+  fi
+  echo "MISSING"
+}
+
+repo_revision() {
+  local path="$1"
+  if [[ -d ${path}/.git ]]; then
+    git -C "${path}" rev-parse HEAD
+  else
+    echo "MISSING"
+  fi
+}
+
+repo_diff_hash() {
+  local path="$1"
+  if [[ -d ${path}/.git ]]; then
+    git -C "${path}" diff --binary | sha256sum | awk '{print $1}'
+  else
+    echo "MISSING"
+  fi
+}
+
+ORT_LIBRARY_PATH="${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}"
+GPU_MANAGED_ROOT="${WORKSPACE_ROOT}/../gpu_ros_managed"
 
 print_command() {
   printf '+'
@@ -634,7 +668,15 @@ fi
   echo "execution_provider=${EXECUTION_PROVIDER}"
   echo "transport=${TRANSPORT}"
   echo "input_bag=${INPUT_BAG}"
+  echo "dataset_tree_sha256=$(hash_path "${INPUT_BAG}")"
   echo "model_path=${MODEL_PATH}"
+  echo "model_sha256=$(hash_path "${MODEL_PATH}")"
+  echo "ort_root=${ONNXRUNTIME_ROOT:-}"
+  echo "ort_library_sha256=$(hash_path "${ORT_LIBRARY_PATH}")"
+  echo "application_revision=$(repo_revision "${WORKSPACE_ROOT}")"
+  echo "application_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
+  echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
   echo "graph_package=${GRAPH_PACKAGE}"
   echo "graph_launch_file=${GRAPH_LAUNCH_FILE}"
   echo "graph_namespace=${GRAPH_NAMESPACE}"

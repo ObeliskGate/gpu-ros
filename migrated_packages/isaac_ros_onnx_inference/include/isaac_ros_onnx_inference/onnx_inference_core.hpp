@@ -17,12 +17,15 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"  // NOLINT
+#include "gpu_ros_managed_core/fixed_device_memory_pool.hpp"
 #include "gpu_ros_managed_tensor_list/tensor_list.hpp"
+#include "isaac_ros_onnx_inference/managed_io_contract.hpp"
 #include "isaac_ros_onnx_inference/tensor_types.hpp"
 
 namespace nvidia::isaac_ros::onnx_inference
@@ -46,10 +49,15 @@ public:
     std::string ort_profile_prefix;
     std::string binding_report_path;
     std::string transport;
+    std::string managed_io_contract;
+    std::vector<std::string> managed_input_contracts;
+    std::vector<std::string> managed_output_contracts;
+    size_t managed_pool_capacity{16};
+    std::chrono::milliseconds managed_pool_wait_timeout{100};
   };
 
   explicit OnnxInferenceCore(const Config & cfg);
-  ~OnnxInferenceCore() = default;
+  ~OnnxInferenceCore();
 
   // Non-copyable
   OnnxInferenceCore(const OnnxInferenceCore &) = delete;
@@ -64,6 +72,9 @@ public:
   bool IsProfilingEnabled() const;
   std::string EndProfiling();
   std::string OutputBindingProbeReport() const;
+  bool healthy() const noexcept {return strict_healthy_;}
+  size_t pool_exhaustion_drops() const noexcept {return pool_exhaustion_drops_;}
+  bool shutdown(std::chrono::milliseconds timeout) noexcept;
 
 private:
   struct BindingTensorReport
@@ -99,11 +110,21 @@ private:
   std::string binding_report_path_;
   std::string transport_;
   bool binding_report_written_{false};
+  bool strict_managed_{false};
+  bool strict_healthy_{true};
+  size_t pool_exhaustion_drops_{0};
+  size_t managed_pool_capacity_{16};
+  std::chrono::milliseconds managed_pool_wait_timeout_{100};
+  std::vector<ManagedTensorContract> managed_input_contracts_;
+  std::vector<ManagedTensorContract> managed_output_contracts_;
+  std::vector<std::unique_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> managed_output_pools_;
 
   void WriteBindingReport(
     const std::vector<BindingTensorReport> & inputs,
     const std::vector<BindingTensorReport> & outputs,
     OutputPlacement output_placement);
+  std::vector<OutputTensor> RunStrictManagedInference(
+    gpu_ros_managed::ManagedTensorListView inputs);
 };
 
 }  // namespace nvidia::isaac_ros::onnx_inference

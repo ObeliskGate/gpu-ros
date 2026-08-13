@@ -1,18 +1,6 @@
 # Copyright 2026 Maintainer
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""YOLOv8 standard host graph with explicit Managed HIP staging."""
+# Licensed under the Apache License, Version 2.0.
+"""Production YOLOv8 direct Managed HIP graph."""
 
 import os
 from pathlib import Path
@@ -36,8 +24,8 @@ def _launch_setup(context):
             strict=False))
     if not os.path.isfile(model_file_path) or os.path.getsize(model_file_path) == 0:
         raise RuntimeError(
-            'YOLOv8 ONNX asset is missing: '
-            f'{model_file_path}. Provide the user-owned Phase 2A asset.')
+            f'YOLOv8 ONNX asset is missing: {model_file_path}. '
+            'Provide the user-owned Phase 2A asset.')
 
     image_topic = LaunchConfiguration('image_topic').perform(context)
     namespace = LaunchConfiguration('namespace').perform(context)
@@ -49,27 +37,20 @@ def _launch_setup(context):
     nms_threshold = float(LaunchConfiguration('nms_threshold').perform(context))
 
     encoder = ComposableNode(
-        name='yolov8_image_encoder',
+        name='yolov8_managed_hip_image_encoder',
         package='isaac_ros_yolov8_std',
-        plugin='nvidia::isaac_ros::yolov8_std::YoloV8ImageEncoderNode',
+        plugin=(
+            'nvidia::isaac_ros::yolov8_std::'
+            'YoloV8ManagedHipImageEncoderNode'),
         parameters=[{
             'tensor_name': 'images',
             'output_width': MODEL_INPUT_SIZE,
             'output_height': MODEL_INPUT_SIZE,
+            'gpu_device_id': gpu_device_id,
+            'managed_pool_capacity': 16,
+            'managed_pool_wait_timeout_ms': 100,
         }],
         remappings=[('image', image_topic)],
-    )
-    std_to_managed = ComposableNode(
-        name='std_to_managed_hip',
-        package='isaac_ros_onnx_inference',
-        plugin=(
-            'nvidia::isaac_ros::onnx_inference::'
-            'StdToManagedHipTensorListNode'),
-        parameters=[{'gpu_device_id': gpu_device_id}],
-        remappings=[
-            ('tensor_input', 'encoded_tensor'),
-            ('tensor_output', 'managed_tensor_input'),
-        ],
     )
     onnx = ComposableNode(
         name='onnx_inference',
@@ -82,34 +63,31 @@ def _launch_setup(context):
             'ort_profile_prefix': ort_profile_prefix,
             'binding_report_path': binding_report_path,
             'transport': 'managed',
+            'managed_io_contract': 'hip_managed_strict',
+            'managed_input_contracts': ['images=float32[1,3,640,640]'],
+            'managed_output_contracts': ['output0=float32[1,84,8400]'],
+            'managed_pool_capacity': 16,
+            'managed_pool_wait_timeout_ms': 100,
         }],
         remappings=[
-            ('tensor_input', 'managed_tensor_input'),
-            ('tensor_output', 'managed_tensor_output'),
-        ],
-    )
-    managed_to_std = ComposableNode(
-        name='managed_hip_to_std',
-        package='isaac_ros_onnx_inference',
-        plugin=(
-            'nvidia::isaac_ros::onnx_inference::'
-            'ManagedHipToStdTensorListNode'),
-        parameters=[{'gpu_device_id': gpu_device_id}],
-        remappings=[
             ('tensor_input', 'managed_tensor_output'),
-            ('tensor_output', 'tensor_sub'),
+            ('tensor_output', 'managed_tensor_output_ort'),
         ],
     )
     decoder = ComposableNode(
-        name='yolov8_decoder',
+        name='yolov8_managed_hip_decoder',
         package='isaac_ros_yolov8_std',
-        plugin='nvidia::isaac_ros::yolov8_std::YoloV8DecoderNode',
+        plugin=(
+            'nvidia::isaac_ros::yolov8_std::'
+            'YoloV8ManagedHipDecoderNode'),
         parameters=[{
+            'gpu_device_id': gpu_device_id,
             'tensor_name': 'output0',
             'confidence_threshold': confidence_threshold,
             'nms_threshold': nms_threshold,
             'num_classes': 80,
         }],
+        remappings=[('managed_tensor_input', 'managed_tensor_output_ort')],
     )
 
     container = ComposableNodeContainer(
@@ -117,15 +95,14 @@ def _launch_setup(context):
         namespace=namespace,
         package='rclcpp_components',
         executable='component_container_mt',
-        composable_node_descriptions=[
-            encoder, std_to_managed, onnx, managed_to_std, decoder],
+        composable_node_descriptions=[encoder, onnx, decoder],
         output='screen',
     )
     return [container]
 
 
 def generate_launch_description():
-    """Generate the YOLOv8 Managed HIP graph."""
+    """Generate the YOLOv8 direct Managed HIP graph."""
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=DEFAULT_MODEL_PATH),
         DeclareLaunchArgument('image_topic', default_value='image'),
