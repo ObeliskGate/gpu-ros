@@ -616,7 +616,7 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
     if (bound_names != output_names_) {
       throw std::runtime_error("strict Managed ORT output names changed at runtime");
     }
-    const auto ort_outputs = binding.GetOutputValues();
+    auto ort_outputs = binding.GetOutputValues();
     if (ort_outputs.size() != managed_output_contracts_.size()) {
       throw std::runtime_error("strict Managed ORT returned an unexpected output count");
     }

@@ -45,6 +45,10 @@ HIP_PREPROCESS_SOURCE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_detection_common' / 'src' / 'hip_preprocess.hip'
 )
+ONNX_INFERENCE_CORE_SOURCE_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_onnx_inference' / 'src' / 'onnx_inference_core.cpp'
+)
 MANAGED_HIP_POL_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' / 'isaac_ros_onnx_inference' /
     'test' / 'isaac_ros_onnx_managed_hip_pol_test.py'
@@ -137,6 +141,12 @@ def test_hip_preprocess_source_includes_full_runtime_header():
     assert '#include <hip/hip_runtime.h>' in script
     assert 'hipLaunchKernelGGL' in script
     assert 'blockIdx' in script
+
+
+def test_strict_ort_outputs_are_mutable_for_pointer_identity_check():
+    source = ONNX_INFERENCE_CORE_SOURCE_PATH.read_text()
+    assert 'auto ort_outputs = binding.GetOutputValues();' in source
+    assert 'const auto ort_outputs = binding.GetOutputValues();' not in source
 
 
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():
