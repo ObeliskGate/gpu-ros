@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 project(gpu_ros_managed_core LANGUAGES CXX)
 
-add_library(gpu_ros_managed_core
+add_library(gpu_ros_managed_core SHARED
   src/buffer.cpp
   src/fixed_device_memory_pool.cpp)
 add_library(gpu_ros_managed::core ALIAS gpu_ros_managed_core)

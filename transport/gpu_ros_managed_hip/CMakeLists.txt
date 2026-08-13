@@ -10,7 +10,7 @@ if(hip_FOUND)
   if(NOT TARGET gpu_ros_managed_core)
     find_package(gpu_ros_managed_core REQUIRED)
   endif()
-  add_library(gpu_ros_managed_hip src/hip_backend.cpp)
+  add_library(gpu_ros_managed_hip SHARED src/hip_backend.cpp)
   add_library(gpu_ros_managed::hip ALIAS gpu_ros_managed_hip)
   set_target_properties(gpu_ros_managed_hip PROPERTIES
     EXPORT_NAME hip
@@ -43,6 +43,32 @@ if(hip_FOUND)
     endif()
     add_test(NAME gpu_ros_managed_hip_copy_test COMMAND gpu_ros_managed_hip_copy_test)
     set_tests_properties(gpu_ros_managed_hip_copy_test PROPERTIES SKIP_RETURN_CODE 77)
+
+    add_library(gpu_ros_managed_hip_dso_producer SHARED test/hip_dso_producer.cpp)
+    target_link_libraries(gpu_ros_managed_hip_dso_producer PRIVATE gpu_ros_managed_hip)
+    target_compile_features(gpu_ros_managed_hip_dso_producer PRIVATE cxx_std_17)
+
+    add_library(gpu_ros_managed_hip_dso_consumer SHARED test/hip_dso_consumer.cpp)
+    target_link_libraries(gpu_ros_managed_hip_dso_consumer PRIVATE gpu_ros_managed_hip)
+    target_compile_features(gpu_ros_managed_hip_dso_consumer PRIVATE cxx_std_17)
+
+    add_executable(
+      gpu_ros_managed_hip_dso_identity_test
+      test/hip_dso_identity_test.cpp)
+    target_link_libraries(
+      gpu_ros_managed_hip_dso_identity_test
+      PRIVATE
+        gpu_ros_managed_hip_dso_producer
+        gpu_ros_managed_hip_dso_consumer)
+    target_compile_features(gpu_ros_managed_hip_dso_identity_test PRIVATE cxx_std_17)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+      target_compile_options(gpu_ros_managed_hip_dso_identity_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(
+      NAME gpu_ros_managed_hip_dso_identity_test
+      COMMAND gpu_ros_managed_hip_dso_identity_test)
+    set_tests_properties(
+      gpu_ros_managed_hip_dso_identity_test PROPERTIES SKIP_RETURN_CODE 77)
   endif()
 else()
   if(GPU_ROS_MANAGED_HIP_REQUIRE_SDK)

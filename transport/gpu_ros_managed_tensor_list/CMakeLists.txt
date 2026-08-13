@@ -5,7 +5,7 @@ find_package(gpu_ros_managed_core REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(isaac_ros_tensor_list_interfaces REQUIRED)
-add_library(gpu_ros_managed_tensor_list src/tensor_list.cpp)
+add_library(gpu_ros_managed_tensor_list SHARED src/tensor_list.cpp)
 add_library(gpu_ros_managed::tensor_list ALIAS gpu_ros_managed_tensor_list)
 set_target_properties(gpu_ros_managed_tensor_list PROPERTIES
   EXPORT_NAME tensor_list

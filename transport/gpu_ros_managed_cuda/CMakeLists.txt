@@ -7,7 +7,7 @@ if(CUDAToolkit_FOUND)
   if(NOT TARGET gpu_ros_managed_core)
     find_package(gpu_ros_managed_core REQUIRED)
   endif()
-  add_library(gpu_ros_managed_cuda src/cuda_backend.cpp)
+  add_library(gpu_ros_managed_cuda SHARED src/cuda_backend.cpp)
   add_library(gpu_ros_managed::cuda ALIAS gpu_ros_managed_cuda)
   set_target_properties(gpu_ros_managed_cuda PROPERTIES
     EXPORT_NAME cuda
