@@ -16,19 +16,23 @@ and unstructured work logs belong in inner_docs/ instead.
 | ROS 2 | Jazzy |
 | Isaac ROS | 4.5 |
 | ONNX Runtime | 1.23.1 |
-| gpu_ros_managed | Revision in dependencies/gpu_ros_managed.repos for clean imports |
+| gpu_ros_managed | Independently checked-out sibling selected with `GPU_ROS_MANAGED_DIR` |
 
-gpu_ros_managed is a required sibling repository. Import it from the
-workspace src directory:
+`gpu_ros_managed` is a required sibling repository. Clone and update it
+independently, then point the runtime launcher at that checkout:
 
-~~~bash
-vcs import < amd_ros_object_detection/dependencies/gpu_ros_managed.repos
-~~~
+```bash
+git clone --branch phase2b-amd \
+  git@github.com:ObeliskGate/gpu_ros_managed.git \
+  /path/to/gpu_ros_managed
 
-An existing checkout may be selected with GPU_ROS_MANAGED_DIR. The NVIDIA
-helper reports its commit without blocking standard Phase 1 Config D runs,
-which do not use managed transport. For a reproducible managed-transport run,
-set GPU_ROS_MANAGED_EXPECTED_COMMIT to the revision being audited.
+export GPU_ROS_MANAGED_DIR=/path/to/gpu_ros_managed
+git -C "$GPU_ROS_MANAGED_DIR" pull --ff-only origin phase2b-amd
+```
+
+The launcher reports the selected sibling commit for the run archive but does
+not enforce a commit pin. The same manually selected checkout is used for
+AMD and NVIDIA Managed transport runs.
 
 ## Document types
 

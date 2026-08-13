@@ -325,7 +325,7 @@ repo_diff_hash() {
 }
 
 ORT_LIBRARY_PATH="${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}"
-GPU_MANAGED_ROOT="${WORKSPACE_ROOT}/../gpu_ros_managed"
+GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}"
 
 print_command() {
   printf '+'

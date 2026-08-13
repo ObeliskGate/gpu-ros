@@ -54,6 +54,7 @@ ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspac
 RESULT_PARENT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b-benchmark-matrix"
 OUTPUT_ROOT="${RESULT_PARENT}/${MATRIX_NAME}"
 BENCHMARK_ROOT="${WORKSPACE_ROOT}/migrated_packages/benchmarks"
+GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}"
 if [[ ${MODEL} == yolov8 ]]; then
   MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
 else
@@ -166,9 +167,9 @@ trap 'exit 130' INT TERM
   echo "ort_library_sha256=$(hash_path "${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}")"
   echo "application_revision=$(git -C "${WORKSPACE_ROOT}" rev-parse HEAD)"
   echo "application_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
-  if [[ -d ${WORKSPACE_ROOT}/../gpu_ros_managed/.git ]]; then
-    echo "gpu_ros_managed_revision=$(repo_revision "${WORKSPACE_ROOT}/../gpu_ros_managed")"
-    echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}/../gpu_ros_managed")"
+  if [[ -d ${GPU_MANAGED_ROOT}/.git ]]; then
+    echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
+    echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
   fi
   echo "fixed_rates_hz=10,30,60"
   echo "round_count=3"

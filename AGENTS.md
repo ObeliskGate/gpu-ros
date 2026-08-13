@@ -161,7 +161,7 @@ Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking 
 
 ## Phase 2B: Managed Device TensorList Transport Runtime
 
-Phase 2B is the active follow-on phase and is implemented in the independent sibling `gpu_ros_managed` repository. This application consumes it through vcstool/colcon and owns only ONNX Runtime provider, binding, synchronization, and staging policy. The sibling provides:
+Phase 2B is the active follow-on phase and is implemented in the independent sibling `gpu_ros_managed` repository. This application consumes the manually selected sibling checkout through colcon and owns only ONNX Runtime provider, binding, synchronization, and staging policy. The sibling provides:
 
 - AMD device-buffer TensorList transport.
 - Same-process zero-copy transport for component containers.

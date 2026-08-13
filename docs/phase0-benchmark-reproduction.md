@@ -49,14 +49,9 @@ Then run:
 ./docker/phase1-nvidia.sh shell
 ~~~
 
-The helper checks the pinned image, ORT 1.23.1, the sibling checkout, the
-benchmark packages, and the configured asset root. It reports the sibling
-commit by default. To enforce the manifest revision for a managed-transport
-reproduction, set it explicitly before starting the runtime:
-
-~~~bash
-export GPU_ROS_MANAGED_EXPECTED_COMMIT=d33381358f2259b9ad16e8847b5a6dccd0357ebc
-~~~
+The helper checks the pinned image, ORT 1.23.1, the manually selected sibling
+checkout, the benchmark packages, and the configured asset root. It reports
+the sibling commit but does not enforce a commit pin.
 
 It checks the asset root itself, not the contents of every model and dataset.
 
