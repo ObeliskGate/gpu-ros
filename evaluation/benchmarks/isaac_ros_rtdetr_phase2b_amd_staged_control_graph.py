@@ -18,10 +18,7 @@ import sys
 
 sys.path.append(os.path.dirname(__file__))
 import rtdetr_common as common  # noqa: E402
-from isaac_ros_rtdetr_phase2b_amd_managed_graph import (  # noqa: E402
-    make_std_playback_node,
-    TestIsaacROSRtDetrPhase2bAmdManaged,
-)
+import isaac_ros_rtdetr_phase2b_amd_managed_graph as managed_graph  # noqa: E402
 
 from launch_ros.actions import ComposableNodeContainer  # noqa: E402
 from launch_ros.descriptions import ComposableNode  # noqa: E402
@@ -165,7 +162,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         sigterm_timeout=container_sigterm_timeout,
         composable_node_descriptions=[
             common.make_data_loader_node(namespace),
-            make_std_playback_node(namespace),
+            managed_graph.make_std_playback_node(namespace),
             encoder,
             hip_preprocessor,
             managed_to_std_input,
@@ -187,7 +184,7 @@ def generate_test_description():
 
 
 class TestIsaacROSRtDetrPhase2bAmdStagedControl(
-    TestIsaacROSRtDetrPhase2bAmdManaged):
+    managed_graph.TestIsaacROSRtDetrPhase2bAmdManaged):
     """Benchmark the intentional Managed<->standard RT-DETR control lane."""
 
     config = ROS2BenchmarkConfig(

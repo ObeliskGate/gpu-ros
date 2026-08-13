@@ -1,5 +1,6 @@
 # Copyright 2026 Maintainer
 
+import ast
 from pathlib import Path
 
 
@@ -79,3 +80,24 @@ def test_phase2a_reference_benchmarks_use_the_same_fixed_rate_trials():
     ):
         text = (BENCHMARKS / name).read_text()
         assert 'additional_fixed_publisher_rate_tests=[10.0, 30.0, 60.0]' in text
+
+
+def test_phase2b_benchmark_modules_expose_one_test_class_each():
+    """Prevent imported benchmark base classes from running a second sweep."""
+    expected = {
+        'isaac_ros_yolov8_phase2b_amd_managed_graph.py':
+            'TestIsaacROSYoloV8Phase2bAmdManaged',
+        'isaac_ros_yolov8_phase2b_amd_staged_control_graph.py':
+            'TestIsaacROSYoloV8Phase2bAmdStagedControl',
+        'isaac_ros_rtdetr_phase2b_amd_managed_graph.py':
+            'TestIsaacROSRtDetrPhase2bAmdManaged',
+        'isaac_ros_rtdetr_phase2b_amd_staged_control_graph.py':
+            'TestIsaacROSRtDetrPhase2bAmdStagedControl',
+    }
+    for name, expected_class in expected.items():
+        tree = ast.parse((BENCHMARKS / name).read_text(), filename=name)
+        test_classes = [
+            node.name for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name.startswith('Test')
+        ]
+        assert test_classes == [expected_class]

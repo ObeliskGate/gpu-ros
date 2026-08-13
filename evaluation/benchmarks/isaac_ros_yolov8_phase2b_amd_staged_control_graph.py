@@ -23,11 +23,7 @@ import sys
 
 sys.path.append(os.path.dirname(__file__))
 import yolov8_common as common  # noqa: E402
-from isaac_ros_yolov8_phase2b_amd_managed_graph import (  # noqa: E402
-    make_std_playback_node,
-    model_path_for_test,
-    TestIsaacROSYoloV8Phase2bAmdManaged,
-)
+import isaac_ros_yolov8_phase2b_amd_managed_graph as managed_graph  # noqa: E402
 
 from launch_ros.actions import ComposableNodeContainer  # noqa: E402
 from launch_ros.descriptions import ComposableNode  # noqa: E402
@@ -43,7 +39,8 @@ RESULTS_FILE = os.environ.get("R2B_RESULT_FILE") or (
 def launch_setup(container_prefix, container_sigterm_timeout):
     """Build the YOLOv8 staged-control graph."""
     namespace = TestIsaacROSYoloV8Phase2bAmdStagedControl.generate_namespace()
-    model_path = model_path_for_test(TestIsaacROSYoloV8Phase2bAmdStagedControl)
+    model_path = managed_graph.model_path_for_test(
+        TestIsaacROSYoloV8Phase2bAmdStagedControl)
 
     encoder = ComposableNode(
         name="Yolov8ManagedHipImageEncoder",
@@ -144,7 +141,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         sigterm_timeout=container_sigterm_timeout,
         composable_node_descriptions=[
             common.make_data_loader_node(namespace),
-            make_std_playback_node(namespace),
+            managed_graph.make_std_playback_node(namespace),
             encoder,
             managed_to_std_input,
             std_to_managed_input,
@@ -165,7 +162,7 @@ def generate_test_description():
 
 
 class TestIsaacROSYoloV8Phase2bAmdStagedControl(
-    TestIsaacROSYoloV8Phase2bAmdManaged):
+    managed_graph.TestIsaacROSYoloV8Phase2bAmdManaged):
     """Benchmark the intentional Managed<->standard control lane."""
 
     config = ROS2BenchmarkConfig(
