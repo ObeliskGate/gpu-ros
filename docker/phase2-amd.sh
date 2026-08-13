@@ -15,7 +15,13 @@ if [[ "${ORT_STATE_HOST}" != /* ]]; then
 fi
 ORT_CONTAINER_ROOT="/workspaces/ovg-ort"
 IMAGE_NAME="${OVG_IMAGE_NAME:-ovg-phase2-amd:local}"
-APPTAINER_SIF="${OVG_APPTAINER_SIF:-${STATE_ROOT}phase2-amd-dev-<image-id>.sif}"
+APPTAINER_SIF_EXPLICIT=0
+if [[ -n "${OVG_APPTAINER_SIF:-}" ]]; then
+  APPTAINER_SIF="${OVG_APPTAINER_SIF}"
+  APPTAINER_SIF_EXPLICIT=1
+else
+  APPTAINER_SIF="${STATE_ROOT}phase2-amd-dev-<image-id>.sif"
+fi
 if [[ "${APPTAINER_SIF}" != /* ]]; then
   APPTAINER_SIF="${ROOT_DIR}/${APPTAINER_SIF}"
 fi
@@ -118,7 +124,41 @@ select_runtime() {
   fi
   export RUNTIME
   export OVG_RUNTIME_EFFECTIVE="${RUNTIME}"
+  if [[ "${RUNTIME}" == apptainer ]]; then
+    resolve_apptainer_sif
+  fi
   echo "Runtime: ${RUNTIME}"
+}
+
+resolve_apptainer_sif() {
+  if (( APPTAINER_SIF_EXPLICIT == 1 )); then
+    return
+  fi
+  # A prebuilt SIF may carry a content-specific name, for example
+  # phase2-amd-dev-14919b31de2f.sif. Discover exactly one such image instead
+  # of silently falling back to the repository-local .ovg path.
+  if [[ -n "${OVG_APPTAINER_IMAGE_URI:-}" ]]; then
+    return
+  fi
+  local image_dir="${STATE_ROOT}/images"
+  local candidates=()
+  if [[ -d "${image_dir}" ]]; then
+    mapfile -t candidates < <(
+      find "${image_dir}" -maxdepth 1 -type f \
+        -name 'phase2-amd*.sif' -print | sort)
+  fi
+  if [[ ${#candidates[@]} -eq 1 ]]; then
+    APPTAINER_SIF="${candidates[0]}"
+    echo "Apptainer SIF: ${APPTAINER_SIF}"
+    return
+  fi
+  if [[ ${#candidates[@]} -gt 1 ]]; then
+    printf 'ERROR: multiple Apptainer SIFs found under %s; set OVG_APPTAINER_SIF explicitly:\n' \
+      "${image_dir}" >&2
+    printf '  %s\n' "${candidates[@]}" >&2
+    exit 1
+  fi
+  die "No Apptainer SIF found under ${image_dir}; set OVG_APPTAINER_SIF explicitly"
 }
 
 compose_env() {

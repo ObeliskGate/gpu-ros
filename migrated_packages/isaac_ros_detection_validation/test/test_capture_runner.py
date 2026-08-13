@@ -40,6 +40,7 @@ AMD_MATRIX_SCRIPT_PATH = (
 AMD_HIGH_LOAD_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_managed_high_load.sh'
 )
+AMD_PHASE2_LAUNCHER_PATH = Path(__file__).parents[3] / 'docker' / 'phase2-amd.sh'
 MANAGED_HIP_POL_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' / 'isaac_ros_onnx_inference' /
     'test' / 'isaac_ros_onnx_managed_hip_pol_test.py'
@@ -106,6 +107,17 @@ def test_amd_capture_runner_has_managed_launches():
     assert 'yolov8_ort_managed_amd.launch.py' in script
     assert '--disable-keyboard-controls' in script
     assert '/rosbag2_recorder/stop' in script
+
+
+def test_amd_launcher_discovers_persistent_content_named_sif():
+    """Use the repository-local .ovg state and content-named SIF discovery."""
+    script = AMD_PHASE2_LAUNCHER_PATH.read_text()
+    subprocess.run(['bash', '-n', str(AMD_PHASE2_LAUNCHER_PATH)], check=True)
+    assert 'STATE_ROOT="${OVG_STATE_ROOT:-${ROOT_DIR}/.ovg}"' in script
+    assert 'ROOT_DIR}/../ovg-state' not in script
+    assert "-name 'phase2-amd*.sif'" in script
+    assert 'multiple Apptainer SIFs found' in script
+    assert 'No Apptainer SIF found under' in script
 
 
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():

@@ -59,8 +59,12 @@ phase2 env --verify
 phase2 assets verify
 ~~~
 
-For Apptainer, set OVG_RUNTIME=apptainer and OVG_APPTAINER_SIF to a
-prebuilt SIF. The compute node does not need Docker, sudo, root, or fakeroot.
+For Apptainer, set OVG_RUNTIME=apptainer. The launcher automatically uses the
+single `phase2-amd*.sif` under `${OVG_STATE_ROOT:-.ovg}/images`, which defaults
+to `.ovg/images` next to the application checkout. Set OVG_APPTAINER_SIF
+explicitly only when that directory contains multiple SIFs or the image is
+stored elsewhere. The compute node does not need Docker, sudo, root, or
+fakeroot.
 The launcher uses --rocm for device and driver-library passthrough; do not add
 manual /dev/kfd or /dev/dri binds. The SIF build definition is
 apptainer/phase2-amd.def.
