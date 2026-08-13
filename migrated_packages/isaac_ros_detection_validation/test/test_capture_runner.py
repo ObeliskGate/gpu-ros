@@ -164,6 +164,8 @@ def test_detection_common_exports_namespaced_targets_to_downstream_packages():
     assert 'NAMESPACE isaac_ros_detection_common::' in common
     assert 'EXPORT_NAME core' in common
     assert 'EXPORT_NAME hip' in common
+    assert 'isaac_ros_detection_commonHipTargets' not in common
+    assert common.count('EXPORT isaac_ros_detection_commonTargets') == 2
     assert 'isaac_ros_detection_common::core' in yolov8
     assert 'isaac_ros_detection_common::hip' in yolov8
     assert 'isaac_ros_detection_common::core' in rtdetr

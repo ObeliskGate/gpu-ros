@@ -26,15 +26,7 @@ install(TARGETS isaac_ros_detection_common
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
-install(EXPORT isaac_ros_detection_commonTargets
-  FILE isaac_ros_detection_commonTargets.cmake
-  NAMESPACE isaac_ros_detection_common::
-  DESTINATION share/isaac_ros_detection_common/cmake)
 install(DIRECTORY include/ DESTINATION include)
-ament_export_targets(isaac_ros_detection_commonTargets HAS_LIBRARY_TARGET
-  NAMESPACE isaac_ros_detection_common::)
-ament_export_dependencies(sensor_msgs)
-ament_export_dependencies(OpenCV)
 
 if(hip_FOUND)
   enable_language(HIP)
@@ -48,16 +40,15 @@ if(hip_FOUND)
     isaac_ros_detection_common hip::host)
   target_compile_features(isaac_ros_detection_common_hip PUBLIC cxx_std_17)
   install(TARGETS isaac_ros_detection_common_hip
-    EXPORT isaac_ros_detection_commonHipTargets
+    EXPORT isaac_ros_detection_commonTargets
     ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
-  install(EXPORT isaac_ros_detection_commonHipTargets
-    FILE isaac_ros_detection_commonHipTargets.cmake
-    NAMESPACE isaac_ros_detection_common::
-    DESTINATION share/isaac_ros_detection_common/cmake)
-  ament_export_targets(isaac_ros_detection_commonHipTargets HAS_LIBRARY_TARGET
-    NAMESPACE isaac_ros_detection_common::)
   ament_export_dependencies(hip)
 endif()
+
+ament_export_targets(isaac_ros_detection_commonTargets HAS_LIBRARY_TARGET
+  NAMESPACE isaac_ros_detection_common::)
+ament_export_dependencies(sensor_msgs)
+ament_export_dependencies(OpenCV)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
