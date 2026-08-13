@@ -57,6 +57,16 @@ RTDETR_CMAKE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_rtdetr_std' / 'CMakeLists.txt'
 )
+YOLOV8_MANAGED_HEADER_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_yolov8_std' / 'include' / 'isaac_ros_yolov8_std' /
+    'yolov8_managed_hip_nodes.hpp'
+)
+RTDETR_MANAGED_HEADER_PATH = (
+    Path(__file__).parents[3] / 'migrated_packages' /
+    'isaac_ros_rtdetr_std' / 'include' / 'isaac_ros_rtdetr_std' /
+    'rtdetr_managed_hip_nodes.hpp'
+)
 ONNX_INFERENCE_CORE_SOURCE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
     'isaac_ros_onnx_inference' / 'src' / 'onnx_inference_core.cpp'
@@ -170,6 +180,12 @@ def test_detection_common_exports_namespaced_targets_to_downstream_packages():
     assert 'isaac_ros_detection_common::hip' in yolov8
     assert 'isaac_ros_detection_common::core' in rtdetr
     assert 'isaac_ros_detection_common::hip' in rtdetr
+
+
+def test_managed_tensor_publishers_include_the_tensor_list_type_adapter():
+    for header_path in (YOLOV8_MANAGED_HEADER_PATH, RTDETR_MANAGED_HEADER_PATH):
+        header = header_path.read_text()
+        assert 'gpu_ros_managed_tensor_list/type_adapter.hpp' in header
 
 
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():

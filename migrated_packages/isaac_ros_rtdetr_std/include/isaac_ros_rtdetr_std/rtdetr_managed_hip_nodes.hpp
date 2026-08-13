@@ -13,6 +13,7 @@
 #include "gpu_ros_managed_hip/hip_backend.hpp"
 #include "gpu_ros_managed_ros/managed_pub_sub.hpp"
 #include "gpu_ros_managed_tensor_list/tensor_list.hpp"
+#include "gpu_ros_managed_tensor_list/type_adapter.hpp"
 #include "isaac_ros_rtdetr_std/rtdetr_decoder.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/image.hpp"
