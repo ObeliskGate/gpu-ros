@@ -248,7 +248,7 @@ RtDetrManagedHipPreprocessorNode::RtDetrManagedHipPreprocessorNode(
     gpu_ros_managed::hip::make_fixed_device_pool(
       2U * sizeof(int64_t), pool_capacity_, gpu_device_id_));
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorListView>>(
+        gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &RtDetrManagedHipPreprocessorNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));
@@ -322,7 +322,7 @@ RtDetrManagedHipDecoderNode::RtDetrManagedHipDecoderNode(
   config_.confidence_threshold = declare_parameter<double>("confidence_threshold", 0.9);
   publisher_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorListView>>(
+        gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &RtDetrManagedHipDecoderNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));

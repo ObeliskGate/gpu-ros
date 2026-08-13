@@ -14,7 +14,9 @@
 
 """Proof-of-life test for the Phase 2a standard ROS2 + MIGraphX pipeline."""
 
+import os
 import pathlib
+import shutil
 import time
 import unittest
 
@@ -30,26 +32,34 @@ from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray
 
 
-MODEL_PATH = pathlib.Path('/tmp/rtdetr_std_migraphx_pol.onnx')
+TEST_ARTIFACT_ROOT = pathlib.Path(
+    f'/tmp/isaac_ros_rtdetr_std_migraphx_pol_{os.getpid()}')
+MODEL_PATH = TEST_ARTIFACT_ROOT / 'rtdetr.onnx'
+MIGRAPHX_CACHE_PATH = TEST_ARTIFACT_ROOT / 'migraphx_cache'
 NAMESPACE = 'rtdetr_migraphx_pol'
 
 
 def generate_test_model():
     """Create a small RT-DETR-shaped graph that must execute on MIGraphX."""
+    labels = [0] * 300
+    labels[0] = 7
+    boxes = [0.0] * (300 * 4)
+    boxes[:4] = [10.0, 20.0, 30.0, 50.0]
+    scores = [0.0] * 300
+    scores[0] = 0.95
     inputs = [
         helper.make_tensor_value_info('images', TensorProto.FLOAT, [1, 3, 640, 640]),
         helper.make_tensor_value_info('orig_target_sizes', TensorProto.INT64, [1, 2]),
     ]
     outputs = [
-        helper.make_tensor_value_info('labels', TensorProto.INT64, [1, 1]),
-        helper.make_tensor_value_info('boxes', TensorProto.FLOAT, [1, 1, 4]),
-        helper.make_tensor_value_info('scores', TensorProto.FLOAT, [1, 1]),
+        helper.make_tensor_value_info('labels', TensorProto.INT64, [1, 300]),
+        helper.make_tensor_value_info('boxes', TensorProto.FLOAT, [1, 300, 4]),
+        helper.make_tensor_value_info('scores', TensorProto.FLOAT, [1, 300]),
     ]
     initializers = [
-        helper.make_tensor('labels', TensorProto.INT64, [1, 1], [7]),
-        helper.make_tensor(
-            'boxes_base', TensorProto.FLOAT, [1, 1, 4], [10.0, 20.0, 30.0, 50.0]),
-        helper.make_tensor('scores_base', TensorProto.FLOAT, [1, 1], [0.95]),
+        helper.make_tensor('labels', TensorProto.INT64, [1, 300], labels),
+        helper.make_tensor('boxes_base', TensorProto.FLOAT, [1, 300, 4], boxes),
+        helper.make_tensor('scores_base', TensorProto.FLOAT, [1, 300], scores),
         helper.make_tensor('zero', TensorProto.FLOAT, [], [0.0]),
     ]
     nodes = [
@@ -78,6 +88,8 @@ def generate_test_model():
 @pytest.mark.launch_test
 def generate_test_description():
     """Launch the complete AMD target path with a deterministic test model."""
+    TEST_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=False)
+    MIGRAPHX_CACHE_PATH.mkdir()
     generate_test_model()
 
     image_encoder = ComposableNode(
@@ -135,6 +147,13 @@ def generate_test_description():
             decoder,
         ],
         output='screen',
+        additional_env={
+            'ORT_MIGRAPHX_MODEL_CACHE_PATH': str(MIGRAPHX_CACHE_PATH),
+            'ORT_MIGRAPHX_FP16_ENABLE': '0',
+            'ORT_MIGRAPHX_BF16_ENABLE': '0',
+            'ORT_MIGRAPHX_FP8_ENABLE': '0',
+            'ORT_MIGRAPHX_INT8_ENABLE': '0',
+        },
     )
 
     return launch.LaunchDescription([
@@ -157,7 +176,7 @@ class TestRtDetrMigraphxProofOfLife(unittest.TestCase):
         """Destroy test resources and the generated model."""
         cls.node.destroy_node()
         rclpy.shutdown()
-        MODEL_PATH.unlink(missing_ok=True)
+        shutil.rmtree(TEST_ARTIFACT_ROOT, ignore_errors=True)
 
     def test_detection_output(self):
         """Publish one image and validate the decoded deterministic output."""

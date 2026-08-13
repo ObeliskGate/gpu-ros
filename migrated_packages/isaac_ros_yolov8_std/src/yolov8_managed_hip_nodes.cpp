@@ -210,7 +210,7 @@ YoloV8ManagedHipDecoderNode::YoloV8ManagedHipDecoderNode(
   config_.num_classes = declare_parameter<int64_t>("num_classes", 80);
   publisher_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   subscriber_ = std::make_unique<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorListView>>(
+        gpu_ros_managed::ManagedTensorListView>>(
     this, "managed_tensor_input", std::bind(
       &YoloV8ManagedHipDecoderNode::InputCallback, this, std::placeholders::_1),
     rclcpp::QoS(10));
