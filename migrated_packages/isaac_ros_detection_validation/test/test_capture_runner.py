@@ -120,6 +120,14 @@ def test_amd_launcher_discovers_persistent_content_named_sif():
     assert 'No Apptainer SIF found under' in script
 
 
+def test_amd_launcher_requires_external_ort_for_formal_runs():
+    script = AMD_PHASE2_LAUNCHER_PATH.read_text()
+    assert 'resolve_external_ort' in script
+    assert 'require_external_ort' in script
+    assert 'legacy build-only content' in script
+    assert 'bootstrap|up|colcon|verify' in script
+
+
 def test_amd_managed_benchmark_graphs_use_migraphx_and_managed_transport():
     """Keep AMD Managed HIP throughput entry points separate from CUDA graphs."""
     benchmark_paths = (

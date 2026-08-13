@@ -48,9 +48,18 @@ OVG_PREPARE_ASSETS=1 ./docker/phase2-amd.sh bootstrap
 ~~~
 
 Commands invoking the launcher run on the host. `OVG_ORT_ROOT` is a
-container-side path, but it must be exported in the host shell before
-`verify`, `colcon`, or `shell`; the launcher passes it into the runtime and
-uses its fingerprint for workspace isolation.
+container-side path. It is required for formal `bootstrap`, `up`, `verify`,
+and `colcon` runs; `shell` may omit it only when the shell is being used to
+build the external ORT. The launcher passes it into the runtime and uses its
+fingerprint for workspace isolation.
+
+Every AMD build, validation, capture, and benchmark run uses the
+project-built external ONNX Runtime, regardless of GPU architecture. The
+`/opt/onnxruntime` copy inside the SIF is legacy build-only content and is
+never a valid formal runtime selection. The launcher discovers a single
+complete install under `${OVG_ORT_STATE_HOST:-<state-root>/ort}/install`;
+when more than one exists, set `OVG_ORT_ROOT` explicitly. A shell without an
+external install is permitted only to build that external install.
 
 Inside the runtime, verify the device, selected ORT, and workspace:
 
@@ -81,7 +90,8 @@ The runtime paths are:
 ~~~
 
 The launcher isolates build, install, and log directories by the external ORT
-fingerprint, or by the image/SIF fingerprint when builtin ORT is used.
+fingerprint. The image/SIF fingerprint is used only by the build-only shell
+before an external ORT install exists; it is never used for formal AMD work.
 
 ## GPU target and assets
 
@@ -147,8 +157,9 @@ contracts; they identify the same model and dataset content.
 
 ## External ONNX Runtime
 
-The image provides /opt/onnxruntime as a builtin fallback. Formal AMD
-validation should use a repository-owned external ORT 1.23.1 build:
+The image contains `/opt/onnxruntime` only to support image construction and
+the external-ORT build shell. Formal AMD work always uses a repository-owned
+external ORT 1.23.1 build:
 
 ~~~text
 /workspaces/ovg-ort/source/onnxruntime

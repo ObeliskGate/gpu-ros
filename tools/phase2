@@ -65,6 +65,13 @@ PY
   done < <(tr ',' '\n' <<<"${actual}")
 }
 
+require_external_ort() {
+  [[ -n "${OVG_ORT_ROOT:-}" ]] || {
+    echo "ERROR: external ORT is required for every AMD build/validation run; /opt/onnxruntime in the SIF is legacy build-only content" >&2
+    return 1
+  }
+}
+
 verify_external_ort_targets() {
   local root="${OVG_ORT_ROOT%/}"
   local build_info="${root}/build-info.txt"
@@ -114,7 +121,7 @@ show_env() {
   echo "/dev/kfd: $([[ -e /dev/kfd ]] && echo available || echo unavailable)"
   echo "/dev/dri: $([[ -d /dev/dri ]] && find /dev/dri -maxdepth 1 -name 'renderD*' -printf '%f ' || true)"
   echo "ONNXRUNTIME_ROOT: ${ONNXRUNTIME_ROOT:-unknown}"
-  echo "OVG_ORT_ROOT: ${OVG_ORT_ROOT:-builtin /opt/onnxruntime}"
+  echo "OVG_ORT_ROOT: ${OVG_ORT_ROOT:-unset (external ORT required; builtin /opt/onnxruntime is build-only)}"
   if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
     echo "external ORT fingerprint: $(cat "${OVG_ORT_ROOT%/}/.ovg-ort-fingerprint" 2>/dev/null || echo unknown)"
     echo "external ORT GPU targets: $(awk -F= '$1 == "gpu_targets" {print $2; exit}' "${OVG_ORT_ROOT%/}/build-info.txt" 2>/dev/null || echo unknown)"
@@ -169,6 +176,7 @@ verify_hip_environment() {
 }
 
 verify_env() {
+  require_external_ort
   show_env
   verify_colcon_profile
   verify_hip_environment
@@ -198,6 +206,7 @@ cache_clean() {
 }
 
 build_workspace() {
+  require_external_ort
   source_setups
   cd "${WORKSPACE_ROOT}"
   echo "+ colcon build"

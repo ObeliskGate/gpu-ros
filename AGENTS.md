@@ -148,6 +148,7 @@ Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking 
 
 - Use the existing official `isaac_ros_tensor_list_interfaces/msg/TensorList`; do not add a custom TensorList message in this repository.
 - ONNX Runtime must be discoverable through `ONNXRUNTIME_ROOT`, or through explicit `ONNXRUNTIME_INCLUDE_DIR` and `ONNXRUNTIME_LIBRARY` CMake parameters.
+- Every AMD build, validation, capture, and benchmark run must use the project-built external ONNX Runtime for its selected GPU target. The SIF copy at `/opt/onnxruntime` is legacy build-only content and is never a formal AMD runtime fallback.
 - Build the AMD Phase 2A profile with `-DBUILD_NITROS_TRANSPORT=OFF`, `-DORT_ENABLE_CUDA=OFF`, `-DORT_ENABLE_ROCM=OFF`, `-DORT_ENABLE_MIGRAPHX=ON`, and `-DBUILD_MIGRAPHX_POL_TEST=ON`.
 - Build AMD/CPU standard ROS 2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present. If `execution_provider:=migraphx` is requested without `-DORT_ENABLE_MIGRAPHX=ON`, the node must fail clearly instead of silently falling back to CPU.
 - The repository does not contain, download, or export YOLOv8 weights. YOLOv8 is an optional asset supplied by the user through the explicit local import command. Compatibility is determined by the canonical ONNX SHA-256 recorded in the runbook.

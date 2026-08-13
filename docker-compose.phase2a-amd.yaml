@@ -27,6 +27,7 @@ services:
     environment:
       ROS_DISTRO: ${ROS_DISTRO:-jazzy}
       OVG_ORT_ROOT: ${OVG_ORT_ROOT:-}
+      OVG_ORT_BUILD_MODE: ${OVG_ORT_BUILD_MODE:-0}
       OVG_ORT_STATE_ROOT: /workspaces/ovg-ort
       ONNXRUNTIME_ROOT: /opt/onnxruntime
       ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include

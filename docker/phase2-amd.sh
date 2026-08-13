@@ -48,7 +48,7 @@ Environment:
   OVG_STATE_ROOT=/path               Persistent host state root.
   AMD_GPU_TARGETS=gfx...,gfx...      Build targets; comma or semicolon separated.
   OVG_ORT_ROOT=/workspaces/ovg-ort/install/<fingerprint>
-                                      Exact external ORT install; empty uses /opt/onnxruntime.
+                                      Exact external ORT install; required for AMD runs.
   OVG_ORT_STATE_HOST=/path            Host directory bound at /workspaces/ovg-ort.
   OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif  SIF used by Apptainer.
   OVG_APPTAINER_IMAGE_URI=...        Optional URI for one-time SIF pull.
@@ -63,6 +63,54 @@ repo_check() {
     die "gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}"
   echo "amd_ros_object_detection: $(git -C "${ROOT_DIR}" rev-parse HEAD)"
   echo "gpu_ros_managed: $(git -C "${MANAGED_DIR}" rev-parse HEAD)"
+}
+
+external_ort_install_complete() {
+  local root="${1%/}"
+  [[ -f "${root}/.ovg-ort-fingerprint" ]] || return 1
+  [[ -f "${root}/include/onnxruntime_cxx_api.h" ]] || return 1
+  [[ -f "${root}/lib/libonnxruntime.so" ]] || return 1
+  [[ -f "${root}/lib/libonnxruntime_providers_shared.so" ]] || return 1
+  [[ -f "${root}/lib/libonnxruntime_providers_migraphx.so" ]] || return 1
+}
+
+resolve_external_ort() {
+  [[ -n "${OVG_ORT_ROOT:-}" ]] && return 0
+
+  local install_parent="${ORT_STATE_HOST}/install"
+  local candidates=()
+  local candidate
+  if [[ -d "${install_parent}" ]]; then
+    while IFS= read -r -d '' candidate; do
+      external_ort_install_complete "${candidate}" || continue
+      candidates+=("${candidate}")
+    done < <(
+      find "${install_parent}" -mindepth 1 -maxdepth 1 -type d -print0 \
+        | sort -z)
+  fi
+
+  if [[ ${#candidates[@]} -eq 1 ]]; then
+    local fingerprint="${candidates[0]##*/}"
+    [[ "${fingerprint}" =~ ^[A-Za-z0-9._+,=-]+$ ]] || die \
+      "external ORT install has an unsafe fingerprint: ${fingerprint}"
+    OVG_ORT_ROOT="${ORT_CONTAINER_ROOT}/install/${fingerprint}"
+    export OVG_ORT_ROOT
+    echo "External ORT: ${OVG_ORT_ROOT}"
+    return 0
+  fi
+
+  if [[ ${#candidates[@]} -gt 1 ]]; then
+    printf 'ERROR: multiple external ORT installs found under %s; set OVG_ORT_ROOT explicitly:\n' \
+      "${install_parent}" >&2
+    printf '  %s\n' "${candidates[@]}" >&2
+    return 1
+  fi
+  return 1
+}
+
+require_external_ort() {
+  resolve_external_ort && return 0
+  die "External ORT is required for every AMD build/validation run; no complete install was found under ${ORT_STATE_HOST}/install. The SIF /opt/onnxruntime is legacy build-only content. Set OVG_ORT_ROOT or build the external ORT first."
 }
 
 prepare_state() {
@@ -270,6 +318,7 @@ apptainer_args() {
     --env "OVG_RESULTS_ROOT=${OVG_RESULTS_ROOT}"
     --env "OVG_ORT_STATE_ROOT=${ORT_CONTAINER_ROOT}"
     --env "OVG_ORT_ROOT=${OVG_ORT_ROOT:-}"
+    --env "OVG_ORT_BUILD_MODE=${OVG_ORT_BUILD_MODE:-0}"
     --env "OVG_IMAGE_FINGERPRINT=${OVG_IMAGE_FINGERPRINT}"
     --env "OVG_WORKSPACE_FINGERPRINT=${OVG_WORKSPACE_FINGERPRINT}"
     --env "OVG_RUNTIME_EFFECTIVE=apptainer"
@@ -334,6 +383,20 @@ main() {
   prepare_state
   select_runtime
   repo_check
+
+  case "${command}" in
+    bootstrap|up|colcon|verify)
+      require_external_ort
+      ;;
+    shell)
+      if resolve_external_ort; then
+        unset OVG_ORT_BUILD_MODE
+      else
+        export OVG_ORT_BUILD_MODE=1
+        echo "WARNING: no external ORT selected; this shell is build-only. Build external ORT before colcon, verification, capture, or benchmark." >&2
+      fi
+      ;;
+  esac
 
   case "${command}" in
     bootstrap)

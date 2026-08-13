@@ -77,6 +77,11 @@ validate_external_ort() {
 
 resolve_hip_root
 
+if [[ -z "${OVG_ORT_ROOT:-}" && "${OVG_ORT_BUILD_MODE:-0}" != 1 ]]; then
+  echo "ERROR: external ORT is required for every AMD build/validation run; /opt/onnxruntime in the SIF is legacy build-only content" >&2
+  exit 1
+fi
+
 if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
   validate_external_ort
 fi
