@@ -78,7 +78,11 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         plugin=(
             "nvidia::isaac_ros::onnx_inference::"
             "StdToManagedHipTensorListNode"),
-        parameters=[{"gpu_device_id": 0}],
+        parameters=[{
+            "gpu_device_id": 0,
+            "managed_pool_capacity": 16,
+            "managed_pool_wait_timeout_ms": 100,
+        }],
         remappings=[
             ("tensor_input", "staged_std_input"),
             ("tensor_output", "staged_managed_input"),

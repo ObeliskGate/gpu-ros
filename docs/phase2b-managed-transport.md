@@ -225,6 +225,13 @@ They are named
 difference from direct Managed is the adapter and ROS standard-message
 materialization cost.
 
+The `StdToManagedHipTensorListNode` input adapter uses a fixed-capacity HIP
+pool per tensor byte size and an event-backed H2D write. It must drop a staged
+frame on pool exhaustion rather than perform an unbounded per-frame
+`hipMalloc` or send an untracked buffer into strict ORT. The
+`ManagedHipToStdTensorListNode` direction remains an explicit blocking D2H
+materialization for this control lane.
+
 The AMD ROCprof audit defaults to the direct production interpretation: no
 adapter direction is required. For staged-control diagnostics, pass
 `--require-adapter-directions` to require the expected H2D and D2H evidence.
