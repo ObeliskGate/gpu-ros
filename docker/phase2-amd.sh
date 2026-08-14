@@ -39,9 +39,79 @@ CONTAINER_ENTRYPOINT="${OVG_WORKSPACE_ROOT}/docker/phase2a-amd-entrypoint.sh"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+require_explicit_apptainer_environment() {
+  [[ "${RUNTIME}" == apptainer ]] || return 0
+
+  local name
+  for name in \
+    OVG_RUNTIME \
+    OVG_STATE_ROOT \
+    OVG_ORT_STATE_HOST \
+    OVG_APPTAINER_SIF \
+    GPU_ROS_MANAGED_DIR; do
+    [[ -n "${!name:-}" ]] || die \
+      "${name} is required for Apptainer work; source the HPC environment contract before running this launcher"
+  done
+
+  [[ "${OVG_RUNTIME}" == apptainer ]] || die \
+    "OVG_RUNTIME must be explicitly set to apptainer for this SIF workflow"
+  [[ -d "${STATE_ROOT}" ]] || die \
+    "OVG_STATE_ROOT does not exist or is not a directory: ${STATE_ROOT}"
+  [[ -d "${ORT_STATE_HOST}" ]] || die \
+    "OVG_ORT_STATE_HOST does not exist or is not a directory: ${ORT_STATE_HOST}"
+  [[ -f "${APPTAINER_SIF}" ]] || die \
+    "Apptainer SIF is not available: ${APPTAINER_SIF}"
+  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || die \
+    "gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}"
+}
+
+require_slurm_compute_node() {
+  [[ "${RUNTIME}" == apptainer ]] || return 0
+
+  case "${OVG_REQUIRE_SLURM:-1}" in
+    0)
+      echo "WARNING: OVG_REQUIRE_SLURM=0 explicitly disables the Apptainer Slurm/GPU allocation guard" >&2
+      return 0
+      ;;
+    1) ;;
+    *) die "OVG_REQUIRE_SLURM must be 1 or 0" ;;
+  esac
+
+  [[ "${SLURM_JOB_ID:-}" =~ ^[0-9]+$ ]] || die \
+    "no active Slurm allocation detected; request one with 'salloc -N 1 -n 1 -p mi3501x -t 04:00:00' before running AMD work"
+  [[ -n "${SLURM_JOB_NODELIST:-}" ]] || die \
+    "SLURM_JOB_NODELIST is missing; this shell is not inside a usable compute allocation"
+
+  local host_name
+  host_name="$(hostname -s 2>/dev/null || hostname)"
+  [[ "${host_name}" != login* ]] || die \
+    "compute work must not run on login node ${host_name}; enter the allocated compute node before launching Apptainer"
+
+  command -v squeue >/dev/null 2>&1 || die \
+    "squeue is unavailable; cannot verify the Slurm allocation state"
+  local job_record
+  job_record="$(squeue -h -j "${SLURM_JOB_ID}" -o '%T|%P|%N' 2>/dev/null | head -n 1)"
+  [[ -n "${job_record}" ]] || die \
+    "Slurm allocation ${SLURM_JOB_ID} is not visible to squeue; refusing to run on an unverified node"
+
+  local job_state job_partition job_nodes
+  IFS='|' read -r job_state job_partition job_nodes <<<"${job_record}"
+  [[ "${job_state}" == RUNNING ]] || die \
+    "Slurm allocation ${SLURM_JOB_ID} is not RUNNING (state=${job_state:-unknown})"
+  [[ "${job_partition}" == mi* || "${job_partition}" == devel* ]] || die \
+    "Slurm allocation ${SLURM_JOB_ID} is on non-AMD-GPU partition '${job_partition}'; refusing to run"
+
+  [[ -e /dev/kfd ]] || die \
+    "AMD GPU device /dev/kfd is unavailable on ${host_name}; an Apptainer GPU workload cannot start here"
+  [[ -d /dev/dri ]] || die \
+    "DRM device directory /dev/dri is unavailable on ${host_name}; an Apptainer GPU workload cannot start here"
+
+  echo "Slurm allocation: ${SLURM_JOB_ID} (${job_partition}, ${job_nodes}, ${host_name})"
+}
+
 usage() {
   cat >&2 <<'EOF'
-Usage: docker/phase2-amd.sh {bootstrap|build|up|colcon|verify|shell|stop|down}
+Usage: docker/phase2-amd.sh {bootstrap|build|up|colcon|verify|preflight|shell|stop|down}
 
 Environment:
   OVG_RUNTIME=docker|apptainer       Select runtime explicitly.
@@ -53,7 +123,13 @@ Environment:
   OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif  SIF used by Apptainer.
   OVG_APPTAINER_IMAGE_URI=...        Optional URI for one-time SIF pull.
   OVG_APPTAINER_INSTANCE=1           Opt into an Apptainer instance for up/stop.
+  OVG_REQUIRE_SLURM=1|0               Require a live Slurm GPU allocation for Apptainer (default 1).
+  OVG_ALLOW_BUILD_ONLY_SHELL=1        Explicitly allow a shell used to build external ORT.
   OVG_PREPARE_ASSETS=1               Prepare assets during bootstrap.
+
+Apptainer formal work fails closed unless it is launched from an active AMD
+GPU allocation with the required host paths set. Use `preflight` before
+colcon, verify, capture, or benchmark commands.
 EOF
 }
 
@@ -75,7 +151,12 @@ external_ort_install_complete() {
 }
 
 resolve_external_ort() {
-  [[ -n "${OVG_ORT_ROOT:-}" ]] && return 0
+  if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+    local fingerprint
+    fingerprint="$(external_ort_fingerprint)" || return 1
+    external_ort_install_complete "${ORT_STATE_HOST}/install/${fingerprint}"
+    return $?
+  fi
 
   local install_parent="${ORT_STATE_HOST}/install"
   local candidates=()
@@ -376,7 +457,7 @@ verify_runtime() {
 main() {
   local command="${1:-bootstrap}"
   case "${command}" in
-    bootstrap|build|up|colcon|verify|shell|stop|down) ;;
+    bootstrap|build|up|colcon|verify|preflight|shell|stop|down) ;;
     *) usage; exit 2 ;;
   esac
 
@@ -385,15 +466,30 @@ main() {
   repo_check
 
   case "${command}" in
-    bootstrap|up|colcon|verify)
+    bootstrap|up|colcon|verify|preflight|shell)
+      require_explicit_apptainer_environment
+      require_slurm_compute_node
+      ;;
+  esac
+
+  case "${command}" in
+    bootstrap|up|colcon|verify|preflight)
       require_external_ort
+      ;;
+    preflight)
+      echo "External ORT: ${OVG_ORT_ROOT}"
+      echo "PASS: AMD launcher environment and compute allocation are valid"
       ;;
     shell)
       if resolve_external_ort; then
         unset OVG_ORT_BUILD_MODE
-      else
+      elif [[ -n "${OVG_ORT_ROOT:-}" ]]; then
+        die "OVG_ORT_ROOT is set but does not point to a complete external ORT install"
+      elif [[ "${OVG_ALLOW_BUILD_ONLY_SHELL:-0}" == 1 ]]; then
         export OVG_ORT_BUILD_MODE=1
-        echo "WARNING: no external ORT selected; this shell is build-only. Build external ORT before colcon, verification, capture, or benchmark." >&2
+        echo "NOTICE: explicit build-only shell; build external ORT before formal AMD work" >&2
+      else
+        die "no external ORT selected; set OVG_ALLOW_BUILD_ONLY_SHELL=1 only for the intentional external-ORT build shell"
       fi
       ;;
   esac
@@ -433,6 +529,8 @@ main() {
       set_fingerprint
       [[ "${RUNTIME}" == docker ]] && start_runtime
       verify_runtime
+      ;;
+    preflight)
       ;;
     shell)
       set_fingerprint

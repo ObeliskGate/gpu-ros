@@ -154,6 +154,20 @@ def test_amd_launcher_requires_external_ort_for_formal_runs():
     assert 'bootstrap|up|colcon|verify' in script
 
 
+def test_amd_launcher_fails_closed_before_apptainer_work():
+    """Guard HPC Apptainer work against login-node and stale-job execution."""
+    script = AMD_PHASE2_LAUNCHER_PATH.read_text()
+    assert 'require_explicit_apptainer_environment' in script
+    assert 'require_slurm_compute_node' in script
+    assert 'SLURM_JOB_ID' in script
+    assert 'squeue -h -j' in script
+    assert '/dev/kfd' in script
+    assert '/dev/dri' in script
+    assert 'OVG_REQUIRE_SLURM' in script
+    assert 'OVG_ALLOW_BUILD_ONLY_SHELL' in script
+    assert 'preflight' in script
+
+
 def test_hip_preprocess_source_includes_full_runtime_header():
     script = HIP_PREPROCESS_SOURCE_PATH.read_text()
     assert '#include <hip/hip_runtime.h>' in script

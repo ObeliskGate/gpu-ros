@@ -53,6 +53,45 @@ and `colcon` runs; `shell` may omit it only when the shell is being used to
 build the external ORT. The launcher passes it into the runtime and uses its
 fingerprint for workspace isolation.
 
+### AMD HPCFund Apptainer workflow
+
+Do not run the Apptainer launcher on `login-node`. First obtain a single-node
+MI350X allocation, then run the launcher from the allocated compute node:
+
+~~~bash
+squeue -u "$USER"
+salloc -N 1 -n 1 -p mi3501x -t 04:00:00
+
+# AMD normally moves the prompt to the allocated node. If it does not, do not
+# launch the workload from login-node; enter the allocation with the job step:
+if [[ "$(hostname -s)" == login* ]]; then
+  srun --jobid="$SLURM_JOB_ID" --pty bash -l
+fi
+
+hostname
+export OVG_RUNTIME=apptainer
+export OVG_REQUIRE_SLURM=1
+export OVG_STATE_ROOT=/absolute/path/to/phase2-workspace/ovg-state
+export OVG_ORT_STATE_HOST=/absolute/path/to/phase2-workspace/ovg-state/ort
+export OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif
+export GPU_ROS_MANAGED_DIR=/absolute/path/to/phase2-workspace/gpu_ros_managed
+export OVG_ORT_ROOT=/workspaces/ovg-ort/install/d9b2048791ef-66fb994b0374-gfx950
+
+./docker/phase2-amd.sh preflight
+~~~
+
+`preflight` is mandatory before `colcon`, `verify`, capture, or benchmark
+work. It fails if the allocation is missing or no longer `RUNNING`, the
+current host is a login node, the allocation is not an AMD GPU partition,
+`/dev/kfd` or `/dev/dri` is unavailable, or a required host path is missing.
+After an SSH disconnect or an expired allocation, request a new allocation
+and rerun the environment block; never continue with an old `SLURM_JOB_ID`.
+
+The launcher requires the key Apptainer host variables explicitly. The only
+supported bypass is `OVG_REQUIRE_SLURM=0` for a deliberate non-HPC/local
+Apptainer setup; it must not be used on HPCFund. Docker/DevCloud workflows do
+not use this Slurm guard.
+
 Every AMD build, validation, capture, and benchmark run uses the
 project-built external ONNX Runtime, regardless of GPU architecture. The
 `/opt/onnxruntime` copy inside the SIF is legacy build-only content and is
@@ -68,12 +107,8 @@ phase2 env --verify
 phase2 assets verify
 ~~~
 
-For Apptainer, set OVG_RUNTIME=apptainer. The launcher automatically uses the
-single `phase2-amd*.sif` under `${OVG_STATE_ROOT:-.ovg}/images`, which defaults
-to `.ovg/images` next to the application checkout. Set OVG_APPTAINER_SIF
-explicitly only when that directory contains multiple SIFs or the image is
-stored elsewhere. The compute node does not need Docker, sudo, root, or
-fakeroot.
+For Apptainer, set `OVG_RUNTIME=apptainer` and the explicit host paths shown
+above. The compute node does not need Docker, sudo, root, or fakeroot.
 The launcher uses --rocm for device and driver-library passthrough; do not add
 manual /dev/kfd or /dev/dri binds. The SIF build definition is
 apptainer/phase2-amd.def.
@@ -171,8 +206,10 @@ Prepare a clean recursive v1.23.1 checkout. Build it inside the runtime, then
 select the resulting install from the host:
 
 ~~~bash
-# Host
-./docker/phase2-amd.sh shell
+# Host, inside the active compute allocation. This is the only shell that may
+# run without an external ORT install.
+unset OVG_ORT_ROOT
+OVG_ALLOW_BUILD_ONLY_SHELL=1 ./docker/phase2-amd.sh shell
 
 # Runtime
 export AMD_GPU_TARGETS=<actual-gfx>
@@ -184,6 +221,7 @@ exit
 
 # Host
 export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<ort-fingerprint>
+./docker/phase2-amd.sh preflight
 ./docker/phase2-amd.sh verify
 ./docker/phase2-amd.sh colcon
 ./docker/phase2-amd.sh shell
