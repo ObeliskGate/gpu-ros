@@ -1,59 +1,57 @@
 # Project Documentation
 
-The docs directory contains version-controlled project documentation that can
-be reused across developers and runtime environments.
-
-It documents architecture, supported software baselines, build and run
-contracts, experiment procedures, acceptance criteria, and reproducible
-results. Usernames, hostnames, SSH settings, site-specific mount points,
-Slurm allocation details, temporary image/archive names, one-off file transfers,
-and unstructured work logs belong in inner_docs/ instead.
+This directory contains the public build, experiment, validation, and result
+documentation for the AMD object-detection migration. Procedures use
+parameterized paths and external artifact locations so that they can be used
+on different hosts and runtime backends.
 
 ## Supported baseline
 
 | Dependency | Baseline |
 | --- | --- |
 | ROS 2 | Jazzy |
-| Isaac ROS | 4.5 |
-| ONNX Runtime | 1.23.1 |
-| gpu_ros_managed | Independently checked-out sibling selected with `GPU_ROS_MANAGED_DIR` |
+| Isaac ROS compatibility | 4.5 |
+| ONNX Runtime | 1.23.1 with the MIGraphX patch series described in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) |
+| `gpu_ros_managed` | Required sibling checkout; select and record its revision for each run |
 
-`gpu_ros_managed` is a required sibling repository. Clone and update it
-independently, then point the runtime launcher at that checkout:
+Set the locations used by a local runtime before following a procedure:
 
 ```bash
-git clone --branch phase2b-amd \
-  git@github.com:ObeliskGate/gpu_ros_managed.git \
-  /path/to/gpu_ros_managed
-
-export GPU_ROS_MANAGED_DIR=/path/to/gpu_ros_managed
-git -C "$GPU_ROS_MANAGED_DIR" pull --ff-only origin phase2b-amd
+export GPU_ROS_MANAGED_DIR=<path-to-gpu_ros_managed>
+export OVG_ASSETS_ROOT=<external-assets-root>
+export OVG_RESULTS_ROOT=<external-results-root>
+export OVG_STATE_ROOT=<persistent-runtime-state-root>
 ```
 
-The launcher reports the selected sibling commit for the run archive but does
-not enforce a commit pin. The same manually selected checkout is used for
-AMD and NVIDIA Managed transport runs.
+The launchers record the selected sibling revision and external ORT identity
+in the run archive. Exact source revisions and license boundaries are
+centralized in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md), rather
+than repeated in source headers.
 
-## Document types
+## Documents
 
-The experiment documents are general procedures and do not contain
-machine-specific performance numbers:
+Procedures:
 
-- phase0-benchmark-reproduction.md
-- phase1-experiment.md
-- phase2a-experiment.md
-- phase2b-managed-transport.md
+- [`phase0-benchmark-reproduction.md`](phase0-benchmark-reproduction.md) — the
+  NVIDIA RT-DETR and Grounding DINO reference benchmarks.
+- [`phase1-experiment.md`](phase1-experiment.md) — the NVIDIA A/B/C/D comparison.
+- [`phase2a-experiment.md`](phase2a-experiment.md) — AMD standard ROS 2 and
+  MIGraphX build, validation, and benchmark procedure.
+- [`phase2b-managed-transport.md`](phase2b-managed-transport.md) — managed
+  transport contracts and comparison procedure.
 
-Result reports contain hardware, software versions, dates, input identity,
-measurements, and interpretation limits:
+Results and interpretation:
 
-- phase1-results.md
-- phase2b-results.md
-- [`phase2a-results.md`](phase2a-results.md), the formal Phase 2A closure report
+- [`phase1-results.md`](phase1-results.md) — historical NVIDIA results.
+- [`phase2a-results.md`](phase2a-results.md) — AMD Phase 2A closure results.
+- [`phase2b-results.md`](phase2b-results.md) — current Phase 2B implementation
+  and validation status.
+- [`nitros-4.5-port-map.md`](nitros-4.5-port-map.md) — the NITROS port and
+  upstream attribution map.
 
-Container-internal paths such as /workspaces/ovg-assets are project runtime
-contracts. They are different from private host mount paths and may appear in
-the experiment documents.
+Raw JSON, bags, traces, profiles, logs, container images, and model/data
+assets are run artifacts. They are kept in an explicitly selected external
+result or asset location and are not part of the source tree.
 
 ## Phase boundaries
 
@@ -61,11 +59,10 @@ the experiment documents.
   benchmarks.
 - Phase 1 compares TensorRT and ONNX Runtime, and NITROS and standard ROS 2,
   on NVIDIA.
-- Phase 2A is complete for the AMD RT-DETR and YOLOv8 standard ROS 2
-  TensorList + ONNX Runtime MIGraphX paths. It does not reproduce the Phase 1
-  A/B/C/D matrix on AMD.
-- Phase 2A is the accepted standard ROS 2 reference. Phase 2B develops the
-  reusable gpu_ros_managed device-buffer transport against that reference and
-  must not remove its independent availability. The revised AMD Phase 2B
-  production lane is direct Managed HIP with a strict ORT I/O contract; the
-  adapter-based staged-control lane remains an explicit comparison graph.
+- Phase 2A validates AMD RT-DETR and YOLOv8 standard ROS 2 TensorList paths
+  with ONNX Runtime and MIGraphX. It does not reproduce the NVIDIA A/B/C/D
+  matrix on AMD.
+- Phase 2B develops reusable `gpu_ros_managed` device-buffer transport against
+  the Phase 2A reference. The standard ROS 2 path remains independently
+  available, and direct Managed HIP and staged-control graphs are documented
+  as separate comparison lanes.

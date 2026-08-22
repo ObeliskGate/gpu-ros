@@ -10,8 +10,9 @@ as a 4.5 result without a new run.
 
 The final performance runs used an A100-SXM4-40GB, a Release build, the same
 1280x720 input dataset, a 640x640 network resolution, and dataset hash
-`8eee68848ee1a95e21b1cd44d5d6ba71`. The machine-readable values are in
-[`phase1_final_summary_20260722.json`](../migrated_packages/benchmark_results/phase1_final_summary_20260722.json).
+`8eee68848ee1a95e21b1cd44d5d6ba71`. The source tree keeps the summarized
+values below; the machine-readable report and complete launch logs belong in
+an external result archive rather than in Git.
 
 ## RT-DETR Results
 
@@ -121,6 +122,6 @@ the earlier B values. They also confirm that bridge timing was not the cause of
 the YOLOv8 A/B reversal. Fixed-rate first/last endpoint latency varies more
 between runs and should not be read as a stable per-frame mean.
 
-Older July 2 JSON files remain in `migrated_packages/benchmark_results` for
-history. They predate device-resident I/O Binding and Release enforcement and
-must not be mixed into the final matrix.
+Older July 2 machine-readable reports predate device-resident I/O Binding and
+Release enforcement. They remain historical external artifacts and must not be
+mixed into the final matrix.

@@ -35,22 +35,17 @@ performance result.
 | RT-DETR MI350X application revision | `9fd3f79cfec8e2e530009d4a0a25d5742e877b2f` |
 | YOLOv8 MI350X application revision | `635e285f2546535bd02cd3eda0ab47cc1b3aaa89` |
 | `gpu_ros_managed` revision | `d33381358f2259b9ad16e8847b5a6dccd0357ebc` |
-| External ORT fingerprint | `d9b2048791ef-66fb994b0374-gfx950` |
+| External ORT | 1.23.1; source and patch revisions are recorded in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) |
 | Input dataset | `r2bdataset2024_v1/r2b_robotarm` |
 | Input dataset hash | `8eee68848ee1a95e21b1cd44d5d6ba71` |
 | Image input | 1280x720 |
 | Network input | 640x640 |
 
 The RT-DETR MI350X benchmark was recorded on 2026-08-04. The YOLOv8 MI350X
-benchmark was recorded on 2026-08-06. The report omits hostnames, allocation
-identifiers, and private mount paths. Runtime archives retain the associated
-SIF, profile, bag, and result hashes outside Git.
-
-The closure archive contains the RT-DETR benchmark record
-`phase2a_amd_external_gfx950_apptainer.json`, the RT-DETR stamp comparison
-`amd-gfx950-apptainer-vs-nvidia-config-c-stamp.json`, the YOLOv8 benchmark
-record `isaac_ros_yolov8_phase2a_amd_gfx950_benchmark_01.json`, and the YOLOv8
-stamp comparison `amd-vs-nvidia-yolov8-gfx950-stamp.json`.
+benchmark was recorded on 2026-08-06. Raw benchmark records, comparisons,
+profiles, bags, logs, and container metadata are external run artifacts; this
+report keeps the summarized evidence and does not encode their site-specific
+paths or filenames.
 
 The canonical YOLOv8 asset is a user-provided YOLOv8s ONNX model with the
 following recorded identity: Ultralytics 8.4.67, COCO 80 classes, opset 17,

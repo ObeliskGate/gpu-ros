@@ -15,10 +15,9 @@ __pycache__/
 /third_party/
 /.ovg/
 
-# colcon artifacts accidentally created under benchmark_results
-/migrated_packages/benchmark_results/build/
-/migrated_packages/benchmark_results/install/
-/migrated_packages/benchmark_results/log/
+# Generated benchmark output is always out of tree.
+/migrated_packages/benchmark_results/
+/ovg-results/
 
 # Project-local Codex skill installed outside Git
 /.agents/skills/amd-hpcfund-slurm/

@@ -20,7 +20,7 @@ historical until explicitly rerun and labeled as 4.5.
 - NVIDIA GPU and compatible driver
 - Docker and NVIDIA Container Toolkit
 - Git
-- NGC API key
+- access to the required NGC models and dataset
 - gpu_ros_managed checkout (the exact revision is enforced only for a managed
   transport reproduction)
 
@@ -35,10 +35,11 @@ library only when the image and driver requirements call for it.
 
 ## Start the NVIDIA runtime
 
-Set the NGC key in the repository .env file before starting the helper:
+Provide the NGC credential through the deployment's secret mechanism before
+starting the helper. Never commit a credential or a local `.env` file:
 
 ~~~bash
-NGC_CLI_API_KEY=<your-key>
+export NGC_CLI_API_KEY="<provided-by-secret-manager>"
 ~~~
 
 Then run:
@@ -60,7 +61,7 @@ It checks the asset root itself, not the contents of every model and dataset.
 Inside the container:
 
 ~~~bash
-export ASSETS_ROOT=/workspaces/isaac_ros-dev/assets
+export ASSETS_ROOT=<persistent-assets-root>
 export DOWNLOAD_ROOT=${ASSETS_ROOT}/downloads
 
 mkdir -p ${ASSETS_ROOT}/models ${ASSETS_ROOT}/datasets ${DOWNLOAD_ROOT}
@@ -99,12 +100,12 @@ find ${DOWNLOAD_ROOT} -name '*.onnx' -exec cp {} \
   ${ASSETS_ROOT}/models/grounding_dino/grounding_dino_model.onnx \;
 ~~~
 
-The required files are:
+The required files, relative to `${ASSETS_ROOT}`, are:
 
 ~~~text
-/workspaces/isaac_ros-dev/assets/models/sdetr/sdetr_grasp.onnx
-/workspaces/isaac_ros-dev/assets/datasets/r2b_dataset/r2b_robotarm
-/workspaces/isaac_ros-dev/assets/models/grounding_dino/grounding_dino_model.onnx
+${ASSETS_ROOT}/models/sdetr/sdetr_grasp.onnx
+${ASSETS_ROOT}/datasets/r2b_dataset/r2b_robotarm
+${ASSETS_ROOT}/models/grounding_dino/grounding_dino_model.onnx
 ~~~
 
 Prepare assets once and retain them in the persistent assets volume.
@@ -112,7 +113,7 @@ Prepare assets once and retain them in the persistent assets volume.
 ## Run the benchmarks
 
 ~~~bash
-export ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT=/workspaces/isaac_ros-dev/assets
+export ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT=${ASSETS_ROOT}
 
 launch_test \
   "$(ros2 pkg prefix isaac_ros_rtdetr_benchmark)"/share/isaac_ros_rtdetr_benchmark/scripts/isaac_ros_rtdetr_graph.py

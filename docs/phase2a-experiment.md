@@ -43,6 +43,8 @@ Docker and Apptainer use docker/phase2-amd.sh:
 export OVG_RUNTIME=docker
 export OVG_STATE_ROOT=<persistent-host-state-directory>
 export GPU_ROS_MANAGED_DIR=<host-path-to-gpu_ros_managed>
+export OVG_ASSETS_ROOT=/workspaces/ovg-assets
+export OVG_RESULTS_ROOT=/workspaces/ovg-results
 
 OVG_PREPARE_ASSETS=1 ./docker/phase2-amd.sh bootstrap
 ~~~
@@ -53,48 +55,42 @@ and `colcon` runs; `shell` may omit it only when the shell is being used to
 build the external ORT. The launcher passes it into the runtime and uses its
 fingerprint for workspace isolation.
 
-### AMD HPCFund Apptainer workflow
+### Apptainer on a managed scheduler
 
-Do not run the Apptainer launcher on `login-node`. First obtain a single-node
-MI350X allocation, then run the launcher from the allocated compute node:
+When using a scheduler, request an interactive AMD GPU allocation according to
+the local site policy and run the launcher from the allocated compute node.
+The following is intentionally parameterized; partition names, host paths,
+and image locations are deployment choices:
 
 ~~~bash
-squeue -u "$USER"
-salloc -N 1 -n 1 -p mi3501x -t 04:00:00
+salloc -N 1 -n 1 -p <amd-gpu-partition> -t <wall-time>
+srun --pty bash -l
 
-# AMD normally moves the prompt to the allocated node. If it does not, do not
-# launch the workload from login-node; enter the allocation with the job step:
-if [[ "$(hostname -s)" == login* ]]; then
-  srun --jobid="$SLURM_JOB_ID" --pty bash -l
-fi
-
-hostname
 export OVG_RUNTIME=apptainer
 export OVG_REQUIRE_SLURM=1
-export OVG_STATE_ROOT=/absolute/path/to/phase2-workspace/ovg-state
-export OVG_ORT_STATE_HOST=/absolute/path/to/phase2-workspace/ovg-state/ort
-export OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif
-export GPU_ROS_MANAGED_DIR=/absolute/path/to/phase2-workspace/gpu_ros_managed
-export OVG_ORT_ROOT=/workspaces/ovg-ort/install/d9b2048791ef-66fb994b0374-gfx950
+export OVG_STATE_ROOT=<persistent-host-state-directory>
+export OVG_ORT_STATE_HOST=<persistent-external-ort-state-directory>
+export OVG_APPTAINER_SIF=<path-to-apptainer-image>
+export GPU_ROS_MANAGED_DIR=<host-path-to-gpu_ros_managed>
+export OVG_ORT_ROOT=<container-path-to-external-ort-install>
 
 ./docker/phase2-amd.sh preflight
 ~~~
 
 `preflight` is mandatory before `colcon`, `verify`, capture, or benchmark
-work. It fails if the allocation is missing or no longer `RUNNING`, the
-current host is a login node, the allocation is not an AMD GPU partition,
-`/dev/kfd` or `/dev/dri` is unavailable, or a required host path is missing.
-After an SSH disconnect or an expired allocation, request a new allocation
-and rerun the environment block; never continue with an old `SLURM_JOB_ID`.
+work. It checks the active allocation, AMD GPU partition, device access, and
+required host paths. After an SSH disconnect or an expired allocation, request
+a new allocation and rerun the environment block; do not reuse stale scheduler
+state.
 
-The launcher requires the key Apptainer host variables explicitly. The only
-supported bypass is `OVG_REQUIRE_SLURM=0` for a deliberate non-HPC/local
-Apptainer setup; it must not be used on HPCFund. Docker/DevCloud workflows do
-not use this Slurm guard.
+The launcher requires the key Apptainer host variables explicitly. The
+supported local bypass is `OVG_REQUIRE_SLURM=0` for a deliberate
+non-scheduler Apptainer setup. Docker workflows do not use this scheduler
+guard.
 
 Every AMD build, validation, capture, and benchmark run uses the
-project-built external ONNX Runtime, regardless of GPU architecture. The
-`/opt/onnxruntime` copy inside the SIF is legacy build-only content and is
+project-built external ONNX Runtime, regardless of GPU architecture. Any
+image-bundled ORT copy is legacy build-only content and is
 never a valid formal runtime selection. The launcher discovers a single
 complete install under `${OVG_ORT_STATE_HOST:-<state-root>/ort}/install`;
 when more than one exists, set `OVG_ORT_ROOT` explicitly. A shell without an
@@ -113,15 +109,15 @@ The launcher uses --rocm for device and driver-library passthrough; do not add
 manual /dev/kfd or /dev/dri binds. The SIF build definition is
 apptainer/phase2-amd.def.
 
-The runtime paths are:
+The default runtime paths inside the container are:
 
 ~~~text
-/workspaces/amd_ros_object_detection
-/workspaces/amd_ros_object_detection/src/gpu_ros_managed
-/workspaces/ovg-ort
-/workspaces/ovg-assets
-/workspaces/ovg-cache
-/workspaces/ovg-results
+${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}
+${GPU_ROS_MANAGED_DIR:-/workspaces/amd_ros_object_detection/src/gpu_ros_managed}
+${OVG_ORT_STATE_ROOT:-/workspaces/ovg-ort}
+${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}
+${OVG_CACHE_ROOT:-/workspaces/ovg-cache}
+${OVG_RESULTS_ROOT:-/workspaces/ovg-results}
 ~~~
 
 The launcher isolates build, install, and log directories by the external ORT
@@ -148,11 +144,11 @@ phase2 assets status
 phase2 assets verify
 ~~~
 
-The canonical AMD paths are:
+The canonical AMD paths, relative to `${OVG_ASSETS_ROOT}`, are:
 
 ~~~text
-/workspaces/ovg-assets/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx
-/workspaces/ovg-assets/datasets/r2bdataset2024_v1/r2b_robotarm
+${OVG_ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx
+${OVG_ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm
 ~~~
 
 ### Optional YOLOv8 asset
@@ -192,14 +188,14 @@ contracts; they identify the same model and dataset content.
 
 ## External ONNX Runtime
 
-The image contains `/opt/onnxruntime` only to support image construction and
-the external-ORT build shell. Formal AMD work always uses a repository-owned
+The image-bundled ORT is used only to support image construction and the
+external-ORT build shell. Formal AMD work always uses a repository-owned
 external ORT 1.23.1 build:
 
 ~~~text
-/workspaces/ovg-ort/source/onnxruntime
-/workspaces/ovg-ort/build/<ort-fingerprint>
-/workspaces/ovg-ort/install/<ort-fingerprint>
+${OVG_ORT_STATE_ROOT}/source/onnxruntime
+${OVG_ORT_STATE_ROOT}/build/<ort-fingerprint>
+${OVG_ORT_STATE_ROOT}/install/<ort-fingerprint>
 ~~~
 
 Prepare a clean recursive v1.23.1 checkout. Build it inside the runtime, then
@@ -213,14 +209,14 @@ OVG_ALLOW_BUILD_ONLY_SHELL=1 ./docker/phase2-amd.sh shell
 
 # Runtime
 export AMD_GPU_TARGETS=<actual-gfx>
-export OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
+export OVG_ORT_STATE_ROOT=<container-external-ort-state-root>
 export ORT_BUILD_JOBS="${SLURM_CPUS_PER_TASK:-$(nproc)}"
 ./tools/build-phase2a-external-ort.sh
 
 exit
 
 # Host
-export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<ort-fingerprint>
+export OVG_ORT_ROOT=${OVG_ORT_STATE_ROOT}/install/<ort-fingerprint>
 ./docker/phase2-amd.sh preflight
 ./docker/phase2-amd.sh verify
 ./docker/phase2-amd.sh colcon
@@ -281,7 +277,7 @@ and accidentally re-enable unrelated NVIDIA-only tests or transports.
 Without an explicit ORT_MIGRAPHX_MODEL_CACHE_PATH, the entrypoint uses:
 
 ~~~text
-/workspaces/ovg-cache/migraphx/<image-or-sif-fingerprint>
+${OVG_CACHE_ROOT:-/workspaces/ovg-cache}/migraphx/<image-or-sif-fingerprint>
 ~~~
 
 Inspect it with:
@@ -337,7 +333,7 @@ use_max_dim_for_orig_size=false:
 ros2 launch \
   isaac_ros_rtdetr_std \
   rtdetr_ort_std_image.launch.py \
-  model_file_path:=/workspaces/ovg-assets/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx \
+  model_file_path:=${OVG_ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx \
   image_topic:=/camera_1/color/image_raw \
   execution_provider:=migraphx
 ~~~
@@ -386,7 +382,7 @@ ros2 run isaac_ros_detection_validation \
   --reference-bag <reference-bag> \
   --candidate-bag <candidate-bag> \
   --match-policy <stamp-or-index> \
-  --output-json /workspaces/ovg-results/amd-vs-nvidia-config-c.json
+  --output-json ${OVG_RESULTS_ROOT}/amd-vs-nvidia-config-c.json
 ~~~
 
 For both lanes, require MIGraphX kernel events and record the provider
