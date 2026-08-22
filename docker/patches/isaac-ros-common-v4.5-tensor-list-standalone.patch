@@ -3,6 +3,11 @@ Applies-To: isaac_ros_common v4.5-0
 Reason: The message definitions do not require CUDA. isaac_ros_common is used only
 for installed version metadata, but its top-level package requires nvcc.
 
+This patch intentionally contains only the Apache-licensed CMakeLists.txt
+change. The upstream package.xml dependency is edited by
+tools/edit_isaac_ros_tensor_list_interfaces_package.py after the exact
+upstream checkout is verified; no upstream package.xml context is redistributed.
+
 diff --git a/isaac_ros_tensor_list_interfaces/CMakeLists.txt b/isaac_ros_tensor_list_interfaces/CMakeLists.txt
 --- a/isaac_ros_tensor_list_interfaces/CMakeLists.txt
 +++ b/isaac_ros_tensor_list_interfaces/CMakeLists.txt
