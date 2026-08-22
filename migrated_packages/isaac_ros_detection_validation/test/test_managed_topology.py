@@ -1,4 +1,4 @@
-# Copyright 2026 Maintainer
+# Copyright 2026 Boshen Chen
 
 import ast
 from pathlib import Path

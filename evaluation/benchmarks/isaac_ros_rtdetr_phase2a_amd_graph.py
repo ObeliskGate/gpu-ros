@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 # Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# Copyright 2026 Maintainer
+# Modified for the AMD standard-ROS and MIGraphX path in 2026.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,8 +38,8 @@ from ros2_benchmark import BenchmarkMode, ROS2BenchmarkConfig, ROS2BenchmarkTest
 from ros2_benchmark_interfaces.srv import PlayMessages  # noqa: E402
 from vision_msgs.msg import Detection2DArray  # noqa: E402
 
-RESULTS_DIR = 'migrated_packages/benchmark_results'
-RESULTS_FILE = os.environ.get('R2B_RESULT_FILE', '')
+RESULTS_DIR = os.environ.get('OVG_RESULTS_ROOT', '/workspaces/ovg-results')
+RESULTS_FILE = os.environ.get('R2B_RESULT_FILE') or 'isaac_ros_rtdetr_phase2a_amd.json'
 MIGRAPHX_WARMUP_TIMEOUT_SEC = float(os.environ.get('MIGRAPHX_WARMUP_TIMEOUT_SEC', '900'))
 
 
@@ -200,5 +200,3 @@ class TestIsaacROSRtDetrPhase2aAmd(ROS2BenchmarkTest):
 
     def test_benchmark(self):
         self.run_benchmark()
-
-# Modified derived source; upstream NVIDIA Apache-2.0 attribution retained.

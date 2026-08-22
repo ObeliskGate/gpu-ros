@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2026 Maintainer
+# Copyright 2026 Boshen Chen
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,7 +47,8 @@ fi
 
 WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
 APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
-AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${APP_ROOT}/migrated_packages/benchmark_results/phase2b_audits}"
+RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
+AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${RESULTS_ROOT}/phase2b_audits}"
 AUDIT_ROOT="${AUDIT_PARENT}/${AUDIT_NAME}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CAPTURE_RUNNER="${SCRIPT_DIR}/run_nvidia_fixed_input_capture.sh"

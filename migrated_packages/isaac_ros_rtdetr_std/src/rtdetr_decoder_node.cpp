@@ -1,4 +1,6 @@
-// Copyright 2026 Maintainer
+// SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+// Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// Copyright 2026 Boshen Chen
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +13,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+// Modified from NVIDIA Isaac ROS RT-DETR decoder sources for standard ROS 2
+// integration; see THIRD_PARTY_NOTICES.md for the exact pinned revision.
 
 #include "isaac_ros_rtdetr_std/rtdetr_decoder_node.hpp"
 

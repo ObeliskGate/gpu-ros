@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-# Copyright (c) 2026 Maintainer
+# Modified to compare the managed transport around the official NVIDIA graph
+# in 2026;
+# see THIRD_PARTY_NOTICES.md for the external source boundary.
 # SPDX-License-Identifier: Apache-2.0
 """Managed YOLOv8: official NITROS pre/post-processing and ORT CUDA."""
 
@@ -118,5 +120,3 @@ class TestIsaacROSYoloV8Managed(ROS2BenchmarkTest):
     def test_benchmark(self):
         """Run the configured benchmark matrix."""
         self.run_benchmark()
-
-# Modified derived source; upstream NVIDIA Apache-2.0 attribution retained.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2026 Maintainer
+# Copyright 2026 Boshen Chen
 #
 # Licensed under the Apache License, Version 2.0 (the "License").
 # Prepare RT-DETR FP16 artifacts for the Phase 1 benchmark matrix:

@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 # Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Modified from the NVIDIA Isaac ROS RT-DETR benchmark composition; see
+# THIRD_PARTY_NOTICES.md for the exact pinned revision and local boundary.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -136,5 +138,3 @@ class TestIsaacROSRtDetrConfigB(ROS2BenchmarkTest):
 
     def test_benchmark(self):
         self.run_benchmark()
-
-# Modified derived source; upstream NVIDIA Apache-2.0 attribution retained.

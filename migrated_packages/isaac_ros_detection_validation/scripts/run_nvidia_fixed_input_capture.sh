@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2026 Maintainer
+# Copyright 2026 Boshen Chen
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,7 +44,8 @@ WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
 APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
 ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-${WORKSPACE_ROOT}/assets}"
 INPUT_BAG="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
-OUTPUT_ROOT="${CAPTURE_OUTPUT_ROOT:-${APP_ROOT}/migrated_packages/benchmark_results/phase2b_bags}"
+RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
+OUTPUT_ROOT="${CAPTURE_OUTPUT_ROOT:-${RESULTS_ROOT}/phase2b_bags}"
 OUTPUT_PATH="${OUTPUT_ROOT}/${OUTPUT_NAME}"
 LOG_ROOT="${OUTPUT_ROOT}/logs"
 LAUNCH_LOG="${LOG_ROOT}/${OUTPUT_NAME}.launch.log"

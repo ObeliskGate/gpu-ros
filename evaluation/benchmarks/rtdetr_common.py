@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 # Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Modified from the NVIDIA Isaac ROS RT-DETR benchmark graph; see
+# THIRD_PARTY_NOTICES.md for the exact pinned revision and local changes.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -160,5 +162,3 @@ def make_monitor_node(namespace):
         parameters=[{'monitor_data_format': 'vision_msgs/msg/Detection2DArray'}],
         remappings=[('output', 'detections_output')],
     )
-
-# Modified derived source; upstream NVIDIA Apache-2.0 attribution retained.

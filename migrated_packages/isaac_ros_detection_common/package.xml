@@ -3,7 +3,7 @@
   <name>isaac_ros_detection_common</name>
   <version>0.1.0</version>
   <description>Shared object-detection preprocessing geometry and CPU reference core.</description>
-  <maintainer email="maintainer@example.com">Maintainer</maintainer>
+  <maintainer email="unnamets@gmail.com">Boshen Chen</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>sensor_msgs</depend>

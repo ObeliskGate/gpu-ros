@@ -1,4 +1,4 @@
-// Copyright 2026 Maintainer
+// Copyright 2026 Boshen Chen
 
 #include "isaac_ros_detection_common/hip_preprocess.hpp"
 
