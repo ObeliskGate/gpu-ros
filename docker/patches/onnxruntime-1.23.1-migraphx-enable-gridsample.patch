@@ -1,3 +1,5 @@
+SPDX-FileCopyrightText: Microsoft Corporation
+SPDX-License-Identifier: MIT
 Upstream-Status: Not submitted
 Applies-To: ONNX Runtime v1.23.1
 Reason: MIGraphX 7.1.1 implements the ONNX GridSample parser, but the

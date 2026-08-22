@@ -1,3 +1,5 @@
+SPDX-FileCopyrightText: Microsoft Corporation
+SPDX-License-Identifier: MIT
 Upstream-Status: Backport
 Upstream-Commit: https://github.com/microsoft/onnxruntime/commit/935affb848b1635be7d48d9c21c625300e7a3571
 
