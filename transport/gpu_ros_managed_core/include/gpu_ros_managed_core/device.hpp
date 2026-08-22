@@ -1,4 +1,4 @@
-// Copyright 2026 gpu_ros_managed contributors
+// Copyright 2026 Boshen Chen
 // Licensed under the Apache License, Version 2.0.
 #ifndef GPU_ROS_MANAGED_CORE__DEVICE_HPP_
 #define GPU_ROS_MANAGED_CORE__DEVICE_HPP_

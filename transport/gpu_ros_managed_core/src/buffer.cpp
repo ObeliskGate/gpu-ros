@@ -1,9 +1,9 @@
-// Modified from NVIDIA Isaac ROS NITROS buffer sources for the managed backend-neutral API.
-
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 // Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Copyright 2026 gpu_ros_managed contributors
 // Licensed under the Apache License, Version 2.0.
+// Modified from NVIDIA Isaac ROS NITROS 4.5 for backend-neutral CUDA/HIP
+// allocation, event, and ownership handling.
 #include "gpu_ros_managed_core/buffer.hpp"
 
 #include <condition_variable>

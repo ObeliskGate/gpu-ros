@@ -1,6 +1,5 @@
-// SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
-// Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// Copyright 2026 gpu_ros_managed contributors
+// SPDX-FileCopyrightText: Boshen Chen
+// Copyright 2026 Boshen Chen
 // Licensed under the Apache License, Version 2.0.
 #ifndef GPU_ROS_MANAGED_TENSOR_LIST__TYPE_ADAPTER_HPP_
 #define GPU_ROS_MANAGED_TENSOR_LIST__TYPE_ADAPTER_HPP_

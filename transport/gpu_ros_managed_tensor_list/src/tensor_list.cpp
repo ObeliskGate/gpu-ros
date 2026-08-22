@@ -1,9 +1,9 @@
-// Modified from NVIDIA Isaac ROS NITROS TensorList sources for the managed backend-neutral API.
-
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 // Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Copyright 2026 gpu_ros_managed contributors
 // Licensed under the Apache License, Version 2.0.
+// Modified from NVIDIA Isaac ROS NITROS TensorList sources for managed
+// backend-neutral storage.
 #include "gpu_ros_managed_tensor_list/tensor_list.hpp"
 
 #include <limits>

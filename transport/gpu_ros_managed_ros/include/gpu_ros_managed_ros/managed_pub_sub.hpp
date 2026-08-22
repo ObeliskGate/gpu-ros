@@ -1,9 +1,9 @@
-// Modified from NVIDIA Isaac ROS NITROS managed publisher/subscriber sources for the managed backend-neutral API.
-
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 // Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Copyright 2026 gpu_ros_managed contributors
 // Licensed under the Apache License, Version 2.0.
+// Modified from NVIDIA Isaac ROS managed NITROS publisher/subscriber headers
+// to remove GXF-specific behavior.
 #ifndef GPU_ROS_MANAGED_ROS__MANAGED_PUB_SUB_HPP_
 #define GPU_ROS_MANAGED_ROS__MANAGED_PUB_SUB_HPP_
 

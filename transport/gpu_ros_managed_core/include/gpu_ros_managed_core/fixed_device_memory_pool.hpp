@@ -1,9 +1,9 @@
-// Modified from NVIDIA Isaac ROS NITROS memory-pool sources for the managed backend-neutral API.
-
 // SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
 // Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Copyright 2026 gpu_ros_managed contributors
 // Licensed under the Apache License, Version 2.0.
+// Modified from NVIDIA Isaac ROS NITROS 4.5 to use the backend-neutral buffer
+// and event contract.
 #ifndef GPU_ROS_MANAGED_CORE__FIXED_DEVICE_MEMORY_POOL_HPP_
 #define GPU_ROS_MANAGED_CORE__FIXED_DEVICE_MEMORY_POOL_HPP_
 
