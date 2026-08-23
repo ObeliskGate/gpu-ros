@@ -110,6 +110,26 @@ def merge_gap_clusters(
     return clusters
 
 
+def prior_contiguous_window(
+    records: list[dict[str, Any]],
+    previous_index: int,
+    maximum_count: int = 32,
+    maximum_callback_gap_ns: int = 100_000_000,
+) -> list[dict[str, Any]]:
+    """Return the records before a gap without crossing a trial boundary."""
+    window_start = previous_index
+    while window_start > 0 and previous_index - window_start + 1 < maximum_count:
+        previous = records[window_start - 1]
+        current = records[window_start]
+        callback_gap_ns = current["callback_start_ns"] - previous["callback_start_ns"]
+        if current["message_id"] != previous["message_id"] + 1:
+            break
+        if callback_gap_ns <= 0 or callback_gap_ns > maximum_callback_gap_ns:
+            break
+        window_start -= 1
+    return records[window_start:previous_index + 1]
+
+
 def main() -> None:
     args = parse_args()
     prefix = Path(args.prefix)
@@ -161,8 +181,7 @@ def main() -> None:
     clusters = merge_gap_clusters(gaps)
     print(f"inference ID gaps: {len(gaps)} ranges in {len(clusters)} clusters")
     for cluster_number, (start, end, previous_index) in enumerate(clusters, 1):
-        window_start = max(0, previous_index - 31)
-        window = inference_ok[window_start:previous_index + 1]
+        window = prior_contiguous_window(inference_ok, previous_index)
         window_runs = [record["run_inference_ns"] for record in window]
         window_totals = [record["total_ns"] for record in window]
         window_handoffs = []
@@ -202,7 +221,7 @@ def main() -> None:
         last_handoff = window_handoffs[-1] if window_handoffs else 0
         print(
             f"cluster {cluster_number}: ids={start}..{end} missing={missing} "
-            f"prior32_ids={window[0]['message_id']}..{window[-1]['message_id']}"
+            f"prior{len(window)}_ids={window[0]['message_id']}..{window[-1]['message_id']}"
         )
         print(
             f"  mean arrival={mean_ms(arrival_intervals):.3f}ms "
@@ -228,7 +247,7 @@ def main() -> None:
                 f"{slowest['output_materialize_ns'] / 1_000_000:.3f}ms"
             )
             print(
-                f"  prior32 phase means: input_setup="
+                f"  prior{len(window)} phase means: input_setup="
                 f"{mean_ms([record['input_setup_ns'] for record in window]):.3f}ms "
                 f"ort_session="
                 f"{mean_ms([record['ort_session_run_ns'] for record in window]):.3f}ms "
