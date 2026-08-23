@@ -3,8 +3,8 @@
 Maintainer: Boshen Chen (@ObeliskGate)
 
 `gpu_ros_managed` is a small ROS 2 transport and ownership layer for device
-buffers and TensorLists. It provides one backend-neutral core with CUDA and
-HIP implementations, plus ROS 2 publisher/subscriber and TensorList adapters.
+buffers and TensorBundles. It provides one backend-neutral core with CUDA and
+HIP implementations, plus ROS 2 publisher/subscriber and TensorBundle adapters.
 Inference engines, model code, and application graphs remain outside this
 repository.
 
@@ -25,7 +25,7 @@ The ROS packages are:
 | `gpu_ros_managed_cuda` | CUDA allocation, stream, event, and copy backend |
 | `gpu_ros_managed_hip` | HIP allocation, stream, event, and copy backend |
 | `gpu_ros_managed_ros` | intra-process managed publisher/subscriber wrappers |
-| `gpu_ros_managed_tensor_list` | managed TensorList value type and ROS adapter |
+| `gpu_ros_managed_tensor_bundle` | managed TensorBundle value type and ROS adapter |
 
 ## Ownership and synchronization contract
 
@@ -73,6 +73,7 @@ colcon build --merge-install \
   --packages-select \
     gpu_ros_managed_core \
     gpu_ros_managed_ros \
+    gpu_ros_managed_tensor_bundle \
     gpu_ros_managed_hip
 ```
 
@@ -83,7 +84,7 @@ been submitted. See the public headers and tests for the complete API.
 
 ## NITROS provenance and license boundary
 
-Several buffer, pool, TensorList, and managed ROS files are file-level ports
+Several buffer, pool, TensorBundle, and managed ROS files are file-level ports
 of Apache-2.0 source files from NVIDIA Isaac ROS NITROS `v4.5-0`, commit
 `82310fce298d3d9db26945a3a988d5c471d14973`. Their headers retain the NVIDIA
 copyright and identify the local modifications. The NITROS repository and
@@ -103,7 +104,7 @@ project and is not an NVIDIA official project.
 - Correctness depends on callers recording real completion events and using
   the matching backend/device/stream.
 - Pool capacity and shutdown timeouts are application policy choices.
-- The ROS TensorList adapter copies host data and performs blocking device to
+- The ROS TensorBundle adapter copies host data and performs blocking device to
   host conversion when serializing a device tensor; it is not a claim of
   end-to-end zero-copy.
 - GPU benchmarks, models, datasets, traces, and runtime artifacts are not

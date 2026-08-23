@@ -2,9 +2,9 @@
 // Copyright (c) 2023-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Copyright 2026 gpu_ros_managed contributors
 // Licensed under the Apache License, Version 2.0.
-// Modified from NVIDIA Isaac ROS NITROS TensorList sources for managed
+// Modified from NVIDIA Isaac ROS NITROS Tensor sources for managed
 // backend-neutral storage.
-#include "gpu_ros_managed_tensor_list/tensor_list.hpp"
+#include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 
 #include <limits>
 #include <stdexcept>
@@ -103,7 +103,7 @@ ManagedTensor ManagedTensor::from_host_copy(
     std::move(name), dtype, std::move(shape), HostBuffer::copy(pointer, size));
 }
 
-ManagedTensorList::ManagedTensorList(
+ManagedTensorBundle::ManagedTensorBundle(
   std_msgs::msg::Header header, std::vector<ManagedTensor> tensors)
 : header_(std::move(header)), tensors_(std::move(tensors))
 {
@@ -115,16 +115,16 @@ ManagedTensorList::ManagedTensorList(
   }
   for (const auto & tensor : tensors_) {
     if (tensor.is_host() != host) {
-      throw std::invalid_argument("A TensorList cannot mix host and device tensors");
+      throw std::invalid_argument("A TensorBundle cannot mix host and device tensors");
     }
     if (!host &&
       std::get<std::shared_ptr<DeviceBuffer>>(tensor.storage())->device_id() != device)
     {
-      throw std::invalid_argument("A TensorList cannot mix backend/device allocations");
+      throw std::invalid_argument("A TensorBundle cannot mix backend/device allocations");
     }
   }
 }
-const ManagedTensor & ManagedTensorList::get_tensor(const std::string & name) const
+const ManagedTensor & ManagedTensorBundle::get_tensor(const std::string & name) const
 {
   for (const auto & tensor : tensors_) {
     if (tensor.name() == name) {return tensor;}

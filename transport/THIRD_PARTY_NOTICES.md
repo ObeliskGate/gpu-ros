@@ -14,14 +14,19 @@ NVIDIA Isaac ROS NITROS `v4.5-0`, commit
 - `gpu_ros_managed_core/src/buffer.cpp`
 - `gpu_ros_managed_core/include/gpu_ros_managed_core/fixed_device_memory_pool.hpp`
 - `gpu_ros_managed_core/src/fixed_device_memory_pool.cpp`
-- `gpu_ros_managed_tensor_list/include/gpu_ros_managed_tensor_list/tensor_list.hpp`
-- `gpu_ros_managed_tensor_list/src/tensor_list.cpp`
+- `gpu_ros_managed_tensor_bundle/include/gpu_ros_managed_tensor_bundle/tensor_bundle.hpp`
+- `gpu_ros_managed_tensor_bundle/src/tensor_bundle.cpp`
 - `gpu_ros_managed_ros/include/gpu_ros_managed_ros/managed_pub_sub.hpp`
 
 The exact upstream file attribution is retained in each derived file, and the
 files contain a notice describing the local backend-neutral or GXF-free
 modification. NITROS repository/package metadata is not treated as a blanket
 Apache license for all of NITROS.
+
+The managed package uses the independent `gpu_ros_tensor_bundle_msgs` message
+package from the sibling object-detection repository. Its TypeAdapter is
+project-authored and does not depend on NVIDIA's `TensorList` message package;
+the NVIDIA conversion boundary lives in the application repository.
 
 ## Project-original code
 

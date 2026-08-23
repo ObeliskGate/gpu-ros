@@ -7,9 +7,9 @@ Reference commit: `82310fce298d3d9db26945a3a988d5c471d14973`
 |---|---|
 | `isaac_ros_nitros/include/isaac_ros_nitros/types/nitros_buffer.hpp` | `gpu_ros_managed_core/src/buffer.cpp`, public handle API |
 | `isaac_ros_nitros/include/isaac_ros_nitros/types/cuda_memory_pool.hpp` | `gpu_ros_managed_core/src/fixed_device_memory_pool.cpp` |
-| `isaac_ros_nitros_tensor_list_type/.../nitros_tensor*.{hpp,cpp}` | `gpu_ros_managed_tensor_list` |
+| `isaac_ros_nitros_tensor_list_type/.../nitros_tensor*.{hpp,cpp}` | `gpu_ros_managed_tensor_bundle` |
 | `isaac_ros_managed_nitros/.../managed_nitros_{publisher,subscriber}.hpp` | `gpu_ros_managed_ros` |
-| `isaac_ros_nitros_tensor_list_type/src/nitros_tensor_list.cpp` | ROS TypeAdapter in `gpu_ros_managed_tensor_list` |
+| `isaac_ros_nitros_tensor_list_type/src/nitros_tensor_list.cpp` and builder sources | Managed TensorBundle value port; the ROS TypeAdapter is project-original |
 
 Ported source retains the exact upstream copyright and Apache-2.0 identity
 where implementation behavior is directly derived. Each such file also has a
