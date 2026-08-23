@@ -66,6 +66,25 @@ def print_distribution(label: str, values_ns: list[int]) -> None:
     )
 
 
+def mean_ms(values_ns: list[int]) -> float:
+    if not values_ns:
+        return 0.0
+    return sum(values_ns) / len(values_ns) / 1_000_000
+
+
+def encoder_end_ns(record: dict[str, Any]) -> int:
+    return record["callback_start_ns"] + record["total_ns"]
+
+
+def handoff_ns(
+    record: dict[str, Any], encoder_by_id: dict[int, dict[str, Any]]
+) -> int | None:
+    source = encoder_by_id.get(record["message_id"])
+    if source is None:
+        return None
+    return record["callback_start_ns"] - encoder_end_ns(source)
+
+
 def find_gaps(records: list[dict[str, Any]]) -> list[tuple[int, int, int]]:
     gaps = []
     previous_id = None
@@ -102,12 +121,11 @@ def main() -> None:
     inference_ok = [record for record in inference if record["status"] == "ok"]
     encoder_by_id = {record["message_id"]: record for record in encoder_ok}
 
-    handoff_ns = []
+    all_handoffs_ns = []
     for record in inference_ok:
-        source = encoder_by_id.get(record["message_id"])
-        if source is not None:
-            encoder_end = source["callback_start_ns"] + source["total_ns"]
-            handoff_ns.append(record["callback_start_ns"] - encoder_end)
+        delay = handoff_ns(record, encoder_by_id)
+        if delay is not None:
+            all_handoffs_ns.append(delay)
 
     print(f"target interval: {interval_ms:.3f}ms at {args.rate:.4f}Hz")
     print(f"encoder callbacks: {len(encoder)} ({len(encoder_ok)} ok)")
@@ -120,29 +138,72 @@ def main() -> None:
     print_distribution(
         "inference publish", [record["publish_ns"] for record in inference_ok]
     )
-    print_distribution("encoder-to-inference handoff", handoff_ns)
+    print_distribution(
+        "inference lock wait", [record["lock_wait_ns"] for record in inference_ok]
+    )
+    print_distribution("encoder-to-inference handoff", all_handoffs_ns)
 
     gaps = find_gaps(inference_ok)
     clusters = merge_gap_clusters(gaps)
     print(f"inference ID gaps: {len(gaps)} ranges in {len(clusters)} clusters")
     for cluster_number, (start, end, previous_index) in enumerate(clusters, 1):
-        window_start = max(0, previous_index - 9)
+        window_start = max(0, previous_index - 31)
         window = inference_ok[window_start:previous_index + 1]
         window_runs = [record["run_inference_ns"] for record in window]
         window_totals = [record["total_ns"] for record in window]
         window_handoffs = []
         for record in window:
-            source = encoder_by_id.get(record["message_id"])
-            if source is not None:
-                encoder_end = source["callback_start_ns"] + source["total_ns"]
-                window_handoffs.append(record["callback_start_ns"] - encoder_end)
-        missing = sum(gap_end - gap_start + 1 for gap_start, gap_end, _ in gaps
-                      if gap_start >= start and gap_end <= end)
+            delay = handoff_ns(record, encoder_by_id)
+            if delay is not None:
+                window_handoffs.append(delay)
+
+        arrival_intervals = []
+        callback_intervals = []
+        post_callback_gaps = []
+        for previous, current in zip(window, window[1:]):
+            if current["message_id"] != previous["message_id"] + 1:
+                continue
+            previous_source = encoder_by_id.get(previous["message_id"])
+            current_source = encoder_by_id.get(current["message_id"])
+            if previous_source is not None and current_source is not None:
+                arrival_intervals.append(
+                    encoder_end_ns(current_source) - encoder_end_ns(previous_source)
+                )
+            callback_intervals.append(
+                current["callback_start_ns"] - previous["callback_start_ns"]
+            )
+            post_callback_gaps.append(
+                current["callback_start_ns"]
+                - previous["callback_start_ns"]
+                - previous["total_ns"]
+            )
+
+        missing = sum(
+            gap_end - gap_start + 1
+            for gap_start, gap_end, _ in gaps
+            if gap_start >= start and gap_end <= end
+        )
+        slowest = max(window, key=lambda record: record["run_inference_ns"])
+        first_handoff = window_handoffs[0] if window_handoffs else 0
+        last_handoff = window_handoffs[-1] if window_handoffs else 0
         print(
             f"cluster {cluster_number}: ids={start}..{end} missing={missing} "
-            f"prior10_max_run={max(window_runs, default=0) / 1_000_000:.3f}ms "
-            f"prior10_max_total={max(window_totals, default=0) / 1_000_000:.3f}ms "
-            f"prior10_max_handoff={max(window_handoffs, default=0) / 1_000_000:.3f}ms"
+            f"prior32_ids={window[0]['message_id']}..{window[-1]['message_id']}"
+        )
+        print(
+            f"  mean arrival={mean_ms(arrival_intervals):.3f}ms "
+            f"callback_interval={mean_ms(callback_intervals):.3f}ms "
+            f"run={mean_ms(window_runs):.3f}ms total={mean_ms(window_totals):.3f}ms"
+        )
+        print(
+            f"  handoff={first_handoff / 1_000_000:.3f}ms"
+            f"->{last_handoff / 1_000_000:.3f}ms "
+            f"max_post_callback_gap={max(post_callback_gaps, default=0) / 1_000_000:.3f}ms"
+        )
+        print(
+            f"  slowest_run=id {slowest['message_id']} "
+            f"run={slowest['run_inference_ns'] / 1_000_000:.3f}ms "
+            f"total={slowest['total_ns'] / 1_000_000:.3f}ms"
         )
 
 
