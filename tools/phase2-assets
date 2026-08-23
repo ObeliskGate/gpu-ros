@@ -210,7 +210,8 @@ def _validate_rtdetr_with_onnx(path: Path) -> None:
         output_shapes[0], 1, 300, "labels", allow_symbolic=True)
     _require_known_shape_dimension(
         output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(output_shapes[1], 2, 4, "boxes")
+    _require_known_shape_dimension(
+        output_shapes[1], 2, 4, "boxes", allow_symbolic=True)
     _require_known_shape_dimension(
         output_shapes[2], 1, 300, "scores", allow_symbolic=True)
 
@@ -267,7 +268,8 @@ def _validate_rtdetr_with_onnxruntime(path: Path) -> None:
         output_shapes[0], 1, 300, "labels", allow_symbolic=True)
     _require_known_shape_dimension(
         output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(output_shapes[1], 2, 4, "boxes")
+    _require_known_shape_dimension(
+        output_shapes[1], 2, 4, "boxes", allow_symbolic=True)
     _require_known_shape_dimension(
         output_shapes[2], 1, 300, "scores", allow_symbolic=True)
 
