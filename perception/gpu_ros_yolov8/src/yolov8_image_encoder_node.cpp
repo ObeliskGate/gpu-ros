@@ -31,6 +31,7 @@ YoloV8ImageEncoderNode::YoloV8ImageEncoderNode(const rclcpp::NodeOptions options
   config_.tensor_name = declare_parameter<std::string>("tensor_name", "images");
   config_.output_width = declare_parameter<int64_t>("output_width", 640);
   config_.output_height = declare_parameter<int64_t>("output_height", 640);
+  debug_message_flow_ = declare_parameter<bool>("debug_message_flow", false);
   if (
     config_.tensor_name.empty() || config_.output_width <= 0 || config_.output_height <= 0 ||
     config_.output_width > std::numeric_limits<int>::max() ||
@@ -49,6 +50,7 @@ YoloV8ImageEncoderNode::YoloV8ImageEncoderNode(const rclcpp::NodeOptions options
 
 void YoloV8ImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
 {
+  TrackMessageId(msg->header.stamp.sec);
   try {
     pub_->publish(EncodeYoloV8Image(*msg, config_));
   } catch (const std::exception & error) {
@@ -56,6 +58,26 @@ void YoloV8ImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
       get_logger(), *get_clock(), 5000,
       "YOLOv8 image encoder dropped frame: %s", error.what());
   }
+}
+
+void YoloV8ImageEncoderNode::TrackMessageId(int64_t message_id)
+{
+  if (!debug_message_flow_) {
+    return;
+  }
+  if (has_last_message_id_ && message_id > last_message_id_ + 1) {
+    RCLCPP_WARN(
+      get_logger(),
+      "MESSAGE_FLOW_GAP stage=image_encoder_input previous=%lld current=%lld missing=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
+      static_cast<long long>(message_id - last_message_id_ - 1));
+  } else if (has_last_message_id_ && message_id <= last_message_id_) {
+    RCLCPP_INFO(
+      get_logger(), "MESSAGE_FLOW_RESET stage=image_encoder_input previous=%lld current=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+  }
+  last_message_id_ = message_id;
+  has_last_message_id_ = true;
 }
 
 }  // namespace gpu_ros::yolov8

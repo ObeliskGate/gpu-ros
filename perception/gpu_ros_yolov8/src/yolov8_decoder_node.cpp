@@ -35,6 +35,7 @@ YoloV8DecoderNode::YoloV8DecoderNode(const rclcpp::NodeOptions options)
   config_.confidence_threshold = declare_parameter<double>("confidence_threshold", 0.25);
   config_.nms_threshold = declare_parameter<double>("nms_threshold", 0.45);
   config_.num_classes = declare_parameter<int64_t>("num_classes", 80);
+  debug_message_flow_ = declare_parameter<bool>("debug_message_flow", false);
 
   pub_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   sub_ = create_subscription<TensorBundle>(
@@ -44,11 +45,32 @@ YoloV8DecoderNode::YoloV8DecoderNode(const rclcpp::NodeOptions options)
 
 void YoloV8DecoderNode::InputCallback(const TensorBundle::SharedPtr msg)
 {
+  TrackMessageId(msg->header.stamp.sec);
   try {
     pub_->publish(DecodeYoloV8TensorBundle(*msg, config_));
   } catch (const std::exception & error) {
     RCLCPP_ERROR(get_logger(), "Failed to decode YOLOv8 TensorBundle: %s", error.what());
   }
+}
+
+void YoloV8DecoderNode::TrackMessageId(int64_t message_id)
+{
+  if (!debug_message_flow_) {
+    return;
+  }
+  if (has_last_message_id_ && message_id > last_message_id_ + 1) {
+    RCLCPP_WARN(
+      get_logger(),
+      "MESSAGE_FLOW_GAP stage=decoder_input previous=%lld current=%lld missing=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
+      static_cast<long long>(message_id - last_message_id_ - 1));
+  } else if (has_last_message_id_ && message_id <= last_message_id_) {
+    RCLCPP_INFO(
+      get_logger(), "MESSAGE_FLOW_RESET stage=decoder_input previous=%lld current=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+  }
+  last_message_id_ = message_id;
+  has_last_message_id_ = true;
 }
 
 }  // namespace gpu_ros::yolov8

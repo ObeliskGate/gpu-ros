@@ -16,6 +16,7 @@
 #define GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -37,6 +38,7 @@ public:
 private:
   void OnTensors(gpu_ros_managed::ManagedTensorBundleView inputs);
   void FinalizeOrtProfile(const char * reason) noexcept;
+  void TrackMessageId(int64_t message_id);
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorBundleIO> io_;
@@ -47,6 +49,9 @@ private:
   size_t ort_profile_frames_{0};
   size_t inference_count_{0};
   bool output_probe_runtime_logged_{false};
+  bool debug_message_flow_{false};
+  bool has_last_message_id_{false};
+  int64_t last_message_id_{0};
 };
 
 }  // namespace gpu_ros::onnx_inference

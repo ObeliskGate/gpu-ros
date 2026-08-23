@@ -45,6 +45,10 @@ MIGRAPHX_CACHE_PATH = os.environ.get(
 os.environ.setdefault("ORT_MIGRAPHX_MODEL_CACHE_PATH", MIGRAPHX_CACHE_PATH)
 MIGRAPHX_WARMUP_TIMEOUT_SEC = float(
     os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
+DEBUG_MESSAGE_FLOW = os.environ.get(
+    "YOLOV8_BENCHMARK_DEBUG_MESSAGE_FLOW", "false").lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 def make_std_playback_node(namespace):
@@ -92,6 +96,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "tensor_name": common.ORT_INPUT_TENSOR_NAME,
             "output_width": common.NETWORK_RESOLUTION["width"],
             "output_height": common.NETWORK_RESOLUTION["height"],
+            "debug_message_flow": DEBUG_MESSAGE_FLOW,
         }],
     )
 
@@ -104,6 +109,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "model_file_path": model_path,
             "execution_provider": "migraphx",
             "transport": "std",
+            "debug_message_flow": DEBUG_MESSAGE_FLOW,
         }],
         remappings=[
             ("tensor_input", "encoded_tensor"),
@@ -121,6 +127,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "confidence_threshold": 0.25,
             "nms_threshold": 0.45,
             "num_classes": 80,
+            "debug_message_flow": DEBUG_MESSAGE_FLOW,
         }],
     )
 

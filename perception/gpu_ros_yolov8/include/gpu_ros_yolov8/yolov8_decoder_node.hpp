@@ -21,6 +21,8 @@
 #ifndef GPU_ROS_YOLOV8__YOLOV8_DECODER_NODE_HPP_
 #define GPU_ROS_YOLOV8__YOLOV8_DECODER_NODE_HPP_
 
+#include <cstdint>
+
 #include "gpu_ros_yolov8/yolov8_decoder.hpp"
 
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
@@ -39,10 +41,14 @@ private:
   using TensorBundle = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 
   void InputCallback(const TensorBundle::SharedPtr msg);
+  void TrackMessageId(int64_t message_id);
 
   rclcpp::Subscription<TensorBundle>::SharedPtr sub_;
   rclcpp::Publisher<vision_msgs::msg::Detection2DArray>::SharedPtr pub_;
   YoloV8DecoderConfig config_;
+  bool debug_message_flow_{false};
+  bool has_last_message_id_{false};
+  int64_t last_message_id_{0};
 };
 
 }  // namespace gpu_ros::yolov8

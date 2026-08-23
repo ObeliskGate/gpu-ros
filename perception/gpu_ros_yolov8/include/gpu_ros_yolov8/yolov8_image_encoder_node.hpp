@@ -15,6 +15,8 @@
 #ifndef GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_NODE_HPP_
 #define GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_NODE_HPP_
 
+#include <cstdint>
+
 #include "gpu_ros_yolov8/yolov8_image_encoder.hpp"
 
 #include "rclcpp/rclcpp.hpp"
@@ -33,10 +35,14 @@ private:
   using TensorBundle = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 
   void InputCallback(const Image::ConstSharedPtr msg);
+  void TrackMessageId(int64_t message_id);
 
   rclcpp::Subscription<Image>::SharedPtr sub_;
   rclcpp::Publisher<TensorBundle>::SharedPtr pub_;
   YoloV8ImageEncoderConfig config_;
+  bool debug_message_flow_{false};
+  bool has_last_message_id_{false};
+  int64_t last_message_id_{0};
 };
 
 }  // namespace gpu_ros::yolov8

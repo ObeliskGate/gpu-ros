@@ -47,6 +47,7 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("transport", "std");
   const std::string managed_io_contract =
     declare_parameter<std::string>("managed_io_contract", "");
+  debug_message_flow_ = declare_parameter<bool>("debug_message_flow", false);
   const auto managed_input_contracts =
     declare_parameter<std::vector<std::string>>(
       "managed_input_contracts", std::vector<std::string>{});
@@ -173,6 +174,7 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
     return;
   }
 
+  TrackMessageId(inputs.header().stamp.sec);
   std::lock_guard<std::mutex> lock(inference_mutex_);
   try {
     TensorBundleOutput output;
@@ -206,6 +208,26 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame after an unknown exception");
   }
+}
+
+void OnnxInferenceNode::TrackMessageId(int64_t message_id)
+{
+  if (!debug_message_flow_) {
+    return;
+  }
+  if (has_last_message_id_ && message_id > last_message_id_ + 1) {
+    RCLCPP_WARN(
+      get_logger(),
+      "MESSAGE_FLOW_GAP stage=inference_input previous=%lld current=%lld missing=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
+      static_cast<long long>(message_id - last_message_id_ - 1));
+  } else if (has_last_message_id_ && message_id <= last_message_id_) {
+    RCLCPP_INFO(
+      get_logger(), "MESSAGE_FLOW_RESET stage=inference_input previous=%lld current=%lld",
+      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+  }
+  last_message_id_ = message_id;
+  has_last_message_id_ = true;
 }
 
 }  // namespace gpu_ros::onnx_inference
