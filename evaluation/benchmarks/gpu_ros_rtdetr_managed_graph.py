@@ -26,7 +26,6 @@ def launch_setup(container_prefix, container_sigterm_timeout):
     nitros_to_managed = ComposableNode(
         name='NitrosToManaged', namespace=ns, package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
-        parameters=[{'nitros_to_managed.enable_timing': True}],
         remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')])
     onnx = ComposableNode(
         name='OnnxInference', namespace=ns, package='gpu_ros_onnx_inference',
@@ -40,7 +39,6 @@ def launch_setup(container_prefix, container_sigterm_timeout):
     managed_to_nitros = ComposableNode(
         name='ManagedToNitros', namespace=ns, package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
-        parameters=[{'managed_to_nitros.enable_timing': True}],
         remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')])
     decoder = ComposableNode(
         name='RtdetrDecoder', namespace=ns, package='isaac_ros_rtdetr',

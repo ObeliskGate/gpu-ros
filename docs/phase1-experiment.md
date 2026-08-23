@@ -92,6 +92,11 @@ launch_test \
   src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_c_graph.py
 launch_test \
   src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_d_graph.py
+
+# Managed device-buffer comparison: official NITROS pre/post-processing with
+# ORT CUDA between NitrosToManagedTensorBundle and ManagedToNitrosTensorBundle.
+launch_test \
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_managed_graph.py
 ~~~
 
 ~~~bash
@@ -107,6 +112,14 @@ launch_test \
 
 Start each graph once. The benchmark framework owns warm-up, measured
 iterations, throughput search, and fixed-rate trials.
+
+The Managed RT-DETR run is a separate transport check against Config C, not a
+replacement for Config D. It uses the same old NVIDIA SyntheticaDETR asset and
+the same NITROS preprocessor/decoder as Config C. Compare its peak prediction,
+mean output at peak, fixed-rate endpoint latencies, and missed frames with C;
+the managed device-buffer path must show no material throughput or latency
+regression. Keep the adapter's optional timing diagnostics disabled during the
+formal benchmark.
 
 ## Numeric validation and diagnostics
 
