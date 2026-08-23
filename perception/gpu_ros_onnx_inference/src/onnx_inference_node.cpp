@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <memory>
 #include <limits>
 #include <stdexcept>
@@ -27,6 +28,25 @@
 
 namespace gpu_ros::onnx_inference
 {
+
+namespace
+{
+
+using SteadyClock = std::chrono::steady_clock;
+
+int64_t ToNanoseconds(SteadyClock::time_point timestamp)
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+    timestamp.time_since_epoch()).count();
+}
+
+int64_t DurationNanoseconds(
+  SteadyClock::time_point start, SteadyClock::time_point end)
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
+
+}  // namespace
 
 OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("onnx_inference_node", options)
@@ -48,6 +68,10 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   const std::string managed_io_contract =
     declare_parameter<std::string>("managed_io_contract", "");
   debug_message_flow_ = declare_parameter<bool>("debug_message_flow", false);
+  timing_report_path_ = declare_parameter<std::string>("timing_report_path", "");
+  if (!timing_report_path_.empty()) {
+    timing_records_.reserve(16384);
+  }
   const auto managed_input_contracts =
     declare_parameter<std::vector<std::string>>(
       "managed_input_contracts", std::vector<std::string>{});
@@ -149,6 +173,7 @@ OnnxInferenceNode::~OnnxInferenceNode()
       "buffers remain orphan-safe and were not force-released.");
   }
   FinalizeOrtProfile("shutdown");
+  WriteTimingReport();
 }
 
 void OnnxInferenceNode::FinalizeOrtProfile(const char * reason) noexcept
@@ -174,12 +199,21 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
     return;
   }
 
-  TrackMessageId(inputs.header().stamp.sec);
+  const int64_t message_id = inputs.header().stamp.sec;
+  const auto callback_start = SteadyClock::now();
+  TrackMessageId(message_id);
+  const auto lock_start = SteadyClock::now();
   std::lock_guard<std::mutex> lock(inference_mutex_);
+  const auto lock_acquired = SteadyClock::now();
+  auto run_finished = lock_acquired;
+  auto callback_finished = lock_acquired;
+  uint8_t timing_status = 1;
   try {
     TensorBundleOutput output;
     output.header = inputs.header();
     output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+    run_finished = SteadyClock::now();
+    timing_status = 2;
     ++inference_count_;
     if (!output_probe_runtime_logged_) {
       const std::string output_probe = core_->OutputBindingProbeReport();
@@ -192,7 +226,10 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       FinalizeOrtProfile("configured frame limit");
     }
     io_->Publish(std::move(output));
+    callback_finished = SteadyClock::now();
+    timing_status = 0;
   } catch (const Ort::Exception & e) {
+    callback_finished = SteadyClock::now();
     const char * message = e.what();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
@@ -200,14 +237,64 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       static_cast<int>(e.GetOrtErrorCode()),
       (message != nullptr && message[0] != '\0') ? message : "<empty>");
   } catch (const std::exception & e) {
+    callback_finished = SteadyClock::now();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame: %s", e.what());
   } catch (...) {
+    callback_finished = SteadyClock::now();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame after an unknown exception");
   }
+
+  if (!timing_report_path_.empty()) {
+    const auto inference_end = timing_status == 1 ? callback_finished : run_finished;
+    const auto publish_start = run_finished;
+    const auto publish_end = timing_status == 1 ? run_finished : callback_finished;
+    timing_records_.push_back(TimingRecord{
+      message_id,
+      ToNanoseconds(callback_start),
+      DurationNanoseconds(lock_start, lock_acquired),
+      DurationNanoseconds(lock_acquired, inference_end),
+      DurationNanoseconds(publish_start, publish_end),
+      DurationNanoseconds(callback_start, callback_finished),
+      timing_status});
+  }
+}
+
+void OnnxInferenceNode::WriteTimingReport() noexcept
+{
+  if (timing_report_path_.empty()) {
+    return;
+  }
+
+  std::ofstream output(timing_report_path_, std::ios::out | std::ios::trunc);
+  if (!output) {
+    RCLCPP_ERROR(
+      get_logger(), "Failed to open inference timing report '%s'.",
+      timing_report_path_.c_str());
+    return;
+  }
+
+  output <<
+    "message_id,callback_start_ns,lock_wait_ns,run_inference_ns,publish_ns,total_ns,status\n";
+  for (const auto & record : timing_records_) {
+    const char * status = record.status == 0 ? "ok" :
+      (record.status == 1 ? "run_inference_error" : "publish_error");
+    output << record.message_id << ',' << record.callback_start_ns << ',' <<
+      record.lock_wait_ns << ',' << record.run_inference_ns << ',' << record.publish_ns << ',' <<
+      record.total_ns << ',' << status << '\n';
+  }
+  if (!output) {
+    RCLCPP_ERROR(
+      get_logger(), "Failed while writing inference timing report '%s'.",
+      timing_report_path_.c_str());
+    return;
+  }
+  RCLCPP_INFO(
+    get_logger(), "Inference timing report written to '%s' (%zu callbacks).",
+    timing_report_path_.c_str(), timing_records_.size());
 }
 
 void OnnxInferenceNode::TrackMessageId(int64_t message_id)

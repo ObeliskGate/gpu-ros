@@ -49,6 +49,7 @@ DEBUG_MESSAGE_FLOW = os.environ.get(
     "YOLOV8_BENCHMARK_DEBUG_MESSAGE_FLOW", "false").lower() in {
         "1", "true", "yes", "on"
     }
+TIMING_REPORT_PREFIX = os.environ.get("YOLOV8_BENCHMARK_TIMING_PREFIX", "")
 
 
 def make_std_playback_node(namespace):
@@ -97,6 +98,10 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "output_width": common.NETWORK_RESOLUTION["width"],
             "output_height": common.NETWORK_RESOLUTION["height"],
             "debug_message_flow": DEBUG_MESSAGE_FLOW,
+            "timing_report_path": (
+                f"{TIMING_REPORT_PREFIX}.encoder.csv"
+                if TIMING_REPORT_PREFIX else ""
+            ),
         }],
     )
 
@@ -110,6 +115,10 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "execution_provider": "migraphx",
             "transport": "std",
             "debug_message_flow": DEBUG_MESSAGE_FLOW,
+            "timing_report_path": (
+                f"{TIMING_REPORT_PREFIX}.inference.csv"
+                if TIMING_REPORT_PREFIX else ""
+            ),
         }],
         remappings=[
             ("tensor_input", "encoded_tensor"),

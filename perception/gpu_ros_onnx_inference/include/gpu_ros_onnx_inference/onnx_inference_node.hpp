@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
@@ -36,9 +37,21 @@ public:
   ~OnnxInferenceNode() override;
 
 private:
+  struct TimingRecord
+  {
+    int64_t message_id;
+    int64_t callback_start_ns;
+    int64_t lock_wait_ns;
+    int64_t run_inference_ns;
+    int64_t publish_ns;
+    int64_t total_ns;
+    uint8_t status;
+  };
+
   void OnTensors(gpu_ros_managed::ManagedTensorBundleView inputs);
   void FinalizeOrtProfile(const char * reason) noexcept;
   void TrackMessageId(int64_t message_id);
+  void WriteTimingReport() noexcept;
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorBundleIO> io_;
@@ -52,6 +65,8 @@ private:
   bool debug_message_flow_{false};
   bool has_last_message_id_{false};
   int64_t last_message_id_{0};
+  std::string timing_report_path_;
+  std::vector<TimingRecord> timing_records_;
 };
 
 }  // namespace gpu_ros::onnx_inference
