@@ -104,7 +104,8 @@ private:
   int gpu_device_id_;
   NitrosToManagedTensorBundleAdapter adapter_;
   TimingReporter timing_;
-  std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>> publisher_;
+  std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
+  publisher_;
   std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> subscription_;
 };
 

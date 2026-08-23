@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
-#include "gpu_ros_onnx_inference/tensor_dtype.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -28,6 +27,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "gpu_ros_onnx_inference/tensor_dtype.hpp"
 
 #ifdef GPU_ROS_MANAGED_CUDA
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"

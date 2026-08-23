@@ -66,7 +66,8 @@ public:
 private:
   void OnView(const nitros::NitrosTensorListView & view)
   {
-    auto list = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
+    auto list =
+      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
     callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
   }
 

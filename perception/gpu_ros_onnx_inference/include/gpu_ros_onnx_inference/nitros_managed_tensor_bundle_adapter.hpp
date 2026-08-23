@@ -37,7 +37,8 @@ public:
   explicit NitrosToManagedTensorBundleAdapter(int gpu_device_id);
   ~NitrosToManagedTensorBundleAdapter();
   NitrosToManagedTensorBundleAdapter(const NitrosToManagedTensorBundleAdapter &) = delete;
-  NitrosToManagedTensorBundleAdapter & operator=(const NitrosToManagedTensorBundleAdapter &) = delete;
+  NitrosToManagedTensorBundleAdapter & operator=(
+    const NitrosToManagedTensorBundleAdapter &) = delete;
 
   gpu_ros_managed::ManagedTensorBundle Convert(
     const nvidia::isaac_ros::nitros::NitrosTensorListView & view) const;
