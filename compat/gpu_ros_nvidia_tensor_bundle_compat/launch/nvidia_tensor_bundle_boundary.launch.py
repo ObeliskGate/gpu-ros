@@ -49,6 +49,7 @@ def generate_launch_description():
     )
     container = ComposableNodeContainer(
         name='tensor_bundle_boundary_container',
+        namespace='',
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[to_nvidia, from_nvidia],
