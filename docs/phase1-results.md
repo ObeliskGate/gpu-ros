@@ -94,7 +94,7 @@ bridge timing are opt-in and disabled in the final benchmark graphs.
 
 - Added a transport-neutral ONNX Runtime inference core with CUDA and MIGraphX
   provider selection and clear failure for unavailable requested providers.
-- Added standard ROS 2 and NITROS TensorList adapters around the shared core.
+- Added standard ROS 2 and NITROS TensorBundle adapters around the shared core.
 - Kept configuration C inputs and outputs device-resident through CUDA I/O
   Binding, borrowed NITROS device pointers, and ORT output lifetime callbacks.
 - Removed avoidable standard-path copies by borrowing input message storage,

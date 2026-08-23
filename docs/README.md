@@ -32,6 +32,8 @@ than repeated in source headers.
 
 Procedures:
 
+- [`open-source-migration.md`](open-source-migration.md) — supported package
+  names, namespace boundaries, and the NVIDIA compatibility edge.
 - [`phase0-benchmark-reproduction.md`](phase0-benchmark-reproduction.md) — the
   NVIDIA RT-DETR and Grounding DINO reference benchmarks.
 - [`phase1-experiment.md`](phase1-experiment.md) — the NVIDIA A/B/C/D comparison.
@@ -59,7 +61,7 @@ result or asset location and are not part of the source tree.
   benchmarks.
 - Phase 1 compares TensorRT and ONNX Runtime, and NITROS and standard ROS 2,
   on NVIDIA.
-- Phase 2A validates AMD RT-DETR and YOLOv8 standard ROS 2 TensorList paths
+- Phase 2A validates AMD RT-DETR and YOLOv8 standard ROS 2 TensorBundle paths
   with ONNX Runtime and MIGraphX. It does not reproduce the NVIDIA A/B/C/D
   matrix on AMD.
 - Phase 2B develops reusable `gpu_ros_managed` device-buffer transport against

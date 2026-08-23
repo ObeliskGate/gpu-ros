@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic-fixture tests for the semantic TensorList package editor."""
+"""Synthetic-fixture tests for the semantic TensorBundle package editor."""
 
 from __future__ import annotations
 

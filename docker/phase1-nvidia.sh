@@ -63,9 +63,9 @@ verify_release_caches() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
     set -e
     for package in \
-      isaac_ros_onnx_inference \
-      isaac_ros_rtdetr_std \
-      isaac_ros_yolov8_std; do
+      gpu_ros_onnx_inference \
+      gpu_ros_rtdetr \
+      gpu_ros_yolov8; do
       cache="/workspaces/isaac_ros-dev/build/${package}/CMakeCache.txt"
       test -f "${cache}"
       grep -Fqx "CMAKE_BUILD_TYPE:STRING=Release" "${cache}" || {
@@ -77,8 +77,10 @@ verify_release_caches() {
     source install/setup.bash
     ros2 pkg prefix gpu_ros_managed_core
     ros2 pkg prefix gpu_ros_managed_cuda
-    ros2 pkg prefix gpu_ros_managed_tensor_list
-    ros2 pkg prefix isaac_ros_onnx_inference
+    ros2 pkg prefix gpu_ros_managed_tensor_bundle
+    ros2 pkg prefix gpu_ros_tensor_bundle_msgs
+    ros2 pkg prefix gpu_ros_nvidia_tensor_bundle_compat
+    ros2 pkg prefix gpu_ros_onnx_inference
   '
 }
 

@@ -33,6 +33,13 @@ NETWORK_SIZE = 640  # RT-DETR architecture requires square network resolution
 NETWORK_RESOLUTION = Resolution(NETWORK_SIZE, NETWORK_SIZE)
 ROSBAG_PATH = 'datasets/r2bdataset2024_v1/r2b_robotarm'
 MODEL_FILE_NAME = 'synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx'
+# AMD Phase 2A/2B uses the RT-DETRv2 R50 export.
+# Apache-2.0 covers upstream source code, not the separately licensed model bytes.
+# Keep MODEL_FILE_NAME unchanged because it is the historical NVIDIA matrix
+# asset and must remain reproducible.
+AMD_MODEL_FILE_NAME = (
+    'rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx'
+)
 TRT_FP16_ENGINE_FILE_PATH = '/tmp/sdetr_grasp.plan'
 TRT_FP32_ENGINE_FILE_PATH = '/tmp/sdetr_grasp_fp32.plan'
 

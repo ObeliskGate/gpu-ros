@@ -91,6 +91,6 @@ The archived NVIDIA results above predate the AMD Managed HIP production path
 and are not an AMD Phase 2B result. AMD validation must first prove the direct
 topology and strict contract, then compare direct Managed with the standard and
 staged-control lanes. The production direct lane must not contain application
-TensorList staging; staged-control adapter copies are measured separately.
+TensorBundle staging; staged-control adapter copies are measured separately.
 MI350X model, memory-contract, high-load, and report-only comparison results
 remain to be archived after the allocation-backed validation run.

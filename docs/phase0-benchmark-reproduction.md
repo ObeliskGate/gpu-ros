@@ -9,7 +9,7 @@ to establish a reference baseline for the migration:
 - Grounding DINO
 
 DetectNet is outside the current migration scope because its decoder is a GXF
-component rather than the TensorList-based structure used by RT-DETR and
+component rather than the TensorBundle-based structure used by RT-DETR and
 Grounding DINO.
 
 The active environment is Isaac ROS 4.5. Existing 4.4 results remain

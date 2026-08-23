@@ -3,7 +3,7 @@
 ## Status
 
 AMD Phase 2A is complete for both RT-DETR and YOLOv8. The accepted paths use
-standard ROS 2 TensorList messages, ONNX Runtime, and the MIGraphX execution
+standard ROS 2 TensorBundle messages, ONNX Runtime, and the MIGraphX execution
 provider:
 
 ```text
@@ -18,6 +18,13 @@ Both paths passed the AMD build, package and proof-of-life tests, fixed-input
 capture, Detection2DArray comparison, provider audit, external ORT library
 audit, and benchmark runs. These standard ROS 2 paths remain independently
 available and are the reference for Phase 2B managed-transport work.
+
+The recorded RT-DETR numbers below belong to the pre-migration closure asset.
+The AMD default is now the pinned Apache-2.0 RT-DETRv2 R50 export described in
+[`phase2a-experiment.md`](phase2a-experiment.md). Its correctness, provider
+placement, and benchmark closure must be rerun before those numbers are used
+as RT-DETRv2 results; the historical values and their evidence are retained
+unchanged. The YOLOv8 closure record remains the same model and contract.
 
 ## Provenance
 

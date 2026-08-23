@@ -45,7 +45,7 @@ OUTPUT_BINDING_NAME = 'output0'
 
 
 def make_preprocessing_nodes(namespace, output_tensor_name):
-    """Return the image -> NCHW TensorList preprocessing chain."""
+    """Return the image -> NCHW TensorBundle preprocessing chain."""
     resize_node = ComposableNode(
         name='ResizeNode',
         namespace=namespace,

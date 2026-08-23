@@ -93,6 +93,7 @@ fi
 if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
   source_setup /opt/ros2_benchmark/setup.bash
 fi
+
 export PATH="${WORKSPACE_ROOT}/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
 mkdir -p "${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}" \

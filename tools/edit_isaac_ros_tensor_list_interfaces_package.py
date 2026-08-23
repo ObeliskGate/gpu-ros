@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the vendor-neutral TensorList package metadata change semantically.
+"""Apply the vendor-neutral TensorBundle package metadata change semantically.
 
 The script operates on a user-provided checkout of the exact upstream
 ``isaac_ros_common`` revision.  It deliberately contains no upstream

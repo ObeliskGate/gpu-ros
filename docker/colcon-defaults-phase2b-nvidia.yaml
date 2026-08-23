@@ -3,7 +3,8 @@ build:
     - src/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu_ros_managed/gpu_ros_managed_cuda
     - src/gpu_ros_managed/gpu_ros_managed_ros
-    - src/gpu_ros_managed/gpu_ros_managed_tensor_list
+    - src/gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - src/amd_ros_object_detection/migrated_packages/gpu_ros_tensor_bundle_msgs
     - src/amd_ros_object_detection/migrated_packages
     - src/amd_ros_object_detection/isaac_ros_object_detection/isaac_ros_yolov8
   cmake-args:
@@ -20,11 +21,14 @@ test:
     - src/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu_ros_managed/gpu_ros_managed_cuda
     - src/gpu_ros_managed/gpu_ros_managed_ros
-    - src/gpu_ros_managed/gpu_ros_managed_tensor_list
+    - src/gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - src/amd_ros_object_detection/migrated_packages/gpu_ros_tensor_bundle_msgs
     - src/amd_ros_object_detection/migrated_packages
   packages-select:
     - gpu_ros_managed_core
     - gpu_ros_managed_cuda
     - gpu_ros_managed_ros
-    - gpu_ros_managed_tensor_list
-    - isaac_ros_onnx_inference
+    - gpu_ros_managed_tensor_bundle
+    - gpu_ros_tensor_bundle_msgs
+    - gpu_ros_onnx_inference
+    - gpu_ros_nvidia_tensor_bundle_compat

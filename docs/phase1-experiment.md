@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 1 compares inference backend and TensorList transport on the same
+Phase 1 compares inference backend and TensorBundle transport on the same
 NVIDIA environment. These are complete pipeline configurations, not strictly
 additive two-factor measurements.
 
@@ -39,11 +39,13 @@ colcon test \
     gpu_ros_managed_core \
     gpu_ros_managed_cuda \
     gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_list \
-    isaac_ros_onnx_inference \
-    isaac_ros_rtdetr_std \
-    isaac_ros_yolov8_std \
-    isaac_ros_detection_validation \
+    gpu_ros_managed_tensor_bundle \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_nvidia_tensor_bundle_compat \
+    gpu_ros_onnx_inference \
+    gpu_ros_rtdetr \
+    gpu_ros_yolov8 \
+    gpu_ros_detection_validation \
   --event-handlers console_direct+
 
 colcon test-result --all --verbose
@@ -56,11 +58,11 @@ For the RT-DETR lanes, the minimum checks are:
 
 ~~~bash
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/isaac_ros_onnx_inference/test/isaac_ros_onnx_rtdetr_pol_test.py
+  src/amd_ros_object_detection/migrated_packages/gpu_ros_onnx_inference/test/gpu_ros_onnx_rtdetr_pol_test.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/isaac_ros_rtdetr_std/test/isaac_ros_std_rtdetr_pol_test.py
+  src/amd_ros_object_detection/migrated_packages/gpu_ros_rtdetr/test/gpu_ros_std_rtdetr_pol_test.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_transport_probe.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_transport_probe.py
 ~~~
 
 The first A_fp32/B_fp32 run may create /tmp/sdetr_grasp_fp32.plan. That file is
@@ -83,24 +85,24 @@ as a separate diagnostic.
 
 ~~~bash
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_a_fp32_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_a_fp32_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_b_fp32_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_b_fp32_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_c_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_c_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_rtdetr_config_d_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_rtdetr_config_d_graph.py
 ~~~
 
 ~~~bash
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_a_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_yolov8_config_a_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_b_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_yolov8_config_b_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_c_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_yolov8_config_c_graph.py
 launch_test \
-  src/amd_ros_object_detection/migrated_packages/benchmarks/isaac_ros_yolov8_config_d_graph.py
+  src/amd_ros_object_detection/migrated_packages/benchmarks/gpu_ros_yolov8_config_d_graph.py
 ~~~
 
 Start each graph once. The benchmark framework owns warm-up, measured
@@ -110,11 +112,11 @@ iterations, throughput search, and fixed-rate trials.
 
 Performance benchmarks and output validation are separate. Use the fixed-input
 capture tooling in
-migrated_packages/isaac_ros_detection_validation/README.md where the lane is
+migrated_packages/gpu_ros_detection_validation/README.md where the lane is
 supported, then compare bags with:
 
 ~~~bash
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   compare_detection2d_bags.py \
   --reference-bag <reference-bag> \
   --candidate-bag <candidate-bag> \

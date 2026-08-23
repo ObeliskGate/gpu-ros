@@ -147,9 +147,27 @@ phase2 assets verify
 The canonical AMD paths, relative to `${OVG_ASSETS_ROOT}`, are:
 
 ~~~text
-${OVG_ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx
+${OVG_ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx
 ${OVG_ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm
 ~~~
+
+The AMD RT-DETR asset is the Apache-2.0 RT-DETRv2 R50 COCO export from
+`lyuwenyu/RT-DETR`, source revision
+`b8957b30431abc938db16016f6b5e395b562c5dd`. The official PyTorch exporter at
+that revision emits the unchanged application contract: float32 `images`,
+int64 `orig_target_sizes`, and `labels`, `boxes`, `scores` outputs (opset 16).
+The model file is an external asset and is not committed here. A compatible
+ONNX file can be imported with `OVG_RTDETR_ONNX_SOURCE`; the asset manager also
+accepts the pinned release URL recorded in its source. Do not substitute the
+historical NVIDIA Synthetica model in an AMD run.
+
+The asset manager validates the ONNX graph before installation and during
+`phase2 assets verify`: input names/types are `images` (float32) and
+`orig_target_sizes` (int64), output names/types are `labels` (int64),
+`boxes` (float32), and `scores` (float32), and the graph must expose the
+opset-16 export contract. Dynamic batch dimensions are accepted; the image
+shape remains 3x640x640. This is a contract check, not a claim that the
+external model bytes are redistributed by this repository.
 
 ### Optional YOLOv8 asset
 
@@ -259,8 +277,8 @@ colcon commands directly:
 ~~~bash
 ./docker/phase2-amd.sh shell
 colcon build --packages-select gpu_ros_managed_hip
-colcon build --packages-up-to isaac_ros_onnx_inference
-colcon test --packages-select isaac_ros_yolov8_std
+colcon build --packages-up-to gpu_ros_onnx_inference
+colcon test --packages-select gpu_ros_yolov8
 ~~~
 
 The shell exports `COLCON_DEFAULTS_FILE`, so these commands inherit the AMD
@@ -305,20 +323,21 @@ colcon test \
     gpu_ros_managed_core \
     gpu_ros_managed_hip \
     gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_list \
-    isaac_ros_onnx_inference \
-    isaac_ros_rtdetr_std \
-    isaac_ros_yolov8_std \
-    isaac_ros_detection_validation \
+    gpu_ros_managed_tensor_bundle \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_onnx_inference \
+    gpu_ros_rtdetr \
+    gpu_ros_yolov8 \
+    gpu_ros_detection_validation \
   --event-handlers console_direct+
 
 colcon test-result --all --verbose
 
 launch_test \
-  migrated_packages/isaac_ros_rtdetr_std/test/isaac_ros_std_rtdetr_pol_test.py
+  migrated_packages/gpu_ros_rtdetr/test/gpu_ros_std_rtdetr_pol_test.py
 
 launch_test \
-  migrated_packages/isaac_ros_yolov8_std/test/isaac_ros_yolov8_migraphx_pol_test.py
+  migrated_packages/gpu_ros_yolov8/test/gpu_ros_yolov8_migraphx_pol_test.py
 ~~~
 
 The standard YOLOv8 unit tests run with the package test set. The generated
@@ -331,9 +350,9 @@ use_max_dim_for_orig_size=false:
 
 ~~~bash
 ros2 launch \
-  isaac_ros_rtdetr_std \
+  gpu_ros_rtdetr \
   rtdetr_ort_std_image.launch.py \
-  model_file_path:=${OVG_ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx \
+  model_file_path:=${OVG_ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx \
   image_topic:=/camera_1/color/image_raw \
   execution_provider:=migraphx
 ~~~
@@ -344,22 +363,22 @@ For fixed-input validation, use only the single-terminal runner:
 CAPTURE_EXECUTION_PROVIDER=migraphx \
 CAPTURE_WARMUP_ONLY=1 \
 CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=900 \
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   migraphx_probe
 
 CAPTURE_EXECUTION_PROVIDER=migraphx \
 CAPTURE_WARMUP_ONLY=1 \
 CAPTURE_FIRST_OUTPUT_TIMEOUT_SECONDS=900 \
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   yolov8 yolov8_migraphx_probe
 
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   amd_phase2a_fixed
 
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   yolov8 amd_phase2a_yolov8_fixed
 ~~~
@@ -377,7 +396,7 @@ source timestamps are preserved; otherwise use index matching only after input
 order is confirmed:
 
 ~~~bash
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   compare_detection2d_bags.py \
   --reference-bag <reference-bag> \
   --candidate-bag <candidate-bag> \
@@ -421,10 +440,10 @@ library audit pass:
 export R2B_RESULT_FILE=phase2a_amd_<platform-tag>.json
 export MIGRAPHX_WARMUP_TIMEOUT_SEC=900
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2a_amd_graph.py
+  migrated_packages/benchmarks/gpu_ros_rtdetr_phase2a_amd_graph.py
 
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_yolov8_phase2a_amd_graph.py
+  migrated_packages/benchmarks/gpu_ros_yolov8_phase2a_amd_graph.py
 ~~~
 
 An AMD platform is supported for Phase 2A after both lanes have passed their

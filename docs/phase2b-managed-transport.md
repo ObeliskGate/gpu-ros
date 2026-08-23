@@ -1,4 +1,4 @@
-# Phase 2B: Managed Device TensorList Transport
+# Phase 2B: Managed Device TensorBundle Transport
 
 Phase 2A is complete for the AMD RT-DETR and YOLOv8 standard ROS 2 paths.
 Those paths are the reference for Phase 2B benchmark and correctness
@@ -13,13 +13,13 @@ preprocessing/decoding, ORT provider selection, I/O Binding, synchronization,
 and Phase 2A standard ROS 2 path.
 
 gpu_ros_managed owns device allocation ownership, ready events, reader leases,
-deferred release, TensorList views, ROS transport, CUDA/HIP backends, and
+deferred release, TensorBundle views, ROS transport, CUDA/HIP backends, and
 component wiring.
 
 The common lifetime contract is:
 
 ~~~text
-shared message -> ManagedTensorListView -> OnnxInferenceCore
+shared message -> ManagedTensorBundleView -> OnnxInferenceCore
   -> ReadHandle or BlockingReadyLease -> Ort::Value
   -> synchronized Run -> lease destruction -> message/buffer release
 ~~~
@@ -34,9 +34,9 @@ pipeline:
 
 ~~~text
 official NITROS preprocessor
-  -> NitrosToManagedTensorListNode
+  -> NitrosToManagedTensorBundleNode
   -> OnnxInferenceNode(transport=managed, execution_provider=cuda)
-  -> ManagedToNitrosTensorListNode
+  -> ManagedToNitrosTensorBundleNode
   -> official NITROS decoder
 ~~~
 
@@ -72,8 +72,9 @@ colcon test \
     gpu_ros_managed_core \
     gpu_ros_managed_cuda \
     gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_list \
-    isaac_ros_onnx_inference \
+    gpu_ros_managed_tensor_bundle \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_onnx_inference \
   --event-handlers console_direct+
 ~~~
 
@@ -86,8 +87,9 @@ colcon test \
     gpu_ros_managed_core \
     gpu_ros_managed_hip \
     gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_list \
-    isaac_ros_onnx_inference \
+    gpu_ros_managed_tensor_bundle \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_onnx_inference \
   --event-handlers console_direct+
 ~~~
 
@@ -99,7 +101,7 @@ pending-cleanup, external-owner, device-mismatch, session-lifetime, and
 pointer-identity tests.
 
 The existing NVIDIA validation entry points are documented in
-migrated_packages/isaac_ros_detection_validation/README.md. Run the
+migrated_packages/gpu_ros_detection_validation/README.md. Run the
 proof-of-life test, transport probe, fixed-input comparison, and benchmark
 only after the package tests pass.
 
@@ -148,9 +150,9 @@ Image -> RtDetrManagedHipImageEncoderNode
       -> RtDetrManagedHipDecoderNode -> Detection2DArray
 ~~~
 
-Every intermediate TensorList is an in-process Managed HIP device buffer.
+Every intermediate TensorBundle is an in-process Managed HIP device buffer.
 Production launch files and direct benchmark graphs must not instantiate
-`StdToManagedHipTensorListNode` or `ManagedHipToStdTensorListNode`. The five
+`StdToManagedHipTensorBundleNode` or `ManagedHipToStdTensorBundleNode`. The five
 production plugins are:
 
 ~~~text
@@ -211,25 +213,25 @@ boundary:
 
 ~~~text
 Managed HIP preprocessing
-  -> ManagedHipToStdTensorListNode
-  -> standard TensorList materialization
-  -> StdToManagedHipTensorListNode
+  -> ManagedHipToStdTensorBundleNode
+  -> standard TensorBundle materialization
+  -> StdToManagedHipTensorBundleNode
   -> strict Managed ORT
-  -> ManagedHipToStdTensorListNode
+  -> ManagedHipToStdTensorBundleNode
   -> shared standard decoder core
 ~~~
 
 They are named
-`isaac_ros_yolov8_phase2b_amd_staged_control_graph.py` and
-`isaac_ros_rtdetr_phase2b_amd_staged_control_graph.py`. The only intentional
+`gpu_ros_yolov8_phase2b_amd_staged_control_graph.py` and
+`gpu_ros_rtdetr_phase2b_amd_staged_control_graph.py`. The only intentional
 difference from direct Managed is the adapter and ROS standard-message
 materialization cost.
 
-The `StdToManagedHipTensorListNode` input adapter uses a fixed-capacity HIP
+The `StdToManagedHipTensorBundleNode` input adapter uses a fixed-capacity HIP
 pool per tensor byte size and an event-backed H2D write. It must drop a staged
 frame on pool exhaustion rather than perform an unbounded per-frame
 `hipMalloc` or send an untracked buffer into strict ORT. The
-`ManagedHipToStdTensorListNode` direction remains an explicit blocking D2H
+`ManagedHipToStdTensorBundleNode` direction remains an explicit blocking D2H
 materialization for this control lane.
 
 The AMD ROCprof audit defaults to the direct production interpretation: no
@@ -241,7 +243,7 @@ owner, or lease safety evidence.
 The unified AMD audit performs the post-warm-up attach itself:
 
 ```bash
-./src/amd_ros_object_detection/migrated_packages/isaac_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_amd_transport_audit.sh \
   rtdetr \
   rtdetr_amd_transport_audit_20260808
 ```
@@ -271,13 +273,13 @@ files:
 ~~~bash
 CAPTURE_TRANSPORT=managed \
 CAPTURE_EXECUTION_PROVIDER=migraphx \
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   amd_phase2b_rtdetr_managed
 
 CAPTURE_TRANSPORT=managed \
 CAPTURE_EXECUTION_PROVIDER=migraphx \
-ros2 run isaac_ros_detection_validation \
+ros2 run gpu_ros_detection_validation \
   run_amd_phase2a_fixed_input_capture.sh \
   yolov8 amd_phase2b_yolov8_managed
 ~~~
@@ -288,7 +290,7 @@ comparisons use the fixed report-only mode so a post hoc threshold cannot turn
 the result into an aggregate PASS/FAIL claim:
 
 ~~~bash
-ros2 run isaac_ros_detection_validation compare_detection2d_bags.py \
+ros2 run gpu_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag /path/to/reference \
   --candidate-bag /path/to/managed \
   --match-policy stamp \
@@ -302,31 +304,31 @@ contract, and fixed-input checks before the real-model benchmark:
 
 ~~~bash
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2b_amd_managed_graph.py
+  migrated_packages/benchmarks/gpu_ros_rtdetr_phase2b_amd_managed_graph.py
 
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_yolov8_phase2b_amd_managed_graph.py
+  migrated_packages/benchmarks/gpu_ros_yolov8_phase2b_amd_managed_graph.py
 
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_rtdetr_phase2b_amd_staged_control_graph.py
+  migrated_packages/benchmarks/gpu_ros_rtdetr_phase2b_amd_staged_control_graph.py
 
 launch_test \
-  migrated_packages/benchmarks/isaac_ros_yolov8_phase2b_amd_staged_control_graph.py
+  migrated_packages/benchmarks/gpu_ros_yolov8_phase2b_amd_staged_control_graph.py
 ~~~
 
 The `*_amd_managed_graph.py` files are the production direct entries and have
 no staging plugins. The `*_staged_control_graph.py` files are the explicit
-control lane. The existing `isaac_ros_rtdetr_managed_graph.py` and
-`isaac_ros_yolov8_managed_graph.py` remain CUDA/NVIDIA graphs.
+control lane. The existing `gpu_ros_rtdetr_managed_graph.py` and
+`gpu_ros_yolov8_managed_graph.py` remain CUDA/NVIDIA graphs.
 
 Run the three-lane benchmark matrix as three rounds of independent processes;
 the runner rotates `std`, `staged-control`, and direct Managed order and
 archives every JSON/log under a unique matrix directory:
 
 ~~~bash
-ros2 run isaac_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
+ros2 run gpu_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
   rtdetr rtdetr_phase2b_matrix_20260812
-ros2 run isaac_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
+ros2 run gpu_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
   yolov8 yolov8_phase2b_matrix_20260812
 ~~~
 
@@ -336,7 +338,7 @@ minutes and 10,000 input images, and retains the input counter, detections bag,
 binding report, ORT profile, and lifecycle log:
 
 ~~~bash
-ros2 run isaac_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
+ros2 run gpu_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
   rtdetr rtdetr_managed_high_load_20260812
 ~~~
 
