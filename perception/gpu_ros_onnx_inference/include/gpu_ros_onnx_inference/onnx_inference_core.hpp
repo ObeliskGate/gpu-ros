@@ -41,6 +41,13 @@ ExecutionProvider ParseExecutionProvider(const std::string & ep_str);
 class OnnxInferenceCore
 {
 public:
+  struct InferenceStageTiming
+  {
+    int64_t input_setup_ns{0};
+    int64_t ort_session_run_ns{0};
+    int64_t output_materialize_ns{0};
+  };
+
   struct Config
   {
     std::string model_file_path;
@@ -65,7 +72,8 @@ public:
 
   std::vector<OutputTensor> RunInference(
     gpu_ros_managed::ManagedTensorBundleView inputs,
-    OutputPlacement output_placement = OutputPlacement::kHost);
+    OutputPlacement output_placement = OutputPlacement::kHost,
+    InferenceStageTiming * stage_timing = nullptr);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;

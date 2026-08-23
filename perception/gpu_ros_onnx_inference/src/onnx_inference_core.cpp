@@ -15,6 +15,7 @@
 #include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -42,6 +43,14 @@ namespace gpu_ros::onnx_inference
 
 namespace
 {
+
+using SteadyClock = std::chrono::steady_clock;
+
+int64_t DurationNanoseconds(
+  SteadyClock::time_point start, SteadyClock::time_point end)
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
 
 OrtLoggingLevel GetOrtLoggingLevel()
 {
@@ -693,13 +702,24 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
 
 std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   gpu_ros_managed::ManagedTensorBundleView inputs,
-  OutputPlacement output_placement)
+  OutputPlacement output_placement,
+  InferenceStageTiming * stage_timing)
 {
+  if (stage_timing != nullptr) {
+    *stage_timing = InferenceStageTiming{};
+  }
   if (strict_managed_) {
     if (output_placement != OutputPlacement::kDevice) {
       throw std::invalid_argument("hip_managed_strict requires device output placement");
     }
-    return RunStrictManagedInference(std::move(inputs));
+    const auto run_start = stage_timing != nullptr ? SteadyClock::now() :
+      SteadyClock::time_point{};
+    auto results = RunStrictManagedInference(std::move(inputs));
+    if (stage_timing != nullptr) {
+      stage_timing->ort_session_run_ns =
+        DurationNanoseconds(run_start, SteadyClock::now());
+    }
+    return results;
   }
   if (output_placement == OutputPlacement::kDevice &&
     execution_provider_ != ExecutionProvider::kCuda &&
@@ -717,6 +737,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
 #endif
   }
 
+  const auto input_setup_start = stage_timing != nullptr ? SteadyClock::now() :
+    SteadyClock::time_point{};
   std::vector<Ort::Value> ort_inputs;
   std::vector<const char *> input_name_ptrs;
   std::vector<gpu_ros_managed::BlockingReadyLease> leases;
@@ -827,6 +849,12 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   std::vector<Ort::Value> bound_output_values;
   std::vector<BindingTensorReport> output_reports;
   output_reports.reserve(output_names_.size());
+  const auto ort_session_run_start = stage_timing != nullptr ? SteadyClock::now() :
+    SteadyClock::time_point{};
+  if (stage_timing != nullptr) {
+    stage_timing->input_setup_ns =
+      DurationNanoseconds(input_setup_start, ort_session_run_start);
+  }
   if (output_placement == OutputPlacement::kDevice) {
     Ort::MemoryInfo device_memory_info = execution_provider_ == ExecutionProvider::kCuda ?
       Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault) :
@@ -960,6 +988,12 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       input_name_ptrs.data(), ort_inputs.data(), ort_inputs.size(),
       output_name_ptrs.data(), output_name_ptrs.size());
   }
+  const auto output_materialize_start = stage_timing != nullptr ? SteadyClock::now() :
+    SteadyClock::time_point{};
+  if (stage_timing != nullptr) {
+    stage_timing->ort_session_run_ns =
+      DurationNanoseconds(ort_session_run_start, output_materialize_start);
+  }
 
   if (ort_outputs.size() != output_names_.size()) {
     throw std::runtime_error("ONNX Runtime returned an unexpected number of outputs");
@@ -1082,6 +1116,10 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         tensor.name, byte_count, output_storage, PointerString(storage_pointer),
         PointerString(ort_output_pointer), output_pointer_identity, output_lifetime_path});
     results.push_back(std::move(tensor));
+  }
+  if (stage_timing != nullptr) {
+    stage_timing->output_materialize_ns =
+      DurationNanoseconds(output_materialize_start, SteadyClock::now());
   }
   WriteBindingReport(input_reports, output_reports, output_placement);
   return results;

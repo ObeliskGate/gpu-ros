@@ -207,11 +207,14 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
   const auto lock_acquired = SteadyClock::now();
   auto run_finished = lock_acquired;
   auto callback_finished = lock_acquired;
+  OnnxInferenceCore::InferenceStageTiming stage_timing;
   uint8_t timing_status = 1;
   try {
     TensorBundleOutput output;
     output.header = inputs.header();
-    output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+    output.tensors = core_->RunInference(
+      std::move(inputs), io_->output_placement(),
+      timing_report_path_.empty() ? nullptr : &stage_timing);
     run_finished = SteadyClock::now();
     timing_status = 2;
     ++inference_count_;
@@ -257,6 +260,9 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       ToNanoseconds(callback_start),
       DurationNanoseconds(lock_start, lock_acquired),
       DurationNanoseconds(lock_acquired, inference_end),
+      stage_timing.input_setup_ns,
+      stage_timing.ort_session_run_ns,
+      stage_timing.output_materialize_ns,
       DurationNanoseconds(publish_start, publish_end),
       DurationNanoseconds(callback_start, callback_finished),
       timing_status});
@@ -278,12 +284,15 @@ void OnnxInferenceNode::WriteTimingReport() noexcept
   }
 
   output <<
-    "message_id,callback_start_ns,lock_wait_ns,run_inference_ns,publish_ns,total_ns,status\n";
+    "message_id,callback_start_ns,lock_wait_ns,run_inference_ns,input_setup_ns,"
+    "ort_session_run_ns,output_materialize_ns,publish_ns,total_ns,status\n";
   for (const auto & record : timing_records_) {
     const char * status = record.status == 0 ? "ok" :
       (record.status == 1 ? "run_inference_error" : "publish_error");
     output << record.message_id << ',' << record.callback_start_ns << ',' <<
-      record.lock_wait_ns << ',' << record.run_inference_ns << ',' << record.publish_ns << ',' <<
+      record.lock_wait_ns << ',' << record.run_inference_ns << ',' <<
+      record.input_setup_ns << ',' << record.ort_session_run_ns << ',' <<
+      record.output_materialize_ns << ',' << record.publish_ns << ',' <<
       record.total_ns << ',' << status << '\n';
   }
   if (!output) {

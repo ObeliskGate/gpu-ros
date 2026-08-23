@@ -43,6 +43,9 @@ private:
     int64_t callback_start_ns;
     int64_t lock_wait_ns;
     int64_t run_inference_ns;
+    int64_t input_setup_ns;
+    int64_t ort_session_run_ns;
+    int64_t output_materialize_ns;
     int64_t publish_ns;
     int64_t total_ns;
     uint8_t status;

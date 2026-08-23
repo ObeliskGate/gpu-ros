@@ -141,6 +141,20 @@ def main() -> None:
     print_distribution(
         "inference lock wait", [record["lock_wait_ns"] for record in inference_ok]
     )
+    has_stage_timing = bool(inference_ok) and "ort_session_run_ns" in inference_ok[0]
+    if has_stage_timing:
+        print_distribution(
+            "inference input setup",
+            [record["input_setup_ns"] for record in inference_ok],
+        )
+        print_distribution(
+            "ORT session run",
+            [record["ort_session_run_ns"] for record in inference_ok],
+        )
+        print_distribution(
+            "inference output materialize",
+            [record["output_materialize_ns"] for record in inference_ok],
+        )
     print_distribution("encoder-to-inference handoff", all_handoffs_ns)
 
     gaps = find_gaps(inference_ok)
@@ -205,6 +219,22 @@ def main() -> None:
             f"run={slowest['run_inference_ns'] / 1_000_000:.3f}ms "
             f"total={slowest['total_ns'] / 1_000_000:.3f}ms"
         )
+        if has_stage_timing:
+            print(
+                f"  slowest phases: input_setup="
+                f"{slowest['input_setup_ns'] / 1_000_000:.3f}ms "
+                f"ort_session={slowest['ort_session_run_ns'] / 1_000_000:.3f}ms "
+                f"output_materialize="
+                f"{slowest['output_materialize_ns'] / 1_000_000:.3f}ms"
+            )
+            print(
+                f"  prior32 phase means: input_setup="
+                f"{mean_ms([record['input_setup_ns'] for record in window]):.3f}ms "
+                f"ort_session="
+                f"{mean_ms([record['ort_session_run_ns'] for record in window]):.3f}ms "
+                f"output_materialize="
+                f"{mean_ms([record['output_materialize_ns'] for record in window]):.3f}ms"
+            )
 
 
 if __name__ == "__main__":
