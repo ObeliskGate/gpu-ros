@@ -14,6 +14,8 @@
 # limitations under the License.
 """Summarize low-overhead YOLOv8 encoder and inference timing reports."""
 
+from __future__ import annotations
+
 import argparse
 import csv
 from pathlib import Path
