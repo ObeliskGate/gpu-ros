@@ -115,8 +115,21 @@ def generate_launch_description():
         remappings=[('tensor', 'planar_tensor')],
     )
 
-    # Our std-ROS2 preprocessor (receives upstream NITROS via auto-compat).
-    # Publishes std-ROS2 on 'tensor_pub'.
+    # The NVIDIA reshape node publishes TensorList. Convert it explicitly at
+    # the NVIDIA-only boundary before entering the project-owned std path.
+    tensor_list_adapter_node = ComposableNode(
+        name='nvidia_tensor_list_to_tensor_bundle',
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'reshaped_tensor'),
+            ('tensor_output', 'tensor_bundle_input'),
+        ],
+    )
+
+    # Our std-ROS2 preprocessor publishes std-ROS2 on 'tensor_pub'.
     rtdetr_preprocessor_node = ComposableNode(
         name='rtdetr_preprocessor',
         package='gpu_ros_rtdetr',
@@ -126,7 +139,7 @@ def generate_launch_description():
             'image_height': input_image_height,
             # Match baseline: default use_max_dim_for_orig_size=true ([640,640]).
         }],
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        remappings=[('encoded_tensor', 'tensor_bundle_input')]
     )
 
     # std -> NITROS bridge: the TensorRT node only speaks NITROS, and a std
@@ -201,7 +214,8 @@ def generate_launch_description():
         composable_node_descriptions=[
             resize_node, pad_node, image_format_node,
             image_to_tensor_node, interleave_to_planar_node, reshape_node,
-            rtdetr_preprocessor_node, bridge_node, tensor_rt_node,
+            tensor_list_adapter_node, rtdetr_preprocessor_node,
+            bridge_node, tensor_rt_node,
             tensor_bundle_adapter_node, rtdetr_decoder_node
         ],
         output='screen'

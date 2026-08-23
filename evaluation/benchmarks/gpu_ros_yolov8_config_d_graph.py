@@ -33,6 +33,19 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 def launch_setup(container_prefix, container_sigterm_timeout):
     ns = TestGpuRosYoloV8ConfigD.generate_namespace()
 
+    tensor_list_adapter_node = ComposableNode(
+        name='NvidiaTensorListToTensorBundle',
+        namespace=ns,
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'reshaped_tensor'),
+            ('tensor_output', 'tensor_bundle_input'),
+        ],
+    )
+
     onnx_node = ComposableNode(
         name='OnnxInference',
         namespace=ns,
@@ -45,7 +58,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             'execution_provider': 'cuda',
             'transport': 'std',
         }],
-        remappings=[('tensor_input', 'reshaped_tensor'), ('tensor_output', 'tensor_sub')]
+        remappings=[('tensor_input', 'tensor_bundle_input'),
+                    ('tensor_output', 'tensor_sub')]
     )
 
     decoder_node = ComposableNode(
@@ -72,7 +86,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.ORT_INPUT_TENSOR_NAME),
-            onnx_node, decoder_node,
+            tensor_list_adapter_node, onnx_node, decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',

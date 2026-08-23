@@ -146,6 +146,20 @@ def generate_launch_description():
         remappings=[('tensor', 'planar_tensor')],
     )
 
+    # The NVIDIA reshape node publishes TensorList. Convert it explicitly at
+    # the NVIDIA-only boundary before entering the project-owned std path.
+    tensor_list_adapter_node = ComposableNode(
+        name='nvidia_tensor_list_to_tensor_bundle',
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'reshaped_tensor'),
+            ('tensor_output', 'tensor_bundle_input'),
+        ],
+    )
+
     # --- std-ROS2 + ORT replacements for the final three nodes ---
 
     rtdetr_preprocessor_node = ComposableNode(
@@ -159,7 +173,7 @@ def generate_launch_description():
             # node ignores, so it falls back to use_max_dim_for_orig_size=true
             # (orig_target_sizes=[640,640]). Keep that default for A/D parity.
         }],
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        remappings=[('encoded_tensor', 'tensor_bundle_input')]
     )
 
     onnx_node = ComposableNode(
@@ -195,6 +209,7 @@ def generate_launch_description():
         composable_node_descriptions=[
             resize_node, pad_node, image_format_node,
             image_to_tensor_node, interleave_to_planar_node, reshape_node,
+            tensor_list_adapter_node,
             rtdetr_preprocessor_node, onnx_node, rtdetr_decoder_node
         ],
         output='screen'

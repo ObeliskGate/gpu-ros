@@ -35,6 +35,19 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 def launch_setup(container_prefix, container_sigterm_timeout):
     ns = TestGpuRosYoloV8ConfigB.generate_namespace()
 
+    tensor_list_adapter_node = ComposableNode(
+        name='NvidiaTensorListToTensorBundle',
+        namespace=ns,
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'reshaped_tensor'),
+            ('tensor_output', 'tensor_bundle_input'),
+        ],
+    )
+
     bridge_node = ComposableNode(
         name='TensorBundleBridge',
         namespace=ns,
@@ -44,7 +57,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             'input_transport': 'std',
             'enable_timing': False,
         }],
-        remappings=[('tensor_input', 'reshaped_tensor'), ('tensor_output', 'bridged_tensor')]
+        remappings=[('tensor_input', 'tensor_bundle_input'),
+                    ('tensor_output', 'bridged_tensor')]
     )
 
     tensor_rt_node = ComposableNode(
@@ -91,7 +105,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.TRT_INPUT_TENSOR_NAME),
-            bridge_node, tensor_rt_node, decoder_node,
+            tensor_list_adapter_node, bridge_node, tensor_rt_node, decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',

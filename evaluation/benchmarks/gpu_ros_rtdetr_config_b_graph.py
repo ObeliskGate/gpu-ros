@@ -42,12 +42,25 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 def launch_setup(container_prefix, container_sigterm_timeout):
     ns = TestGpuRosRtDetrConfigB.generate_namespace()
 
+    tensor_list_adapter_node = ComposableNode(
+        name='NvidiaTensorListToTensorBundle',
+        namespace=ns,
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'reshaped_tensor'),
+            ('tensor_output', 'tensor_bundle_input'),
+        ],
+    )
+
     preprocessor_node = ComposableNode(
         name='RtdetrPreprocessor',
         namespace=ns,
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        remappings=[('encoded_tensor', 'tensor_bundle_input')]
     )
 
     # std -> NITROS bridge: TensorRT only speaks NITROS and cannot be fed by a
@@ -116,7 +129,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            preprocessor_node, bridge_node, tensor_rt_node,
+            tensor_list_adapter_node, preprocessor_node, bridge_node, tensor_rt_node,
             tensor_bundle_adapter_node, decoder_node,
             common.make_monitor_node(ns),
         ],
