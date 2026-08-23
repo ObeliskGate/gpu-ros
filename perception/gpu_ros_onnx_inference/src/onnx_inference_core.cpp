@@ -856,28 +856,42 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       bound_output_values.reserve(output_names_.size());
       try {
         for (size_t i = 0; i < output_names_.size(); ++i) {
-          if (!output_binding_probes_[i].metadata_shape_is_static) {
+          if (!output_binding_probes_[i].metadata_shape_is_static && !strict_managed_) {
             binding->BindOutput(output_name_ptrs[i], device_memory_info);
             continue;
           }
 
-          // TensorTypeAndShapeInfo does not own the underlying OrtTypeInfo.
-          const auto output_type_info = session_->GetOutputTypeInfo(i);
-          const auto metadata = output_type_info.GetTensorTypeAndShapeInfo();
-          const auto shape = metadata.GetShape();
-          const size_t element_count = metadata.GetElementCount();
-          const size_t element_size = DtypeSize(metadata.GetElementType());
-          if (element_count > std::numeric_limits<size_t>::max() / element_size) {
-            throw std::overflow_error(
-                    "Output tensor byte size overflows size_t: " + output_names_[i]);
+          std::vector<int64_t> shape;
+          ONNXTensorElementDataType dtype;
+          size_t byte_count;
+          if (strict_managed_) {
+            // Some valid RT-DETRv2 exports use symbolic output metadata even
+            // though the postprocessor contract is fixed. Use that explicit
+            // contract for preallocation so symbolic metadata does not force
+            // an ORT-owned output and break the Managed HIP path.
+            const auto & contract = managed_output_contracts_.at(i);
+            shape = contract.shape;
+            dtype = contract.dtype;
+            byte_count = ManagedTensorByteSize(contract);
+          } else {
+            // TensorTypeAndShapeInfo does not own the underlying OrtTypeInfo.
+            const auto output_type_info = session_->GetOutputTypeInfo(i);
+            const auto metadata = output_type_info.GetTensorTypeAndShapeInfo();
+            shape = metadata.GetShape();
+            dtype = metadata.GetElementType();
+            const size_t element_count = metadata.GetElementCount();
+            const size_t element_size = DtypeSize(dtype);
+            if (element_count > std::numeric_limits<size_t>::max() / element_size) {
+              throw std::overflow_error(
+                      "Output tensor byte size overflows size_t: " + output_names_[i]);
+            }
+            byte_count = element_count * element_size;
           }
-          const size_t byte_count = element_count * element_size;
           auto buffer = gpu_ros_managed::hip::allocate(byte_count, gpu_device_id_);
           auto writer = buffer->get_write_handle(hip_output_stream_);
           bound_output_values.push_back(
             Ort::Value::CreateTensor(
-              device_memory_info, writer.data(), byte_count, shape.data(), shape.size(),
-              metadata.GetElementType()));
+              device_memory_info, writer.data(), byte_count, shape.data(), shape.size(), dtype));
           if (bound_output_values.back().GetTensorMutableRawData() != writer.data()) {
             throw std::runtime_error(
                     "MIGraphX preallocated output '" + output_names_[i] +

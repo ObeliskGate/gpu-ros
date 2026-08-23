@@ -183,12 +183,13 @@ boxes=float32[1,300,4]
 scores=float32[1,300]
 ~~~
 
-The session validates model names, dtype, rank, concrete dimensions, and byte
-size during initialization. Symbolic model dimensions are resolved only by
-the explicit graph contract. Unknown dynamic outputs and contract mismatch
-fail initialization. Each output has a fixed Managed HIP pool; ORT is given a
-pre-bound `Ort::Value`, and after `SynchronizeOutputs()` the implementation
-checks output name, shape, dtype, memory info, and exact pointer identity before
+The session validates model names, dtype, rank, and the explicit byte-sized
+Managed contract during initialization. The RT-DETR export may carry symbolic
+postprocessor dimensions in its ONNX metadata; the explicit graph contract
+resolves those dimensions to `labels=int64[1,300]`, `boxes=float32[1,300,4]`,
+and `scores=float32[1,300]`. Strict Managed HIP preallocation uses that
+explicit contract, and after `SynchronizeOutputs()` the implementation checks
+output name, shape, dtype, memory info, and exact pointer identity before
 publishing the pool block. Strict mode never adopts ORT-owned output.
 
 `gpu_ros_managed` exposes three read-only readiness states: not ready,

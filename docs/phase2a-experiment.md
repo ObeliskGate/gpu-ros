@@ -165,9 +165,12 @@ The asset manager validates the ONNX graph before installation and during
 `phase2 assets verify`: input names/types are `images` (float32) and
 `orig_target_sizes` (int64), output names/types are `labels` (int64),
 `boxes` (float32), and `scores` (float32), and the graph must expose the
-opset-16 export contract. Dynamic batch dimensions are accepted; the image
-shape remains 3x640x640. This is a contract check, not a claim that the
-external model bytes are redistributed by this repository.
+opset-16 export contract. Dynamic batch dimensions are accepted, and the
+export may use symbolic metadata for the fixed postprocessor count; the
+runtime Managed/decoder contract still requires concrete output shapes
+`[1,300]`, `[1,300,4]`, and `[1,300]`. The image shape remains 3x640x640.
+This is a contract check, not a claim that the external model bytes are
+redistributed by this repository.
 
 ### Optional YOLOv8 asset
 

@@ -132,9 +132,20 @@ def _shape_from_onnx_value_info(value_info: Any) -> list[int | str | None]:
 
 
 def _require_known_shape_dimension(
-    shape: list[int | str | None], index: int, expected: int, label: str
+    shape: list[int | str | None],
+    index: int,
+    expected: int,
+    label: str,
+    *,
+    allow_symbolic: bool = False,
 ) -> None:
-    if len(shape) <= index or shape[index] not in (expected, None):
+    if len(shape) <= index:
+        actual = shape
+    else:
+        actual = shape[index]
+    if actual is None or (allow_symbolic and isinstance(actual, str)):
+        return
+    if actual != expected:
         raise RuntimeError(
             f"RT-DETR ONNX {label} shape mismatch: expected dimension {index} "
             f"to be {expected}, got {shape}"
@@ -191,10 +202,17 @@ def _validate_rtdetr_with_onnx(path: Path) -> None:
     _require_known_shape_dimension(input_shapes[1], 1, 2, "orig_target_sizes")
     if len(output_shapes) != 3 or [len(shape) for shape in output_shapes] != [2, 3, 2]:
         raise RuntimeError(f"RT-DETR ONNX output rank mismatch: got {output_shapes}")
-    _require_known_shape_dimension(output_shapes[0], 1, 300, "labels")
-    _require_known_shape_dimension(output_shapes[1], 1, 300, "boxes")
+    # The pinned RT-DETRv2 export can describe postprocessor dimensions with
+    # symbolic names such as Sublabels_dim_*. The application contract and
+    # decoder still require the concrete runtime shapes [1,300], [1,300,4],
+    # and [1,300]; symbolic ONNX metadata is not itself a contract mismatch.
+    _require_known_shape_dimension(
+        output_shapes[0], 1, 300, "labels", allow_symbolic=True)
+    _require_known_shape_dimension(
+        output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
     _require_known_shape_dimension(output_shapes[1], 2, 4, "boxes")
-    _require_known_shape_dimension(output_shapes[2], 1, 300, "scores")
+    _require_known_shape_dimension(
+        output_shapes[2], 1, 300, "scores", allow_symbolic=True)
 
     default_opsets = [
         int(opset.version) for opset in model.opset_import if opset.domain in ("", "ai.onnx")
@@ -245,10 +263,13 @@ def _validate_rtdetr_with_onnxruntime(path: Path) -> None:
     _require_known_shape_dimension(input_shapes[1], 1, 2, "orig_target_sizes")
     if len(output_shapes) != 3 or [len(shape) for shape in output_shapes] != [2, 3, 2]:
         raise RuntimeError(f"RT-DETR ONNX output rank mismatch: got {output_shapes}")
-    _require_known_shape_dimension(output_shapes[0], 1, 300, "labels")
-    _require_known_shape_dimension(output_shapes[1], 1, 300, "boxes")
+    _require_known_shape_dimension(
+        output_shapes[0], 1, 300, "labels", allow_symbolic=True)
+    _require_known_shape_dimension(
+        output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
     _require_known_shape_dimension(output_shapes[1], 2, 4, "boxes")
-    _require_known_shape_dimension(output_shapes[2], 1, 300, "scores")
+    _require_known_shape_dimension(
+        output_shapes[2], 1, 300, "scores", allow_symbolic=True)
 
 
 def validate_rtdetr_model(path: Path) -> str:
