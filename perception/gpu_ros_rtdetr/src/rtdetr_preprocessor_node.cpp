@@ -19,7 +19,6 @@
 // 2 integration; see THIRD_PARTY_NOTICES.md for the exact pinned revision.
 
 #include "gpu_ros_rtdetr/rtdetr_preprocessor_node.hpp"
-#include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -27,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
 namespace gpu_ros::rtdetr

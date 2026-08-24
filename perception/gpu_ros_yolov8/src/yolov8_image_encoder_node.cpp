@@ -15,6 +15,7 @@
 #include "gpu_ros_yolov8/yolov8_image_encoder_node.hpp"
 
 #include <chrono>
+#include <cinttypes>
 #include <exception>
 #include <fstream>
 #include <functional>
@@ -106,12 +107,12 @@ void YoloV8ImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
     const auto publish_start = encode_finished;
     const auto publish_end = timing_status == 1 ? encode_finished : callback_finished;
     timing_records_.push_back(TimingRecord{
-      message_id,
-      ToNanoseconds(callback_start),
-      DurationNanoseconds(callback_start, encode_end),
-      DurationNanoseconds(publish_start, publish_end),
-      DurationNanoseconds(callback_start, callback_finished),
-      timing_status});
+        message_id,
+        ToNanoseconds(callback_start),
+        DurationNanoseconds(callback_start, encode_end),
+        DurationNanoseconds(publish_start, publish_end),
+        DurationNanoseconds(callback_start, callback_finished),
+        timing_status});
   }
 }
 
@@ -155,13 +156,14 @@ void YoloV8ImageEncoderNode::TrackMessageId(int64_t message_id)
   if (has_last_message_id_ && message_id > last_message_id_ + 1) {
     RCLCPP_WARN(
       get_logger(),
-      "MESSAGE_FLOW_GAP stage=image_encoder_input previous=%lld current=%lld missing=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
-      static_cast<long long>(message_id - last_message_id_ - 1));
+      "MESSAGE_FLOW_GAP stage=image_encoder_input previous=%" PRId64
+      " current=%" PRId64 " missing=%" PRId64,
+      last_message_id_, message_id, message_id - last_message_id_ - 1);
   } else if (has_last_message_id_ && message_id <= last_message_id_) {
     RCLCPP_INFO(
-      get_logger(), "MESSAGE_FLOW_RESET stage=image_encoder_input previous=%lld current=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+      get_logger(), "MESSAGE_FLOW_RESET stage=image_encoder_input previous=%" PRId64
+      " current=%" PRId64,
+      last_message_id_, message_id);
   }
   last_message_id_ = message_id;
   has_last_message_id_ = true;

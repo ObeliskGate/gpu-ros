@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "gpu_ros_yolov8/yolov8_image_encoder.hpp"
-#include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -21,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 #include "gpu_ros_detection_common/image_preprocess.hpp"
 
 namespace gpu_ros::yolov8

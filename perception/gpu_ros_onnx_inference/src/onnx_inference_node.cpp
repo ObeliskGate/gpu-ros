@@ -15,6 +15,7 @@
 #include "gpu_ros_onnx_inference/onnx_inference_node.hpp"
 
 #include <chrono>
+#include <cinttypes>
 #include <cstdint>
 #include <exception>
 #include <fstream>
@@ -256,16 +257,16 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
     const auto publish_start = run_finished;
     const auto publish_end = timing_status == 1 ? run_finished : callback_finished;
     timing_records_.push_back(TimingRecord{
-      message_id,
-      ToNanoseconds(callback_start),
-      DurationNanoseconds(lock_start, lock_acquired),
-      DurationNanoseconds(lock_acquired, inference_end),
-      stage_timing.input_setup_ns,
-      stage_timing.ort_session_run_ns,
-      stage_timing.output_materialize_ns,
-      DurationNanoseconds(publish_start, publish_end),
-      DurationNanoseconds(callback_start, callback_finished),
-      timing_status});
+        message_id,
+        ToNanoseconds(callback_start),
+        DurationNanoseconds(lock_start, lock_acquired),
+        DurationNanoseconds(lock_acquired, inference_end),
+        stage_timing.input_setup_ns,
+        stage_timing.ort_session_run_ns,
+        stage_timing.output_materialize_ns,
+        DurationNanoseconds(publish_start, publish_end),
+        DurationNanoseconds(callback_start, callback_finished),
+        timing_status});
   }
 }
 
@@ -314,13 +315,14 @@ void OnnxInferenceNode::TrackMessageId(int64_t message_id)
   if (has_last_message_id_ && message_id > last_message_id_ + 1) {
     RCLCPP_WARN(
       get_logger(),
-      "MESSAGE_FLOW_GAP stage=inference_input previous=%lld current=%lld missing=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
-      static_cast<long long>(message_id - last_message_id_ - 1));
+      "MESSAGE_FLOW_GAP stage=inference_input previous=%" PRId64 " current=%" PRId64
+      " missing=%" PRId64,
+      last_message_id_, message_id, message_id - last_message_id_ - 1);
   } else if (has_last_message_id_ && message_id <= last_message_id_) {
     RCLCPP_INFO(
-      get_logger(), "MESSAGE_FLOW_RESET stage=inference_input previous=%lld current=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+      get_logger(), "MESSAGE_FLOW_RESET stage=inference_input previous=%" PRId64
+      " current=%" PRId64,
+      last_message_id_, message_id);
   }
   last_message_id_ = message_id;
   has_last_message_id_ = true;

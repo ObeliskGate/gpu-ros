@@ -20,6 +20,7 @@
 
 #include "gpu_ros_yolov8/yolov8_decoder_node.hpp"
 
+#include <cinttypes>
 #include <exception>
 #include <string>
 
@@ -61,13 +62,14 @@ void YoloV8DecoderNode::TrackMessageId(int64_t message_id)
   if (has_last_message_id_ && message_id > last_message_id_ + 1) {
     RCLCPP_WARN(
       get_logger(),
-      "MESSAGE_FLOW_GAP stage=decoder_input previous=%lld current=%lld missing=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id),
-      static_cast<long long>(message_id - last_message_id_ - 1));
+      "MESSAGE_FLOW_GAP stage=decoder_input previous=%" PRId64 " current=%" PRId64
+      " missing=%" PRId64,
+      last_message_id_, message_id, message_id - last_message_id_ - 1);
   } else if (has_last_message_id_ && message_id <= last_message_id_) {
     RCLCPP_INFO(
-      get_logger(), "MESSAGE_FLOW_RESET stage=decoder_input previous=%lld current=%lld",
-      static_cast<long long>(last_message_id_), static_cast<long long>(message_id));
+      get_logger(), "MESSAGE_FLOW_RESET stage=decoder_input previous=%" PRId64
+      " current=%" PRId64,
+      last_message_id_, message_id);
   }
   last_message_id_ = message_id;
   has_last_message_id_ = true;
