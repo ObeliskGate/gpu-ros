@@ -34,12 +34,16 @@ def generate_test_description():
                 name='nitros_to_managed', package='gpu_ros_onnx_inference',
                 plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
                 parameters=[{'nitros_to_managed.enable_timing': True,
-                             'nitros_to_managed.timing_log_every': 1}]),
+                             'nitros_to_managed.timing_log_every': 1}],
+                remappings=[('tensor_input', 'probe_nitros_input'),
+                            ('tensor_output', 'probe_managed_output')]),
             ComposableNode(
                 name='managed_to_nitros', package='gpu_ros_onnx_inference',
                 plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
                 parameters=[{'managed_to_nitros.enable_timing': True,
-                             'managed_to_nitros.timing_log_every': 1}]),
+                             'managed_to_nitros.timing_log_every': 1}],
+                remappings=[('tensor_input', 'probe_managed_output'),
+                            ('tensor_output', 'probe_nitros_output')]),
         ],
         output='screen')
     return launch.LaunchDescription([container, launch_testing.actions.ReadyToTest()]), {
