@@ -78,7 +78,23 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             'verbose': False,
             'force_engine_update': False
         }],
-        remappings=[('tensor_pub', 'bridged_tensor')]
+        remappings=[
+            ('tensor_sub', 'bridged_tensor'),
+            ('tensor_pub', 'nvidia_tensor_output'),
+        ]
+    )
+
+    tensor_bundle_adapter_node = ComposableNode(
+        name='NvidiaTensorListToTensorBundleOutput',
+        namespace=ns,
+        package='gpu_ros_nvidia_tensor_bundle_compat',
+        plugin=(
+            'gpu_ros::nvidia_tensor_bundle_compat::'
+            'NvidiaTensorListToTensorBundleNode'),
+        remappings=[
+            ('tensor_input', 'nvidia_tensor_output'),
+            ('tensor_output', 'tensor_bundle_output'),
+        ],
     )
 
     decoder_node = ComposableNode(
@@ -91,7 +107,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             'confidence_threshold': 0.25,
             'nms_threshold': 0.45,
             'num_classes': 80,
-        }]
+        }],
+        remappings=[('tensor_sub', 'tensor_bundle_output')],
     )
 
     container = ComposableNodeContainer(
@@ -105,7 +122,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.TRT_INPUT_TENSOR_NAME),
-            tensor_list_adapter_node, bridge_node, tensor_rt_node, decoder_node,
+            tensor_list_adapter_node, bridge_node, tensor_rt_node,
+            tensor_bundle_adapter_node, decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
