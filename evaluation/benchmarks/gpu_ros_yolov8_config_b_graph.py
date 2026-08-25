@@ -79,8 +79,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             'force_engine_update': False
         }],
         remappings=[
-            ('tensor_sub', 'bridged_tensor'),
-            ('tensor_pub', 'nvidia_tensor_output'),
+            ('tensor_pub', 'bridged_tensor'),
+            ('tensor_sub', 'nvidia_tensor_output'),
         ]
     )
 
