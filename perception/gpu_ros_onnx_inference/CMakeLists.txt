@@ -209,6 +209,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_onnx_inference_core onnx_inference_core)
   ament_add_gtest(test_staging_pool_limits
     test/test_staging_pool_limits.cpp)
+  target_include_directories(test_staging_pool_limits PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_compile_definitions(test_onnx_inference_core PRIVATE
     $<$<BOOL:${ORT_ENABLE_CUDA}>:ORT_CUDA_AVAILABLE>
     $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
