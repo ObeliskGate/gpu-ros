@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(gpu_ros_managed_core LANGUAGES CXX)
 
+find_package(ament_cmake QUIET)
+
 add_library(gpu_ros_managed_core SHARED
   src/buffer.cpp
   src/fixed_device_memory_pool.cpp)
@@ -23,7 +25,22 @@ install(EXPORT gpu_ros_managed_coreTargets
   NAMESPACE gpu_ros_managed::
   DESTINATION share/gpu_ros_managed_core/cmake)
 
-find_package(ament_cmake QUIET)
+if(NOT ament_cmake_FOUND)
+  include(CMakePackageConfigHelpers)
+  configure_package_config_file(
+    cmake/gpu_ros_managed_coreConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/gpu_ros_managed_coreConfig.cmake"
+    INSTALL_DESTINATION share/gpu_ros_managed_core/cmake)
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/gpu_ros_managed_coreConfigVersion.cmake"
+    VERSION 0.1.0
+    COMPATIBILITY SameMajorVersion)
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/gpu_ros_managed_coreConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/gpu_ros_managed_coreConfigVersion.cmake"
+    DESTINATION share/gpu_ros_managed_core/cmake)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
   add_executable(gpu_ros_managed_core_test test/core_test.cpp)
