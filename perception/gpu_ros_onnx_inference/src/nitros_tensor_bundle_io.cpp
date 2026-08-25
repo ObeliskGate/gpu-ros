@@ -14,6 +14,7 @@
 
 #include <functional>
 #include <memory>
+#include <exception>
 #include <string>
 #include <utility>
 
@@ -60,15 +61,35 @@ public:
 
   void Publish(TensorBundleOutput && output) override
   {
-    publisher_->publish(BuildNitrosTensorBundle(std::move(output), gpu_device_id_));
+    try {
+      publisher_->publish(BuildNitrosTensorBundle(std::move(output), gpu_device_id_));
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "Dropping NITROS output frame: %s", error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "Dropping NITROS output frame after unknown conversion failure");
+    }
   }
 
 private:
   void OnView(const nitros::NitrosTensorListView & view)
   {
-    auto list =
-      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
-    callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
+    try {
+      auto list =
+        std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
+      callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "Dropping NITROS input frame: %s", error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "Dropping NITROS input frame after unknown conversion failure");
+    }
   }
 
   rclcpp::Node * node_;

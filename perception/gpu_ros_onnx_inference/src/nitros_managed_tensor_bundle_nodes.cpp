@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -96,9 +97,19 @@ public:
 private:
   void OnTensorBundle(const nitros::NitrosTensorListView & view)
   {
-    const auto start = std::chrono::steady_clock::now();
-    publisher_->publish(adapter_.Convert(view));
-    timing_.Record(start);
+    try {
+      const auto start = std::chrono::steady_clock::now();
+      publisher_->publish(adapter_.Convert(view));
+      timing_.Record(start);
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "NITROS-to-Managed conversion dropped frame: %s", error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "NITROS-to-Managed conversion dropped frame: unknown exception");
+    }
   }
 
   int gpu_device_id_;
@@ -131,9 +142,19 @@ public:
 private:
   void OnTensorBundle(gpu_ros_managed::ManagedTensorBundleView input)
   {
-    const auto start = std::chrono::steady_clock::now();
-    publisher_->publish(BuildNitrosTensorBundle(std::move(input), gpu_device_id_));
-    timing_.Record(start);
+    try {
+      const auto start = std::chrono::steady_clock::now();
+      publisher_->publish(BuildNitrosTensorBundle(std::move(input), gpu_device_id_));
+      timing_.Record(start);
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Managed-to-NITROS conversion dropped frame: %s", error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Managed-to-NITROS conversion dropped frame: unknown exception");
+    }
   }
 
   int gpu_device_id_;

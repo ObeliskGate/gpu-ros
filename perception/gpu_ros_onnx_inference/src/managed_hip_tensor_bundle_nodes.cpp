@@ -26,6 +26,8 @@
 #include <variant>
 #include <vector>
 
+#include <hip/hip_runtime_api.h>
+
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
@@ -34,6 +36,7 @@
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 #include "gpu_ros_managed_tensor_bundle/type_adapter.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
+#include "gpu_ros_onnx_inference/staging_pool_limits.hpp"
 
 namespace gpu_ros::onnx_inference
 {
@@ -64,6 +67,7 @@ std::chrono::milliseconds DeclareNonnegativeTimeout(
   if (value < 0) {throw std::invalid_argument(std::string(name) + " must be non-negative");}
   return std::chrono::milliseconds(value);
 }
+
 }  // namespace
 
 void CheckHipDevice(
@@ -93,6 +97,11 @@ public:
     gpu_device_id_(DeclareNonnegativeDeviceId(this)),
     pool_capacity_(DeclarePositiveSize(this, "managed_pool_capacity", 16)),
     pool_timeout_(DeclareNonnegativeTimeout(this, "managed_pool_wait_timeout_ms", 100)),
+    max_tensor_bytes_(DeclarePositiveSize(this, "managed_max_tensor_bytes", 67108864)),
+    pool_cache_max_bytes_(DeclarePositiveSize(
+        this, "managed_pool_cache_max_bytes", 1073741824)),
+    pool_cache_max_entries_(DeclarePositiveSize(
+        this, "managed_pool_cache_max_entries", 16)),
     stream_(gpu_ros_managed::hip::make_stream(gpu_device_id_)),
     publisher_(this, "tensor_output", rclcpp::QoS(10))
   {
@@ -122,10 +131,14 @@ private:
     if (found != pools_.end()) {
       return found->second;
     }
+    const size_t next_cache_bytes = detail::ValidateStagingPoolAddition(
+      bytes, pool_capacity_, pool_cache_bytes_, pools_.size(), max_tensor_bytes_,
+      pool_cache_max_bytes_, pool_cache_max_entries_);
     auto pool = std::make_shared<gpu_ros_managed::FixedDeviceMemoryPool>(
       gpu_ros_managed::hip::make_fixed_device_pool(
         bytes, static_cast<size_t>(pool_capacity_), gpu_device_id_));
     pools_.emplace(bytes, pool);
+    pool_cache_bytes_ = next_cache_bytes;
     return pool;
   }
 
@@ -135,6 +148,13 @@ private:
     std::vector<bool> copy_submitted;
     std::vector<bool> writer_active;
     try {
+      const auto selected = hipSetDevice(gpu_device_id_);
+      if (selected != hipSuccess) {
+        throw std::runtime_error(
+                "Std-to-Managed HIP hipSetDevice failed: " +
+                std::string(hipGetErrorName(selected)) + " (" +
+                hipGetErrorString(selected) + ")");
+      }
       blocks.reserve(message->tensors.size());
       copy_submitted.reserve(message->tensors.size());
       writer_active.reserve(message->tensors.size());
@@ -208,18 +228,29 @@ private:
         get_logger(), *get_clock(), 5000,
         "Failed to stage standard TensorBundle to HIP (%zu pool drops): %s",
         pool_exhaustion_drops_.load(), error.what());
+    } catch (...) {
+      // WriteHandle destruction marks every still-active reservation failed.
+      // That #3 invariant makes the callback's #11-style exception boundary
+      // safe even when the exception type is unknown.
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping standard TensorBundle after unknown HIP staging failure");
     }
   }
 
   int gpu_device_id_;
   size_t pool_capacity_;
   std::chrono::milliseconds pool_timeout_;
+  size_t max_tensor_bytes_;
+  size_t pool_cache_max_bytes_;
+  size_t pool_cache_max_entries_;
   gpu_ros_managed::hip::HipStream stream_;
   gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle> publisher_;
   rclcpp::Subscription<TensorBundleMsg>::SharedPtr subscription_;
   std::mutex pool_mutex_;
   std::unordered_map<
     size_t, std::shared_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> pools_;
+  size_t pool_cache_bytes_{0};
   std::atomic<size_t> pool_exhaustion_drops_{0};
 };
 
@@ -244,6 +275,13 @@ private:
   void OnTensorBundle(gpu_ros_managed::ManagedTensorBundleView input)
   {
     try {
+      const auto selected = hipSetDevice(gpu_device_id_);
+      if (selected != hipSuccess) {
+        throw std::runtime_error(
+                "Managed-to-standard HIP hipSetDevice failed: " +
+                std::string(hipGetErrorName(selected)) + " (" +
+                hipGetErrorString(selected) + ")");
+      }
       auto output = std::make_unique<TensorBundleMsg>();
       output->header = input.header();
       output->tensors.reserve(input.tensors().size());
@@ -262,6 +300,10 @@ private:
     } catch (const std::exception & error) {
       RCLCPP_ERROR(get_logger(), "Failed to stage Managed HIP TensorBundle to host: %s",
           error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping Managed HIP TensorBundle after unknown staging failure");
     }
   }
 

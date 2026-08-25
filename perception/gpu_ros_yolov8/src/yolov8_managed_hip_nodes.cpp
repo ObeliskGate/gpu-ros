@@ -143,6 +143,7 @@ void YoloV8ManagedHipImageEncoderNode::InputCallback(
   bool raw_work_submitted = false;
   bool output_work_submitted = false;
   try {
+    CheckHip(hipSetDevice(gpu_device_id_), "YOLOv8 Managed encoder hipSetDevice");
     const auto plan = detection_common::MakeImagePreprocessPlan(
       *message, output_width_, output_height_,
       detection_common::PreprocessNormalization::kUnitRange);
@@ -220,6 +221,9 @@ void YoloV8ManagedHipDecoderNode::InputCallback(
   gpu_ros_managed::ManagedTensorBundleView message)
 {
   try {
+    CheckHip(
+      hipSetDevice(read_stream_.stream().device_id().ordinal),
+      "YOLOv8 Managed decoder hipSetDevice");
     const auto & tensor = message.get_tensor(config_.tensor_name);
     const auto buffer = DeviceTensorBuffer(tensor, config_.tensor_name,
         read_stream_.stream().device_id().ordinal);

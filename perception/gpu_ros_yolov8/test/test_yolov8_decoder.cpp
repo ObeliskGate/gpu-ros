@@ -134,6 +134,35 @@ TEST(YoloV8DecoderTest, AppliesNms)
   EXPECT_DOUBLE_EQ(detections.detections.at(1).bbox.center.position.x, 300.0);
 }
 
+TEST(YoloV8DecoderTest, NmsDoesNotSuppressOverlappingDifferentClasses)
+{
+  const auto values = MakeYoloOutput(
+    {100.0F, 100.0F}, {100.0F, 100.0F}, {50.0F, 50.0F}, {50.0F, 50.0F},
+    {0.90F, 0.10F}, {0.10F, 0.80F});
+  const auto msg = MakeTensorBundle(MakeTensor("output_tensor", {1, 6, 2}, values));
+
+  const auto detections = DecodeYoloV8TensorBundle(msg, Config());
+
+  ASSERT_EQ(detections.detections.size(), 2U);
+  EXPECT_EQ(detections.detections.at(0).results.front().hypothesis.class_id, "0");
+  EXPECT_EQ(detections.detections.at(1).results.front().hypothesis.class_id, "1");
+}
+
+TEST(YoloV8DecoderTest, PreservesSubpixelCoordinates)
+{
+  const auto values = MakeYoloOutput(
+    {100.25F}, {120.75F}, {40.5F}, {50.25F}, {0.90F}, {0.10F});
+  const auto msg = MakeTensorBundle(MakeTensor("output_tensor", {1, 6, 1}, values));
+
+  const auto detections = DecodeYoloV8TensorBundle(msg, Config());
+
+  ASSERT_EQ(detections.detections.size(), 1U);
+  EXPECT_DOUBLE_EQ(detections.detections.front().bbox.center.position.x, 100.25);
+  EXPECT_DOUBLE_EQ(detections.detections.front().bbox.center.position.y, 120.75);
+  EXPECT_DOUBLE_EQ(detections.detections.front().bbox.size_x, 40.5);
+  EXPECT_DOUBLE_EQ(detections.detections.front().bbox.size_y, 50.25);
+}
+
 TEST(YoloV8DecoderTest, MissingTensorThrows)
 {
   const auto values = MakeYoloOutput(

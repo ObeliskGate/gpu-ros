@@ -20,9 +20,11 @@
 
 #include "gpu_ros_yolov8/yolov8_decoder.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -97,7 +99,7 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
     throw std::runtime_error("YOLOv8 typed span size does not match its shape");
   }
 
-  std::vector<cv::Rect> bboxes;
+  std::vector<cv::Rect2d> bboxes;
   std::vector<float> scores;
   std::vector<int> classes;
   bboxes.reserve(static_cast<size_t>(num_boxes));
@@ -134,10 +136,36 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
     classes.push_back(class_id);
   }
 
+  // NMS is a per-class operation. Applying it to the combined candidate list
+  // incorrectly suppresses overlapping objects with different class IDs.
+  std::map<int, std::vector<int>> candidates_by_class;
+  for (size_t index = 0; index < classes.size(); ++index) {
+    candidates_by_class[classes[index]].push_back(static_cast<int>(index));
+  }
   std::vector<int> indices;
-  cv::dnn::NMSBoxes(
-    bboxes, scores, static_cast<float>(config.confidence_threshold),
-    static_cast<float>(config.nms_threshold), indices, 5.0F);
+  for (const auto & [class_id, candidates] : candidates_by_class) {
+    static_cast<void>(class_id);
+    std::vector<cv::Rect2d> class_boxes;
+    std::vector<float> class_scores;
+    class_boxes.reserve(candidates.size());
+    class_scores.reserve(candidates.size());
+    for (const int candidate : candidates) {
+      class_boxes.push_back(bboxes.at(static_cast<size_t>(candidate)));
+      class_scores.push_back(scores.at(static_cast<size_t>(candidate)));
+    }
+    std::vector<int> class_indices;
+    cv::dnn::NMSBoxes(
+      class_boxes, class_scores, static_cast<float>(config.confidence_threshold),
+      static_cast<float>(config.nms_threshold), class_indices, 1.0F);
+    for (const int class_index : class_indices) {
+      indices.push_back(candidates.at(static_cast<size_t>(class_index)));
+    }
+  }
+  std::stable_sort(indices.begin(), indices.end(), [&scores](int left, int right) {
+      const float left_score = scores.at(static_cast<size_t>(left));
+      const float right_score = scores.at(static_cast<size_t>(right));
+      return left_score == right_score ? left < right : left_score > right_score;
+    });
   vision_msgs::msg::Detection2DArray detections;
   detections.header = header;
   detections.detections.reserve(indices.size());

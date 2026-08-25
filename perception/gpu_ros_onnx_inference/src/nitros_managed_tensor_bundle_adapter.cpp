@@ -142,6 +142,7 @@ NitrosToManagedTensorBundleAdapter::~NitrosToManagedTensorBundleAdapter()
 gpu_ros_managed::ManagedTensorBundle NitrosToManagedTensorBundleAdapter::Convert(
   const nitros::NitrosTensorListView & view) const
 {
+  CheckCuda(cudaSetDevice(gpu_device_id_), "NITROS-to-Managed cudaSetDevice");
   std::vector<gpu_ros_managed::ManagedTensor> tensors;
   tensors.reserve(view.GetTensorCount());
   for (size_t index = 0; index < view.GetTensorCount(); ++index) {
@@ -172,6 +173,7 @@ gpu_ros_managed::ManagedTensorBundle NitrosToManagedTensorBundleAdapter::Convert
 nitros::NitrosTensorList BuildNitrosTensorBundle(
   gpu_ros_managed::ManagedTensorBundleView input, int gpu_device_id)
 {
+  CheckCuda(cudaSetDevice(gpu_device_id), "Managed-to-NITROS cudaSetDevice");
   nitros::NitrosTensorListBuilder builder;
   builder.WithHeader(input.header());
   for (const auto & tensor : input.tensors()) {

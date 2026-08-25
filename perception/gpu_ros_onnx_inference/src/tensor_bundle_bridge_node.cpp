@@ -47,6 +47,14 @@ namespace
 {
 namespace nitros = nvidia::isaac_ros::nitros;
 
+void CheckCuda(cudaError_t result, const char * operation)
+{
+  if (result != cudaSuccess) {
+    throw std::runtime_error(
+            std::string(operation) + " failed: " + cudaGetErrorString(result));
+  }
+}
+
 nitros::NitrosDataType ToNitrosDataType(uint8_t data_type)
 {
   switch (data_type) {
@@ -106,9 +114,13 @@ public:
       declare_parameter<std::string>("input_transport", "std");
     enable_timing_ = declare_parameter<bool>("enable_timing", false);
     timing_log_every_ = declare_parameter<int>("timing_log_every", 500);
-    declare_parameter<int>("gpu_device_id", 0);
+    gpu_device_id_ = declare_parameter<int>("gpu_device_id", 0);
+    if (gpu_device_id_ < 0) {
+      throw std::invalid_argument("gpu_device_id must be non-negative");
+    }
 
-    cudaStreamCreate(&stream_);
+    CheckCuda(cudaSetDevice(gpu_device_id_), "cudaSetDevice");
+    CheckCuda(cudaStreamCreate(&stream_), "cudaStreamCreate");
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
       this, "tensor_output",
       nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
@@ -122,12 +134,31 @@ public:
 
   ~TensorBundleBridgeNode() override
   {
+    if (cudaSetDevice(gpu_device_id_) != cudaSuccess) {
+      return;
+    }
     cudaStreamDestroy(stream_);
   }
 
 private:
   void Forward(gpu_ros_managed::ManagedTensorBundleView input)
   {
+    try {
+      ForwardOrThrow(std::move(input));
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping TensorBundle bridge frame: %s", error.what());
+    } catch (...) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping TensorBundle bridge frame after unknown conversion failure");
+    }
+  }
+
+  void ForwardOrThrow(gpu_ros_managed::ManagedTensorBundleView input)
+  {
+    CheckCuda(cudaSetDevice(gpu_device_id_), "cudaSetDevice");
     std::chrono::steady_clock::time_point start;
     if (enable_timing_) {
       start = std::chrono::steady_clock::now();
@@ -141,9 +172,11 @@ private:
         throw std::invalid_argument("TensorBundleBridge only supports standard host-memory input");
       }
       void * gpu_buffer = nullptr;
-      cudaMallocAsync(&gpu_buffer, tensor.byte_size(), stream_);
-      cudaMemcpyAsync(
-        gpu_buffer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice, stream_);
+      CheckCuda(cudaMallocAsync(&gpu_buffer, tensor.byte_size(), stream_), "cudaMallocAsync");
+      CheckCuda(
+        cudaMemcpyAsync(
+          gpu_buffer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice, stream_),
+        "cudaMemcpyAsync");
       builder.AddTensor(
         tensor.name(),
         nitros::NitrosTensorBuilder()
@@ -152,7 +185,7 @@ private:
         .WithData(gpu_buffer)
         .Build());
     }
-    cudaStreamSynchronize(stream_);
+    CheckCuda(cudaStreamSynchronize(stream_), "cudaStreamSynchronize");
     pub_->publish(builder.Build());
 
     if (enable_timing_) {
@@ -190,6 +223,7 @@ private:
   }
 
   cudaStream_t stream_;
+  int gpu_device_id_{0};
   bool enable_timing_{false};
   int timing_log_every_{500};
   std::vector<double> timings_ms_;

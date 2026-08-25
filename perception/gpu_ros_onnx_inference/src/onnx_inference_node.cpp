@@ -15,12 +15,12 @@
 #include "gpu_ros_onnx_inference/onnx_inference_node.hpp"
 
 #include <chrono>
-#include <cinttypes>
 #include <cstdint>
+#include <cstdlib>
 #include <exception>
-#include <fstream>
-#include <memory>
+#include <filesystem>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -33,18 +33,33 @@ namespace gpu_ros::onnx_inference
 namespace
 {
 
-using SteadyClock = std::chrono::steady_clock;
-
-int64_t ToNanoseconds(SteadyClock::time_point timestamp)
+std::string ResolveModelProfile(
+  const std::string & requested_profile,
+  const std::string & execution_provider,
+  const std::string & assets_root)
 {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-    timestamp.time_since_epoch()).count();
-}
-
-int64_t DurationNanoseconds(
-  SteadyClock::time_point start, SteadyClock::time_point end)
-{
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+  const std::string profile = requested_profile == "auto" ?
+    (execution_provider == "cuda" ? "nvidia_synthetica" : "rtdetrv2_r50") :
+    requested_profile;
+  std::filesystem::path relative;
+  if (profile == "nvidia_synthetica") {
+    relative = "models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx";
+  } else if (profile == "rtdetrv2_r50") {
+    relative = "models/rtdetrv2_r50/rtdetrv2_r50.onnx";
+  } else if (profile == "xanylabeling_rtdetrv2_r50") {
+    relative = "models/xanylabeling_rtdetrv2_r50/rtdetrv2_r50vd_6x_coco.onnx";
+  } else {
+    throw std::invalid_argument(
+            "model_profile must be auto, nvidia_synthetica, rtdetrv2_r50, or "
+            "xanylabeling_rtdetrv2_r50");
+  }
+  const auto path = std::filesystem::path(assets_root) / relative;
+  if (!std::filesystem::is_regular_file(path)) {
+    throw std::runtime_error(
+            "selected model_profile=" + profile + " is missing at " + path.string() +
+            "; automatic model fallback is disabled");
+  }
+  return path.string();
 }
 
 }  // namespace
@@ -52,10 +67,16 @@ int64_t DurationNanoseconds(
 OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("onnx_inference_node", options)
 {
-  const std::string model_file_path =
+  std::string model_file_path =
     declare_parameter<std::string>("model_file_path", "");
   const std::string ep_str =
     declare_parameter<std::string>("execution_provider", "cuda");
+  const std::string model_profile =
+    declare_parameter<std::string>("model_profile", "");
+  const char * assets_root_environment = std::getenv("OVG_ASSETS_ROOT");
+  const std::string model_assets_root = declare_parameter<std::string>(
+    "model_assets_root",
+    assets_root_environment == nullptr ? "/workspaces/ovg-assets" : assets_root_environment);
   const int gpu_device_id =
     declare_parameter<int>("gpu_device_id", 0);
   const std::string ort_profile_prefix =
@@ -68,11 +89,6 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("transport", "std");
   const std::string managed_io_contract =
     declare_parameter<std::string>("managed_io_contract", "");
-  debug_message_flow_ = declare_parameter<bool>("debug_message_flow", false);
-  timing_report_path_ = declare_parameter<std::string>("timing_report_path", "");
-  if (!timing_report_path_.empty()) {
-    timing_records_.reserve(16384);
-  }
   const auto managed_input_contracts =
     declare_parameter<std::vector<std::string>>(
       "managed_input_contracts", std::vector<std::string>{});
@@ -84,6 +100,16 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   const int64_t managed_pool_wait_timeout_ms =
     declare_parameter<int64_t>("managed_pool_wait_timeout_ms", 100);
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
+
+  if (!model_profile.empty()) {
+    if (!model_file_path.empty()) {
+      RCLCPP_WARN(
+        get_logger(),
+        "model_file_path explicitly overrides model_profile=%s", model_profile.c_str());
+    } else {
+      model_file_path = ResolveModelProfile(model_profile, ep_str, model_assets_root);
+    }
+  }
 
   if (ort_profile_frames < 0) {
     throw std::invalid_argument("ort_profile_frames must be non-negative");
@@ -174,7 +200,6 @@ OnnxInferenceNode::~OnnxInferenceNode()
       "buffers remain orphan-safe and were not force-released.");
   }
   FinalizeOrtProfile("shutdown");
-  WriteTimingReport();
 }
 
 void OnnxInferenceNode::FinalizeOrtProfile(const char * reason) noexcept
@@ -200,24 +225,12 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
     return;
   }
 
-  const int64_t message_id = inputs.header().stamp.sec;
-  const auto callback_start = SteadyClock::now();
-  TrackMessageId(message_id);
-  const auto lock_start = SteadyClock::now();
   std::lock_guard<std::mutex> lock(inference_mutex_);
-  const auto lock_acquired = SteadyClock::now();
-  auto run_finished = lock_acquired;
-  auto callback_finished = lock_acquired;
-  OnnxInferenceCore::InferenceStageTiming stage_timing;
-  uint8_t timing_status = 1;
   try {
     TensorBundleOutput output;
     output.header = inputs.header();
     output.tensors = core_->RunInference(
-      std::move(inputs), io_->output_placement(),
-      timing_report_path_.empty() ? nullptr : &stage_timing);
-    run_finished = SteadyClock::now();
-    timing_status = 2;
+      std::move(inputs), io_->output_placement());
     ++inference_count_;
     if (!output_probe_runtime_logged_) {
       const std::string output_probe = core_->OutputBindingProbeReport();
@@ -230,10 +243,7 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       FinalizeOrtProfile("configured frame limit");
     }
     io_->Publish(std::move(output));
-    callback_finished = SteadyClock::now();
-    timing_status = 0;
   } catch (const Ort::Exception & e) {
-    callback_finished = SteadyClock::now();
     const char * message = e.what();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
@@ -241,91 +251,14 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
       static_cast<int>(e.GetOrtErrorCode()),
       (message != nullptr && message[0] != '\0') ? message : "<empty>");
   } catch (const std::exception & e) {
-    callback_finished = SteadyClock::now();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame: %s", e.what());
   } catch (...) {
-    callback_finished = SteadyClock::now();
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame after an unknown exception");
   }
-
-  if (!timing_report_path_.empty()) {
-    const auto inference_end = timing_status == 1 ? callback_finished : run_finished;
-    const auto publish_start = run_finished;
-    const auto publish_end = timing_status == 1 ? run_finished : callback_finished;
-    timing_records_.push_back(TimingRecord{
-        message_id,
-        ToNanoseconds(callback_start),
-        DurationNanoseconds(lock_start, lock_acquired),
-        DurationNanoseconds(lock_acquired, inference_end),
-        stage_timing.input_setup_ns,
-        stage_timing.ort_session_run_ns,
-        stage_timing.output_materialize_ns,
-        DurationNanoseconds(publish_start, publish_end),
-        DurationNanoseconds(callback_start, callback_finished),
-        timing_status});
-  }
-}
-
-void OnnxInferenceNode::WriteTimingReport() noexcept
-{
-  if (timing_report_path_.empty()) {
-    return;
-  }
-
-  std::ofstream output(timing_report_path_, std::ios::out | std::ios::trunc);
-  if (!output) {
-    RCLCPP_ERROR(
-      get_logger(), "Failed to open inference timing report '%s'.",
-      timing_report_path_.c_str());
-    return;
-  }
-
-  output <<
-    "message_id,callback_start_ns,lock_wait_ns,run_inference_ns,input_setup_ns,"
-    "ort_session_run_ns,output_materialize_ns,publish_ns,total_ns,status\n";
-  for (const auto & record : timing_records_) {
-    const char * status = record.status == 0 ? "ok" :
-      (record.status == 1 ? "run_inference_error" : "publish_error");
-    output << record.message_id << ',' << record.callback_start_ns << ',' <<
-      record.lock_wait_ns << ',' << record.run_inference_ns << ',' <<
-      record.input_setup_ns << ',' << record.ort_session_run_ns << ',' <<
-      record.output_materialize_ns << ',' << record.publish_ns << ',' <<
-      record.total_ns << ',' << status << '\n';
-  }
-  if (!output) {
-    RCLCPP_ERROR(
-      get_logger(), "Failed while writing inference timing report '%s'.",
-      timing_report_path_.c_str());
-    return;
-  }
-  RCLCPP_INFO(
-    get_logger(), "Inference timing report written to '%s' (%zu callbacks).",
-    timing_report_path_.c_str(), timing_records_.size());
-}
-
-void OnnxInferenceNode::TrackMessageId(int64_t message_id)
-{
-  if (!debug_message_flow_) {
-    return;
-  }
-  if (has_last_message_id_ && message_id > last_message_id_ + 1) {
-    RCLCPP_WARN(
-      get_logger(),
-      "MESSAGE_FLOW_GAP stage=inference_input previous=%" PRId64 " current=%" PRId64
-      " missing=%" PRId64,
-      last_message_id_, message_id, message_id - last_message_id_ - 1);
-  } else if (has_last_message_id_ && message_id <= last_message_id_) {
-    RCLCPP_INFO(
-      get_logger(), "MESSAGE_FLOW_RESET stage=inference_input previous=%" PRId64
-      " current=%" PRId64,
-      last_message_id_, message_id);
-  }
-  last_message_id_ = message_id;
-  has_last_message_id_ = true;
 }
 
 }  // namespace gpu_ros::onnx_inference

@@ -159,6 +159,7 @@ void RtDetrManagedHipImageEncoderNode::InputCallback(
   bool raw_work_submitted = false;
   bool output_work_submitted = false;
   try {
+    CheckHip(hipSetDevice(gpu_device_id_), "RT-DETR Managed encoder hipSetDevice");
     const auto plan = detection_common::MakeImagePreprocessPlan(
       *message, output_width_, output_height_,
       detection_common::PreprocessNormalization::kUnitRange);
@@ -269,6 +270,7 @@ void RtDetrManagedHipPreprocessorNode::InputCallback(
 {
   std::unique_ptr<gpu_ros_managed::PoolBlock> size_block;
   try {
+    CheckHip(hipSetDevice(gpu_device_id_), "RT-DETR Managed preprocessor hipSetDevice");
     const auto & input = message.get_tensor(input_image_tensor_name_);
     const auto input_buffer = RequireDeviceTensor(
       input, input_image_tensor_name_, gpu_ros_managed::TensorDataType::kFloat32,
@@ -332,6 +334,9 @@ void RtDetrManagedHipDecoderNode::InputCallback(
   gpu_ros_managed::ManagedTensorBundleView message)
 {
   try {
+    CheckHip(
+      hipSetDevice(read_stream_.stream().device_id().ordinal),
+      "RT-DETR Managed decoder hipSetDevice");
     const auto & labels = message.get_tensor(config_.labels_tensor_name);
     const auto & boxes = message.get_tensor(config_.boxes_tensor_name);
     const auto & scores = message.get_tensor(config_.scores_tensor_name);

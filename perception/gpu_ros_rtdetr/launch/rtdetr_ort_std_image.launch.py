@@ -36,6 +36,9 @@ def generate_launch_description():
             'model_file_path',
             default_value='',
             description='Absolute path to the RT-DETR ONNX file'),
+        DeclareLaunchArgument('model_profile', default_value='auto'),
+        DeclareLaunchArgument(
+            'model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument(
             'image_topic',
             default_value='image',
@@ -81,6 +84,8 @@ def generate_launch_description():
     ]
 
     model_file_path = LaunchConfiguration('model_file_path')
+    model_profile = LaunchConfiguration('model_profile')
+    model_assets_root = LaunchConfiguration('model_assets_root')
     image_topic = LaunchConfiguration('image_topic')
     namespace = LaunchConfiguration('namespace')
     input_image_width = LaunchConfiguration('input_image_width')
@@ -122,6 +127,8 @@ def generate_launch_description():
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         parameters=[{
             'model_file_path': model_file_path,
+            'model_profile': model_profile,
+            'model_assets_root': model_assets_root,
             'execution_provider': execution_provider,
             'gpu_device_id': gpu_device_id,
             'ort_profile_prefix': ort_profile_prefix,
