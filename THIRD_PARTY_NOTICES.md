@@ -2,12 +2,13 @@
 
 The root Apache License 2.0 applies to project-authored material in this
 repository. The entries below identify file-level boundaries; they do not
-relicense an upstream repository, submodule, model, dataset, container, or
+relicense an upstream repository, external checkout, model, dataset, container, or
 runtime.
 
 ## NVIDIA Isaac ROS object-detection sources
 
-The root gitlink pins `isaac_ros_object_detection` at commit
+The opt-in `external/nvidia-isaac-ros.repos` manifest records
+`isaac_ros_object_detection` at commit
 `060ced887bd8a3a0be60b1fa454365942eefd128`. The following local groups are
 derived from its file-level Apache-2.0 sources and retain the NVIDIA
 attribution plus a notice describing the standard-ROS, HIP, or file-splitting
@@ -43,7 +44,7 @@ claim NVIDIA sponsorship or endorsement.
 
 ## NVIDIA Isaac ROS benchmark sources
 
-The root gitlink pins `isaac_ros_benchmark` at commit
+The opt-in external manifest records `isaac_ros_benchmark` at commit
 `f46699e124262c5bfb6f00099061f6718f026b3f`. `migrated_packages/benchmarks/rtdetr_common.py`
 and the RT-DETR benchmark compositions are adapted from the file-level
 Apache-2.0 RT-DETR benchmark graph at that commit. The local YOLOv8 benchmark
@@ -54,7 +55,7 @@ unresolved.
 
 The external `isaac_ros_benchmark` checkout contains packages with different
 license boundaries, including NVIDIA Isaac ROS Software License metadata. It
-remains an external gitlink and is not covered by the root Apache declaration.
+remains an external checkout and is not covered by the root Apache declaration.
 
 ## ONNX Runtime
 

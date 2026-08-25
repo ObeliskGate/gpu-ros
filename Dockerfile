@@ -1,34 +1,23 @@
 FROM nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64
 
-# 1. Tooling needed to fetch the NGC CLI (rarely changes)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip \
-    && rm -rf /var/lib/apt/lists/*
-
-# 2. NGC CLI (only changes when bumping NGC_CLI_VERSION)
-ARG NGC_CLI_VERSION=4.18.0
-RUN wget -q -O /tmp/ngccli.zip https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/${NGC_CLI_VERSION}/files/ngccli_linux.zip && \
-    unzip -q /tmp/ngccli.zip -d /opt && rm /tmp/ngccli.zip
-ENV PATH="/opt/ngc-cli:${PATH}"
-
-# 3. Benchmark packages
+# 1. Benchmark packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-jazzy-isaac-ros-rtdetr-benchmark \
     ros-jazzy-isaac-ros-detectnet-benchmark \
     ros-jazzy-isaac-ros-grounding-dino-benchmark \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Isaac ROS test framework. Keep recommended dependencies enabled because
+# 2. Isaac ROS test framework. Keep recommended dependencies enabled because
 # python3-torch-pip-shim needs them while its package scripts install PyTorch.
 RUN apt-get update && apt-get install -y \
     ros-jazzy-isaac-ros-test \
     && rm -rf /var/lib/apt/lists/*
 
-# 5. ONNX Runtime — reuse the CUDA-13-matched build that ships with Triton
+# 3. ONNX Runtime — reuse the CUDA-13-matched build that ships with Triton
 # (/opt/tritonserver/backends/onnxruntime, ORT 1.23.1). We only fetch matching
 # headers (header API is CUDA-version-independent); the .so comes from Triton.
-ARG ORT_VERSION=1.23.1
-RUN wget -q -O /tmp/ort.tgz \
+COPY config/onnxruntime.lock /tmp/onnxruntime.lock
+RUN . /tmp/onnxruntime.lock && wget -q -O /tmp/ort.tgz \
       "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${ORT_VERSION}.tgz" && \
     mkdir -p /opt/onnxruntime && \
     tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1 --wildcards "*/include/*" && \
@@ -36,5 +25,5 @@ RUN wget -q -O /tmp/ort.tgz \
     echo "/opt/tritonserver/backends/onnxruntime" > /etc/ld.so.conf.d/onnxruntime.conf && \
     ldconfig
 
-# 6. Python deps for model preparation (FP16 conversion).
+# 4. Python deps for model preparation (FP16 conversion).
 RUN pip install --no-cache-dir --break-system-packages onnxconverter-common

@@ -6,7 +6,6 @@ services:
       dockerfile: docker/phase2a-amd.Dockerfile
       args:
         AMD_BASE_IMAGE: ${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}
-        ORT_VERSION: ${ORT_VERSION:-1.23.1}
         ORT_BUILD_JOBS: ${ORT_BUILD_JOBS:-16}
         AMD_GPU_TARGETS: ${AMD_GPU_TARGETS:-}
         ROS_DISTRO: ${ROS_DISTRO:-jazzy}
@@ -40,8 +39,6 @@ services:
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/ovg-assets
       OVG_IMAGE_FINGERPRINT: ${OVG_IMAGE_FINGERPRINT:-unresolved}
       OVG_RUNTIME_EFFECTIVE: ${OVG_RUNTIME_EFFECTIVE:-docker}
-      NGC_CLI_API_KEY: ${NGC_CLI_API_KEY:-}
-      NGC_CLI_ORG: ${NGC_CLI_ORG:-}
     volumes:
       - .:/workspaces/amd_ros_object_detection
       - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/amd_ros_object_detection/src/gpu_ros_managed

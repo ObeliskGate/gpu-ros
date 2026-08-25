@@ -1,4 +1,5 @@
 # Copyright 2026 Boshen Chen
+# NVIDIA/Isaac-specific reference launch owned by the compatibility package.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +24,8 @@ from launch_ros.descriptions import ComposableNode
 
 def generate_launch_description():
     model_file_path = LaunchConfiguration('model_file_path')
+    model_profile = LaunchConfiguration('model_profile')
+    model_assets_root = LaunchConfiguration('model_assets_root')
     input_image_width = LaunchConfiguration('input_image_width')
     input_image_height = LaunchConfiguration('input_image_height')
     confidence_threshold = LaunchConfiguration('confidence_threshold')
@@ -32,6 +35,9 @@ def generate_launch_description():
 
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=''),
+        DeclareLaunchArgument('model_profile', default_value='auto'),
+        DeclareLaunchArgument(
+            'model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument('input_image_width', default_value='640'),
         DeclareLaunchArgument('input_image_height', default_value='480'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.6'),
@@ -88,7 +94,10 @@ def generate_launch_description():
     onnx = ComposableNode(
         name='onnx_inference', package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{'model_file_path': model_file_path, 'execution_provider': 'cuda',
+        parameters=[{'model_file_path': model_file_path,
+                     'model_profile': model_profile,
+                     'model_assets_root': model_assets_root,
+                     'execution_provider': 'cuda',
                      'ort_profile_prefix': ort_profile_prefix,
                      'ort_profile_frames': ort_profile_frames,
                      'binding_report_path': binding_report_path,

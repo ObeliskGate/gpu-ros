@@ -11,6 +11,10 @@
   <depend>rclcpp_components</depend>
   <depend>isaac_ros_tensor_list_interfaces</depend>
   <depend>gpu_ros_tensor_bundle_msgs</depend>
+  <exec_depend>gpu_ros_onnx_inference</exec_depend>
+  <exec_depend>isaac_ros_image_proc</exec_depend>
+  <exec_depend>isaac_ros_tensor_proc</exec_depend>
+  <exec_depend>isaac_ros_yolov8</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <test_depend>ament_cmake_gtest</test_depend>

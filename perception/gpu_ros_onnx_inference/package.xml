@@ -19,9 +19,6 @@
   <build_depend>gpu_ros_managed_cuda</build_depend>
   <depend>gpu_ros_managed_hip</depend>
 
-  <exec_depend>isaac_ros_image_proc</exec_depend>
-  <exec_depend>isaac_ros_tensor_proc</exec_depend>
-  <exec_depend>isaac_ros_yolov8</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

@@ -4,10 +4,13 @@ trap 'echo "ERROR: Phase 1 NVIDIA setup failed at line ${LINENO}: ${BASH_COMMAND
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.yaml"
-ENV_FILE="${ROOT_DIR}/.env"
 EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64"
-EXPECTED_ORT="1.23.1"
+ORT_LOCK="${ROOT_DIR}/config/onnxruntime.lock"
+# shellcheck source=/dev/null
+source "${ORT_LOCK}"
 MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
+EXPECTED_OBJECT_DETECTION_COMMIT="060ced887bd8a3a0be60b1fa454365942eefd128"
+EXPECTED_BENCHMARK_COMMIT="f46699e124262c5bfb6f00099061f6718f026b3f"
 
 cd "${ROOT_DIR}"
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
@@ -17,10 +20,32 @@ check_pins() {
     echo "ERROR: Dockerfile no longer uses the Phase 1 Isaac ROS image." >&2
     exit 1
   }
-  grep -Fqx "ARG ORT_VERSION=${EXPECTED_ORT}" Dockerfile || {
-    echo "ERROR: Dockerfile no longer pins ORT ${EXPECTED_ORT}." >&2
+  grep -Fq "COPY config/onnxruntime.lock" Dockerfile || {
+    echo "ERROR: Dockerfile no longer reads the ONNX Runtime lock." >&2
     exit 1
   }
+}
+
+report_repo_state() {
+  local label="$1"
+  local repository="$2"
+  local untracked_paths
+  echo "${label} HEAD: $(git -C "${repository}" rev-parse HEAD)"
+  echo "${label} diff HEAD --binary sha256: $(
+    git -C "${repository}" diff HEAD --binary | sha256sum | awk '{print $1}')"
+  untracked_paths="$(git -C "${repository}" ls-files --others --exclude-standard)"
+  if [[ -n "${untracked_paths}" ]]; then
+    echo "${label} untracked paths:"
+    printf '%s\n' "${untracked_paths}"
+    echo "${label} untracked content sha256: $(
+      git -C "${repository}" ls-files --others --exclude-standard -z |
+      while IFS= read -r -d '' path; do
+        sha256sum "${repository}/${path}"
+      done | sha256sum | awk '{print $1}')"
+  else
+    echo "${label} untracked paths: none"
+    echo "${label} untracked content sha256: none"
+  fi
 }
 
 check_host() {
@@ -29,20 +54,39 @@ check_host() {
   command -v nvidia-smi >/dev/null
   nvidia-smi >/dev/null
   check_pins
+  [[ -n "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:-}" ]] || {
+    echo "ERROR: set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT to an explicit external checkout." >&2
+    exit 1
+  }
+  [[ -d "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection/.git" ]] || {
+    echo "ERROR: external isaac_ros_object_detection checkout is missing." >&2
+    exit 1
+  }
+  [[ -d "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark/.git" ]] || {
+    echo "ERROR: external isaac_ros_benchmark checkout is missing." >&2
+    exit 1
+  }
+  local object_detection_commit benchmark_commit
+  object_detection_commit="$(
+    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection" rev-parse HEAD)"
+  benchmark_commit="$(
+    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark" rev-parse HEAD)"
+  [[ "${object_detection_commit}" == "${EXPECTED_OBJECT_DETECTION_COMMIT}" ]] || {
+    echo "ERROR: external isaac_ros_object_detection is not at the manifest commit." >&2
+    exit 1
+  }
+  [[ "${benchmark_commit}" == "${EXPECTED_BENCHMARK_COMMIT}" ]] || {
+    echo "ERROR: external isaac_ros_benchmark is not at the manifest commit." >&2
+    exit 1
+  }
   [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || {
     echo "ERROR: gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}" >&2
     exit 1
   }
-  local managed_commit
-  managed_commit="$(git -C "${MANAGED_DIR}" rev-parse HEAD)"
-  echo "gpu_ros_managed commit: ${managed_commit} (manual checkout; not pin-checked)"
-  echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${EXPECTED_ORT}"
-}
-
-prepare_env() {
-  if [[ ! -e "${ENV_FILE}" ]]; then
-    touch "${ENV_FILE}"
-  fi
+  report_repo_state "amd_ros_object_detection" "${ROOT_DIR}"
+  report_repo_state "gpu_ros_managed" "${MANAGED_DIR}"
+  echo "Sibling commits are recorded, not allowlisted; compatibility is decided by build/tests."
+  echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${ORT_VERSION}"
 }
 
 verify_container() {
@@ -95,19 +139,16 @@ build_workspace() {
 case "${1:-bootstrap}" in
   bootstrap)
     check_host
-    prepare_env
     "${COMPOSE[@]}" build dev
     "${COMPOSE[@]}" up -d dev
     verify_container
     ;;
   build)
     check_host
-    prepare_env
     "${COMPOSE[@]}" build dev
     ;;
   up)
     check_host
-    prepare_env
     "${COMPOSE[@]}" up -d dev
     verify_container
     ;;

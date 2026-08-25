@@ -10,7 +10,7 @@ model and benchmark assets outside the source tree.
 This is an independent project, not an NVIDIA official project. Some migrated
 files are derived from file-level Apache-2.0 NVIDIA Isaac ROS sources; the
 upstream copyright and local modification notices are retained where that
-provenance is established. NVIDIA package and submodule licenses do not become
+provenance is established. NVIDIA package and external-checkout licenses do not become
 the license of this repository as a whole.
 
 ## Scope and architecture
@@ -108,10 +108,12 @@ uv run --isolated --no-project python -B \
 
 The repository does not vendor or redistribute ONNX weights,
 TensorRT/MIGraphX engines, R2B data, ROS bags, traces, profiles, logs, SIF
-images, or raw benchmark JSON. The AMD default is the Apache-2.0 RT-DETRv2
-R50 COCO export at
-`models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx`, pinned to the
-upstream source revision recorded in the Phase 2A runbook. The NVIDIA
+images, or raw benchmark JSON. The AMD/ROCm/CPU default is the locally generated
+RT-DETRv2 R50 COCO profile at
+`models/rtdetrv2_r50/rtdetrv2_r50.onnx`, built from the pinned upstream source,
+official checkpoint, and locked export recipe. Apache-2.0 applies to the pinned
+source code; because no weight-level grant was established, the checkpoint and
+derived ONNX remain `NOASSERTION` and are never shipped in a source release. The NVIDIA
 Synthetica DETR asset remains only in the historical NVIDIA/reference profile.
 The RT-DETRv2 image encoder follows that export's validation preprocessing and
 converts uint8 RGB values to float32 in `[0, 1]`; the decoder and tensor
@@ -123,15 +125,27 @@ compatibility check, not permission to redistribute an asset.
 Generated output belongs under an explicit out-of-tree result directory such
 as `OVG_RESULTS_ROOT`; the source tree is not an experiment database.
 
+`model_profile=auto` selects `nvidia_synthetica` for CUDA and
+`rtdetrv2_r50` for MIGraphX, ROCm, and CPU. Explicit profiles are
+`nvidia_synthetica`, `rtdetrv2_r50`, and
+`xanylabeling_rtdetrv2_r50`; the last exists only to identify compatible
+third-party bytes and is not a default. A missing selected asset is fatal and
+never triggers fallback. `tools/phase2-assets` only validates existing
+assets. Use its `import-model`, `import-r2b`, or `build-rtdetrv2-r50` commands
+to populate an external asset root.
+The reproducible export and CPU/MIGraphX, bag, and COCO acceptance commands are
+in [`docs/rtdetrv2-model-validation.md`](docs/rtdetrv2-model-validation.md).
+
 ## License and third parties
 
 The root `LICENSE` covers project-authored source and the intended public
 migrated code subject to the component boundaries in
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). ORT patches are covered by
 the copied MIT notice in `LICENSES/ONNXRUNTIME-MIT.txt` when applied to the
-external ORT source. The `isaac_ros_object_detection` and
-`isaac_ros_benchmark` directories are pinned external gitlinks and retain
-their own upstream licenses; they are not re-licensed by this root repository.
+external ORT source. NVIDIA source is not vendored and is not a submodule.
+The opt-in [`external/nvidia-isaac-ros.repos`](external/nvidia-isaac-ros.repos)
+manifest reconstructs the historical NVIDIA lane in a configured external
+source root; those checkouts retain their own upstream licenses.
 
 ## Known limitations
 
@@ -140,9 +154,9 @@ their own upstream licenses; they are not re-licensed by this root repository.
 - The AMD RT-DETRv2 asset must satisfy the documented `images`,
   `orig_target_sizes` -> `labels`, `boxes`, `scores` contract; a raw
   Transformers RT-DETR export is not interchangeable with this path.
-- RT-DETR has a documented MIGraphX CPU placement for part of its
-  postprocessing; provider placement must be audited separately from
-  throughput.
+- A tested RT-DETR/ORT combination placed part of postprocessing on CPU.
+  Mixed MIGraphX/CPU placement is reported as a performance observation, not
+  treated as a fixed node whitelist or a correctness failure.
 - Standard and Managed paths are complete pipeline configurations, not a
   decoder-neutral single-variable benchmark.
 - A source checkout is not a sanitized public snapshot. Existing private

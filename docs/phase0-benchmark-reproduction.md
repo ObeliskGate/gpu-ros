@@ -20,7 +20,7 @@ historical until explicitly rerun and labeled as 4.5.
 - NVIDIA GPU and compatible driver
 - Docker and NVIDIA Container Toolkit
 - Git
-- access to the required NGC models and dataset
+- user-acquired copies of the required models and dataset outside this repository
 - gpu_ros_managed checkout (the exact revision is enforced only for a managed
   transport reproduction)
 
@@ -35,14 +35,8 @@ library only when the image and driver requirements call for it.
 
 ## Start the NVIDIA runtime
 
-Provide the NGC credential through the deployment's secret mechanism before
-starting the helper. Never commit a credential or a local `.env` file:
-
-~~~bash
-export NGC_CLI_API_KEY="<provided-by-secret-manager>"
-~~~
-
-Then run:
+Configure `OVG_NVIDIA_EXTERNAL_SOURCE_ROOT` to the source root populated by
+`tools/bootstrap-nvidia-external.sh`, then run:
 
 ~~~bash
 ./docker/phase1-nvidia.sh bootstrap
@@ -58,46 +52,37 @@ It checks the asset root itself, not the contents of every model and dataset.
 
 ## Prepare assets
 
-Inside the container:
+Acquire vendor-controlled assets outside this repository using the account and
+license workflow appropriate to your organization. The repository contains no
+NGC client or credential path. Import the resulting local files/directories:
 
 ~~~bash
-export ASSETS_ROOT=<persistent-assets-root>
-export DOWNLOAD_ROOT=${ASSETS_ROOT}/downloads
+export OVG_ASSETS_ROOT=<persistent-assets-root>
+export ASSETS_ROOT="${OVG_ASSETS_ROOT}"
 
-mkdir -p ${ASSETS_ROOT}/models ${ASSETS_ROOT}/datasets ${DOWNLOAD_ROOT}
+tools/phase2-assets import-model \
+  --profile nvidia_synthetica \
+  --source <external-sdetr_grasp.onnx>
 
-ngc registry model download-version \
-  nvidia/isaac/synthetica_detr:1.0.0_onnx \
-  --dest ${ASSETS_ROOT}/models \
-  --org nvidia
-
-ngc registry resource download-version \
-  nvidia/isaac/r2bdataset2024:1 \
-  --dest ${ASSETS_ROOT}/datasets \
-  --org nvidia
-
-ngc registry model download-version \
-  nvidia/tao/grounding_dino:grounding_dino_swin_tiny_commercial_deployable_v1.0 \
-  --dest ${DOWNLOAD_ROOT} \
-  --org nvidia \
-  --team tao
+tools/phase2-assets import-r2b \
+  --source <external-r2b_robotarm-directory>
 ~~~
 
 Create the paths expected by the official benchmark packages:
 
 ~~~bash
 ln -sfn \
-  ${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx \
-  ${ASSETS_ROOT}/models/sdetr
+  ${OVG_ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx \
+  ${OVG_ASSETS_ROOT}/models/sdetr
 
-mkdir -p ${ASSETS_ROOT}/datasets/r2b_dataset
+mkdir -p ${OVG_ASSETS_ROOT}/datasets/r2b_dataset
 ln -sfn \
-  ${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm \
-  ${ASSETS_ROOT}/datasets/r2b_dataset/r2b_robotarm
+  ${OVG_ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm \
+  ${OVG_ASSETS_ROOT}/datasets/r2b_dataset/r2b_robotarm
 
-mkdir -p ${ASSETS_ROOT}/models/grounding_dino
-find ${DOWNLOAD_ROOT} -name '*.onnx' -exec cp {} \
-  ${ASSETS_ROOT}/models/grounding_dino/grounding_dino_model.onnx \;
+mkdir -p ${OVG_ASSETS_ROOT}/models/grounding_dino
+cp <external-grounding-dino.onnx> \
+  ${OVG_ASSETS_ROOT}/models/grounding_dino/grounding_dino_model.onnx
 ~~~
 
 The required files, relative to `${ASSETS_ROOT}`, are:

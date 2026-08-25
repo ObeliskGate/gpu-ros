@@ -8,8 +8,6 @@ services:
     runtime: nvidia
     stdin_open: true
     tty: true
-    env_file:
-      - .env
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
@@ -23,6 +21,8 @@ services:
     volumes:
       - .:/workspaces/isaac_ros-dev/src/amd_ros_object_detection
       - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/isaac_ros-dev/src/gpu_ros_managed:ro
+      - ${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:?set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection:/workspaces/isaac_ros-dev/src/nvidia_external/isaac_ros_object_detection:ro
+      - ${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:?set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark:/workspaces/isaac_ros-dev/src/nvidia_external/isaac_ros_benchmark:ro
       - assets:/workspaces/isaac_ros-dev/assets
     working_dir: /workspaces/isaac_ros-dev
 

@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 FROM rocm-migraphx AS onnxruntime-builder
 
-ARG ORT_VERSION=1.23.1
 ARG ORT_BUILD_JOBS=16
 ARG AMD_GPU_TARGETS
 
@@ -38,9 +37,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/src
-RUN git clone --branch "v${ORT_VERSION}" --depth 1 \
+COPY config/onnxruntime.lock /tmp/onnxruntime.lock
+RUN . /tmp/onnxruntime.lock \
+    && git clone --branch "v${ORT_VERSION}" --depth 1 \
       --recursive --shallow-submodules \
-      https://github.com/microsoft/onnxruntime.git
+      https://github.com/microsoft/onnxruntime.git \
+    && test "$(git -C onnxruntime rev-parse HEAD)" = "${ORT_COMMIT}"
 
 WORKDIR /opt/src/onnxruntime
 # Backport the Linux MIGraphX test-build fix merged upstream after ORT 1.23.x.
@@ -89,12 +91,10 @@ FROM rocm-migraphx AS ros-runtime-base
 
 ARG ROS_DISTRO=jazzy
 ARG DEBIAN_FRONTEND=noninteractive
-ARG ORT_VERSION=1.23.1
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV ROS_DISTRO=${ROS_DISTRO}
-ENV ORT_VERSION=${ORT_VERSION}
 ENV OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
 ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
 ENV ONNXRUNTIME_INCLUDE_DIR=/opt/onnxruntime/include
@@ -116,8 +116,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && locale-gen en_US en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 
-# Keep the NGC client in the runtime image so asset preparation is a single
-# idempotent container command. Authentication is supplied at runtime.
 COPY --from=onnxruntime-builder /opt/onnxruntime /opt/onnxruntime
 RUN echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf \
     && ldconfig \
@@ -220,10 +218,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ARG AMD_BASE_IMAGE
 ARG AMD_GPU_TARGETS
-ARG ORT_VERSION=1.23.1
 ARG ROS_DISTRO=jazzy
 ARG ROS2_BENCHMARK_REF=v4.5-0
-RUN mkdir -p /opt/ovg \
+COPY config/onnxruntime.lock /tmp/onnxruntime.lock
+RUN . /tmp/onnxruntime.lock \
+    && mkdir -p /opt/ovg \
     && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
       "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
       "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \

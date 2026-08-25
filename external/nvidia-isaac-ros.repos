@@ -1,0 +1,9 @@
+repositories:
+  isaac_ros_object_detection:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection.git
+    version: 060ced887bd8a3a0be60b1fa454365942eefd128
+  isaac_ros_benchmark:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark.git
+    version: f46699e124262c5bfb6f00099061f6718f026b3f

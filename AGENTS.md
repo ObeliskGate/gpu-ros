@@ -80,7 +80,7 @@ Each `*-benchmark` package transitively pulls in the corresponding graph impleme
 
 ### Required Models & Datasets
 
-| Benchmark | Model (NGC) | Dataset (NGC) |
+| Benchmark | External model asset | External dataset asset |
 |-----------|-------------|---------------|
 | RT-DETR | `nvidia/isaac/synthetica_detr:1.0.0_onnx` → `models/sdetr/sdetr_grasp.onnx` (FP16 TRT engine generated on first run) | `nvidia/isaac/r2bdataset2024:1` → `datasets/r2b_dataset/r2b_robotarm` |
 | Grounding DINO | `nvidia/tao/grounding_dino:grounding_dino_swin_tiny_commercial_deployable_v1.0` → rename to `models/grounding_dino/grounding_dino_model.onnx` | (reuses `r2b_robotarm`) |
@@ -167,8 +167,8 @@ Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking 
 
 - Run the RT-DETR and YOLOv8 Phase 2A AMD benchmark scripts for the standard ROS 2 plus MIGraphX graphs and archive JSON results outside Git.
 - Compare AMD `Detection2DArray` output against the corresponding NVIDIA reference bag using `migrated_packages/gpu_ros_detection_validation/scripts/compare_detection2d_bags.py`. Prefer stamp matching when source timestamps are preserved. Use index matching only when the input order is confirmed and timestamps are not comparable.
-- Audit ORT profiles for MIGraphX kernel events, CPU fallback placement, and the selected external ORT libraries. The MI350X RT-DETR closure profile records five expected postprocessor nodes on `CPUExecutionProvider`; this is a controlled performance limitation, not a correctness failure. Unexpected additional fallback remains an audit failure, and future optimization must preserve integer-division semantics.
-- The MI350X YOLOv8 closure profile showed MIGraphX execution with no CPU fallback.
+- Audit ORT profiles for MIGraphX kernel events, CPU fallback placement, and the selected external ORT libraries. A MIGraphX run fails the provider audit only when no MIGraphX kernel events exist. Mixed MIGraphX/CPU placement is accepted and must report CPU node names, counts, and proportions.
+- The five CPU postprocessor nodes in one MI350X RT-DETR closure profile and the no-CPU YOLOv8 profile are observations for those tested ORT/model combinations, not correctness contracts or node allowlists.
 
 ## Phase 2B: Managed Device TensorBundle Transport Runtime
 

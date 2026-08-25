@@ -27,6 +27,8 @@ MODEL_INPUT_SIZE = 640
 def generate_launch_description():
     """Generate the RT-DETR direct Managed HIP graph."""
     model_file_path = LaunchConfiguration('model_file_path')
+    model_profile = LaunchConfiguration('model_profile')
+    model_assets_root = LaunchConfiguration('model_assets_root')
     image_topic = LaunchConfiguration('image_topic')
     namespace = LaunchConfiguration('namespace')
     input_image_width = LaunchConfiguration('input_image_width')
@@ -84,6 +86,8 @@ def generate_launch_description():
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         parameters=[{
             'model_file_path': model_file_path,
+            'model_profile': model_profile,
+            'model_assets_root': model_assets_root,
             'execution_provider': 'migraphx',
             'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
             'ort_profile_prefix': ort_profile_prefix,
@@ -132,6 +136,9 @@ def generate_launch_description():
 
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=''),
+        DeclareLaunchArgument('model_profile', default_value='auto'),
+        DeclareLaunchArgument(
+            'model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument('image_topic', default_value='image'),
         DeclareLaunchArgument('namespace', default_value='rtdetr_managed'),
         DeclareLaunchArgument('input_image_width', default_value='640'),

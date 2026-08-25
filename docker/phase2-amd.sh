@@ -68,45 +68,61 @@ require_explicit_apptainer_environment() {
 require_slurm_compute_node() {
   [[ "${RUNTIME}" == apptainer ]] || return 0
 
-  case "${OVG_REQUIRE_SLURM:-1}" in
-    0)
-      echo "WARNING: OVG_REQUIRE_SLURM=0 explicitly disables the Apptainer Slurm/GPU allocation guard" >&2
-      return 0
-      ;;
-    1) ;;
+  local require_slurm="${OVG_REQUIRE_SLURM:-0}"
+  case "${require_slurm}" in
+    0|1) ;;
     *) die "OVG_REQUIRE_SLURM must be 1 or 0" ;;
   esac
 
-  [[ "${SLURM_JOB_ID:-}" =~ ^[0-9]+$ ]] || die \
-    "no active Slurm allocation detected; request one with 'salloc -N 1 -n 1 -p mi3501x -t 04:00:00' before running AMD work"
-  [[ -n "${SLURM_JOB_NODELIST:-}" ]] || die \
-    "SLURM_JOB_NODELIST is missing; this shell is not inside a usable compute allocation"
+  slurm_mismatch() {
+    if [[ "${require_slurm}" == 1 ]]; then
+      die "$*"
+    fi
+    echo "WARNING: $* (set OVG_REQUIRE_SLURM=1 to make this fatal)" >&2
+  }
 
-  local host_name
+  [[ "${SLURM_JOB_ID:-}" =~ ^[0-9]+$ ]] || slurm_mismatch \
+    "no active Slurm allocation detected"
+  [[ -n "${SLURM_JOB_NODELIST:-}" ]] || slurm_mismatch \
+    "SLURM_JOB_NODELIST is missing"
+
+  local host_name job_record="" job_state="" job_partition="" job_nodes=""
   host_name="$(hostname -s 2>/dev/null || hostname)"
-  [[ "${host_name}" != login* ]] || die \
-    "compute work must not run on login node ${host_name}; enter the allocated compute node before launching Apptainer"
+  [[ "${host_name}" != login* ]] || slurm_mismatch \
+    "host ${host_name} appears to be a login node"
 
-  command -v squeue >/dev/null 2>&1 || die \
-    "squeue is unavailable; cannot verify the Slurm allocation state"
-  local job_record
-  job_record="$(squeue -h -j "${SLURM_JOB_ID}" -o '%T|%P|%N' 2>/dev/null | head -n 1)"
-  [[ -n "${job_record}" ]] || die \
-    "Slurm allocation ${SLURM_JOB_ID} is not visible to squeue; refusing to run on an unverified node"
+  if command -v squeue >/dev/null 2>&1 && [[ "${SLURM_JOB_ID:-}" =~ ^[0-9]+$ ]]; then
+    job_record="$(squeue -h -j "${SLURM_JOB_ID}" -o '%T|%P|%N' 2>/dev/null | head -n 1)"
+    if [[ -z "${job_record}" ]]; then
+      slurm_mismatch "Slurm allocation ${SLURM_JOB_ID} is not visible to squeue"
+    else
+      IFS='|' read -r job_state job_partition job_nodes <<<"${job_record}"
+      [[ "${job_state}" == RUNNING ]] || slurm_mismatch \
+        "Slurm allocation ${SLURM_JOB_ID} is not RUNNING (state=${job_state:-unknown})"
+      [[ "${job_partition}" =~ ${OVG_SLURM_PARTITION_REGEX:-^(mi|devel)} ]] || slurm_mismatch \
+        "Slurm allocation ${SLURM_JOB_ID} is on unexpected partition '${job_partition}'"
+    fi
+  else
+    slurm_mismatch "squeue or a numeric SLURM_JOB_ID is unavailable"
+  fi
 
-  local job_state job_partition job_nodes
-  IFS='|' read -r job_state job_partition job_nodes <<<"${job_record}"
-  [[ "${job_state}" == RUNNING ]] || die \
-    "Slurm allocation ${SLURM_JOB_ID} is not RUNNING (state=${job_state:-unknown})"
-  [[ "${job_partition}" == mi* || "${job_partition}" == devel* ]] || die \
-    "Slurm allocation ${SLURM_JOB_ID} is on non-AMD-GPU partition '${job_partition}'; refusing to run"
+  if [[ -n "${SLURM_JOB_NODELIST:-}" ]] && command -v scontrol >/dev/null 2>&1; then
+    if ! scontrol show hostnames "${SLURM_JOB_NODELIST}" 2>/dev/null | grep -Fxq "${host_name}"; then
+      slurm_mismatch \
+        "host ${host_name} is not in SLURM_JOB_NODELIST=${SLURM_JOB_NODELIST}"
+    fi
+  elif [[ -n "${SLURM_JOB_NODELIST:-}" ]]; then
+    slurm_mismatch "scontrol is unavailable; cannot verify allocation nodelist membership"
+  fi
 
+  # Real device visibility is always a hard gate for an AMD GPU launch,
+  # independent of the optional scheduler policy above.
   [[ -e /dev/kfd ]] || die \
     "AMD GPU device /dev/kfd is unavailable on ${host_name}; an Apptainer GPU workload cannot start here"
   [[ -d /dev/dri ]] || die \
     "DRM device directory /dev/dri is unavailable on ${host_name}; an Apptainer GPU workload cannot start here"
 
-  echo "Slurm allocation: ${SLURM_JOB_ID} (${job_partition}, ${job_nodes}, ${host_name})"
+  echo "Slurm allocation: ${SLURM_JOB_ID:-none} (${job_partition:-unknown}, ${job_nodes:-unknown}, ${host_name})"
 }
 
 usage() {
@@ -123,13 +139,14 @@ Environment:
   OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif  SIF used by Apptainer.
   OVG_APPTAINER_IMAGE_URI=...        Optional URI for one-time SIF pull.
   OVG_APPTAINER_INSTANCE=1           Opt into an Apptainer instance for up/stop.
-  OVG_REQUIRE_SLURM=1|0               Require a live Slurm GPU allocation for Apptainer (default 1).
+  OVG_REQUIRE_SLURM=1|0               Make Slurm mismatches fatal (default 0/warn).
+  OVG_SLURM_PARTITION_REGEX=...       Expected partition regex (default ^(mi|devel)).
   OVG_ALLOW_BUILD_ONLY_SHELL=1        Explicitly allow a shell used to build external ORT.
   OVG_PREPARE_ASSETS=1               Prepare assets during bootstrap.
 
-Apptainer formal work fails closed unless it is launched from an active AMD
-GPU allocation with the required host paths set. Use `preflight` before
-colcon, verify, capture, or benchmark commands.
+Apptainer always requires visible AMD device nodes. Slurm metadata is collected
+and warned on by default; set OVG_REQUIRE_SLURM=1 for a strict allocation gate.
+Use `preflight` before colcon, verify, capture, or benchmark commands.
 EOF
 }
 
@@ -137,8 +154,25 @@ repo_check() {
   [[ -f "${ROOT_DIR}/AGENTS.md" ]] || die "application repository is incomplete: ${ROOT_DIR}"
   [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || \
     die "gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}"
-  echo "amd_ros_object_detection: $(git -C "${ROOT_DIR}" rev-parse HEAD)"
-  echo "gpu_ros_managed: $(git -C "${MANAGED_DIR}" rev-parse HEAD)"
+  local label path diff_hash untracked_hash
+  for label in amd_ros_object_detection gpu_ros_managed; do
+    if [[ "${label}" == amd_ros_object_detection ]]; then
+      path="${ROOT_DIR}"
+    else
+      path="${MANAGED_DIR}"
+    fi
+    diff_hash="$(git -C "${path}" diff HEAD --binary | sha256sum | awk '{print $1}')"
+    untracked_hash="$(
+      cd "${path}"
+      while IFS= read -r -d '' item; do
+        printf '%s\0' "${item}"
+        sha256sum -- "${item}"
+      done < <(git ls-files --others --exclude-standard -z | sort -z)
+    )"
+    untracked_hash="$(printf '%s' "${untracked_hash}" | sha256sum | awk '{print $1}')"
+    echo "${label}: HEAD=$(git -C "${path}" rev-parse HEAD) diff_head_binary_sha256=${diff_hash} untracked_content_sha256=${untracked_hash}"
+    git -C "${path}" ls-files --others --exclude-standard | sed "s|^|${label} untracked: |"
+  done
 }
 
 external_ort_install_complete() {
@@ -404,8 +438,6 @@ apptainer_args() {
     --env "OVG_WORKSPACE_FINGERPRINT=${OVG_WORKSPACE_FINGERPRINT}"
     --env "OVG_RUNTIME_EFFECTIVE=apptainer"
     --env "ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT=${OVG_ASSETS_ROOT}"
-    --env "NGC_CLI_API_KEY=${NGC_CLI_API_KEY:-}"
-    --env "NGC_CLI_ORG=${NGC_CLI_ORG:-}"
   )
 }
 

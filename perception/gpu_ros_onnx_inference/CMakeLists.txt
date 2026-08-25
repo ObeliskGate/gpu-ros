@@ -89,7 +89,7 @@ message(STATUS "ONNX Runtime library: ${ONNXRUNTIME_LIBRARY}")
 
 # Provider availability is explicit. Requesting a provider that was not enabled
 # at build time throws at runtime instead of silently falling back to CPU.
-option(ORT_ENABLE_CUDA "Enable CUDAExecutionProvider selection" ON)
+option(ORT_ENABLE_CUDA "Enable CUDAExecutionProvider selection" OFF)
 option(ORT_ENABLE_ROCM "Enable ROCMExecutionProvider selection" OFF)
 option(ORT_ENABLE_MIGRAPHX "Enable MIGraphXExecutionProvider selection" OFF)
 option(
@@ -102,7 +102,7 @@ option(
   OFF)
 
 # ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────
-option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" ON)
+option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" OFF)
 
 # ── Inference core library ────────────────────────────────────────────────────
 ament_auto_add_library(onnx_inference_core SHARED
@@ -207,6 +207,8 @@ if(BUILD_TESTING)
     test/test_onnx_inference_core.cpp
   )
   target_link_libraries(test_onnx_inference_core onnx_inference_core)
+  ament_add_gtest(test_staging_pool_limits
+    test/test_staging_pool_limits.cpp)
   target_compile_definitions(test_onnx_inference_core PRIVATE
     $<$<BOOL:${ORT_ENABLE_CUDA}>:ORT_CUDA_AVAILABLE>
     $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
