@@ -83,6 +83,25 @@ void validate_stream(const BufferState & state, const StreamState & stream)
     throw std::invalid_argument("DeviceBuffer and stream use different backend instances");
   }
 }
+
+void select_buffer_device(const BufferState & state)
+{
+  state.ops->select_device(state.device.ordinal);
+}
+
+void destroy_event_on_device(BufferState & state, Event event) noexcept
+{
+  if (event == 0) {return;}
+  try {
+    select_buffer_device(state);
+    state.ops->destroy_event(event);
+  } catch (...) {
+    // Event destruction cannot be made safe without selecting its device.
+    // Leaking the event is preferable to invoking a backend on the wrong
+    // context; the associated allocation is marked orphan-only by callers.
+    state.release_must_orphan = true;
+  }
+}
 }  // namespace
 
 BufferState::~BufferState()
@@ -145,6 +164,7 @@ BufferState::~BufferState()
           if (event == 0) {continue;}
           if (device_selected) {
             try {
+              backend_ops->select_device(allocation_device.ordinal);
               backend_ops->synchronize_event(event);
             } catch (...) {
               safe = false;
@@ -153,7 +173,12 @@ BufferState::~BufferState()
           // BackendOps requires this operation to be noexcept. Keep it outside
           // the synchronization try block so every event is destroyed exactly
           // once, including after an earlier synchronization failure.
-          backend_ops->destroy_event(event);
+          try {
+            backend_ops->select_device(allocation_device.ordinal);
+            backend_ops->destroy_event(event);
+          } catch (...) {
+            safe = false;
+          }
         }
         if (safe) {
           owner.reset();
@@ -178,7 +203,13 @@ BufferState::~BufferState()
     owner.reset();
   } catch (...) {
     for (const Event event : events) {
-      if (event != 0) {backend_ops->destroy_event(event);}
+      if (event == 0) {continue;}
+      try {
+        backend_ops->select_device(allocation_device.ordinal);
+        backend_ops->destroy_event(event);
+      } catch (...) {
+        // The allocation remains orphaned below.
+      }
     }
     if (owner || !producer_owners->empty()) {
       std::lock_guard<std::mutex> lock(orphan_mutex());
@@ -230,7 +261,7 @@ WriteHandle::WriteHandle(WriteHandle && other) noexcept
 WriteHandle::~WriteHandle() noexcept
 {
   if (!responsible_ || !state_) {return;}
-  try {finalize();} catch (...) {}
+  fail();
 }
 uint8_t * WriteHandle::data() const noexcept {return state_ ? state_->data : nullptr;}
 size_t WriteHandle::size() const noexcept {return state_ ? state_->size : 0;}
@@ -257,16 +288,18 @@ void WriteHandle::finalize()
   }
   detail::Event event = 0;
   try {
+    detail::select_buffer_device(*state_);
     event = state_->ops->create_event();
+    detail::select_buffer_device(*state_);
     state_->ops->record_event(event, state_->writer_stream);
     state_->producer_event = event;
     state_->readiness = BufferReadiness::kEventBackedReady;
     state_->phase = detail::BufferPhase::kReady;
     responsible_ = false;
   } catch (...) {
-    if (event != 0) {state_->ops->destroy_event(event);}
     state_->phase = detail::BufferPhase::kFailed;
     state_->release_must_orphan = true;
+    detail::destroy_event_on_device(*state_, event);
     responsible_ = false;
     throw;
   }
@@ -362,6 +395,7 @@ ReadHandle::ReadHandle(
   }
   if (state_->producer_event != 0) {
     try {
+      detail::select_buffer_device(*state_);
       state_->ops->wait_event(native.native, state_->producer_event);
     } catch (...) {
       state_->phase = detail::BufferPhase::kFailed;
@@ -391,17 +425,19 @@ void ReadHandle::finish()
   const auto & native = detail::StreamAccess::get(stream_);
   detail::Event event = 0;
   try {
+    detail::select_buffer_device(*state_);
     event = state_->ops->create_event();
+    detail::select_buffer_device(*state_);
     state_->ops->record_event(event, native.native);
     std::lock_guard<std::mutex> lock(state_->mutex);
     state_->reader_events.push_back(event);
     responsible_ = false;
   } catch (...) {
-    if (event != 0) {state_->ops->destroy_event(event);}
     {
       std::lock_guard<std::mutex> lock(state_->mutex);
       state_->phase = detail::BufferPhase::kFailed;
       state_->release_must_orphan = true;
+      detail::destroy_event_on_device(*state_, event);
     }
     responsible_ = false;
     throw;
@@ -424,6 +460,7 @@ BlockingReadyLease::BlockingReadyLease(std::shared_ptr<detail::BufferState> stat
   }
   if (event != 0) {
     try {
+      detail::select_buffer_device(*state_);
       state_->ops->synchronize_event(event);
     } catch (...) {
       std::lock_guard<std::mutex> lock(state_->mutex);

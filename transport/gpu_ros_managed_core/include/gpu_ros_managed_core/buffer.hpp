@@ -43,6 +43,9 @@ public:
   // Retain a source owner (for example a ROS Image) until this producer's
   // completion event has made the device buffer safe to release.
   void retain_owner(std::shared_ptr<const void> owner);
+  // The producer must explicitly publish readiness. Destruction without
+  // finalize() or cancel() marks the buffer failed and permanently
+  // non-recyclable because GPU work may already have been submitted.
   void finalize();
   // Mark a producer operation failed when the caller knows that no
   // trustworthy completion event can be recorded. The allocation is then

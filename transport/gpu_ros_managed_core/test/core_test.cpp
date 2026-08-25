@@ -29,10 +29,12 @@ public:
   {
     if (fail_select.exchange(false)) {throw std::runtime_error("select failure");}
     selected = ordinal;
+    ++select_calls;
   }
 
   grm::detail::Event create_event() override
   {
+    check_event_device();
     if (fail_create.exchange(false)) {throw std::runtime_error("create failure");}
     std::lock_guard<std::mutex> lock(mutex);
     const auto event = ++next_event;
@@ -43,6 +45,7 @@ public:
   void record_event(
     grm::detail::Event event, grm::detail::NativeStream stream) override
   {
+    check_event_device();
     std::lock_guard<std::mutex> lock(mutex);
     require_live(event);
     last_record_stream = stream;
@@ -53,6 +56,7 @@ public:
   void wait_event(
     grm::detail::NativeStream stream, grm::detail::Event event) override
   {
+    check_event_device();
     std::lock_guard<std::mutex> lock(mutex);
     require_live(event);
     last_wait_stream = stream;
@@ -62,6 +66,7 @@ public:
 
   void synchronize_event(grm::detail::Event event) override
   {
+    check_event_device();
     std::unique_lock<std::mutex> lock(mutex);
     require_live(event);
     ++synchronizes;
@@ -75,6 +80,7 @@ public:
 
   void destroy_event(grm::detail::Event event) noexcept override
   {
+    check_event_device();
     std::lock_guard<std::mutex> lock(mutex);
     live.erase(event);
     ++destroy_counts[event];
@@ -145,11 +151,21 @@ public:
   std::atomic<int> d2h_copies{0};
   std::atomic<bool> fail_h2d{false};
   std::atomic<int> selected{-1};
+  std::atomic<int> expected_event_device{0};
+  std::atomic<int> select_calls{0};
+  std::atomic<int> event_device_failures{0};
   grm::detail::NativeStream last_record_stream{0};
   grm::detail::NativeStream last_wait_stream{0};
   bool allow_synchronize{true};
 
 private:
+  void check_event_device() noexcept
+  {
+    if (selected.exchange(-1) != expected_event_device.load()) {
+      ++event_device_failures;
+    }
+  }
+
   void require_live(grm::detail::Event event)
   {
     if (live.count(event) == 0) {throw std::runtime_error("unknown event");}
@@ -414,6 +430,21 @@ void test_failed_async_writer_never_recycles()
   assert(!pool.shutdown(1ms));
 }
 
+void test_abandoned_async_writer_fails_and_never_recycles()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 63, ops);
+  auto pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  {
+    auto block = std::make_unique<grm::PoolBlock>(pool.acquire(producer));
+    // Deliberately omit finalize(), cancel(), and fail(). This models an
+    // exception escaping a producer callback after work may have started.
+  }
+  assert(pool.available() == 0);
+  assert(!pool.shutdown(1ms));
+}
+
 void test_async_writer_cancel_returns_reservation()
 {
   auto ops = std::make_shared<FakeOps>();
@@ -434,6 +465,7 @@ void test_state_machine_and_multiple_readers()
   std::atomic<int> owner_releases{0};
   {
     const grm::DeviceId device{grm::BackendKind::kCuda, 2};
+    ops->expected_event_device = device.ordinal;
     auto producer = make_stream(device, 11, ops);
     auto consumer_a = make_stream(device, 21, ops);
     auto consumer_b = make_stream(device, 22, ops);
@@ -475,6 +507,7 @@ void test_state_machine_and_multiple_readers()
   }
   wait_for_cleanup();
   assert(owner_releases == 1);
+  assert(ops->event_device_failures == 0);
 }
 
 void test_handle_retains_allocation()
@@ -692,6 +725,7 @@ int main()
   test_synchronized_pool_cancel_and_failed_block_never_recycles();
   test_synchronized_pool_timeout_and_capacity_recovery();
   test_failed_async_writer_never_recycles();
+  test_abandoned_async_writer_fails_and_never_recycles();
   test_async_writer_cancel_returns_reservation();
   return 0;
 }
