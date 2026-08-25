@@ -18,6 +18,7 @@ __pycache__/
 # Generated benchmark output is always out of tree.
 /migrated_packages/benchmark_results/
 /ovg-results/
+/.phase1-results/
 
 # Project-local Codex skill installed outside Git
 /.agents/skills/amd-hpcfund-slurm/
