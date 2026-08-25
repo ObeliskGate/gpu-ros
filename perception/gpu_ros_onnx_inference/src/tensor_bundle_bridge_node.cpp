@@ -17,28 +17,25 @@
 // (e.g. TensorRTNode) from a std-ROS2 publisher, since std pub -> NITROS sub is
 // not bridged automatically (only the reverse direction is).
 
-#include <cuda_runtime.h>
-
 #include <algorithm>
 #include <chrono>
-#include <cstdint>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
+#include "gpu_ros_managed_cuda/cuda_backend.hpp"
+#include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
+#include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
-#include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 
 #include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 
 namespace gpu_ros::onnx_inference
 {
@@ -46,61 +43,6 @@ namespace gpu_ros::onnx_inference
 namespace
 {
 namespace nitros = nvidia::isaac_ros::nitros;
-
-void CheckCuda(cudaError_t result, const char * operation)
-{
-  if (result != cudaSuccess) {
-    throw std::runtime_error(
-            std::string(operation) + " failed: " + cudaGetErrorString(result));
-  }
-}
-
-nitros::NitrosDataType ToNitrosDataType(uint8_t data_type)
-{
-  switch (data_type) {
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::INT8:
-      return nitros::NitrosDataType::kInt8;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::UINT8:
-      return nitros::NitrosDataType::kUnsigned8;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::INT16:
-      return nitros::NitrosDataType::kInt16;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::UINT16:
-      return nitros::NitrosDataType::kUnsigned16;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::INT32:
-      return nitros::NitrosDataType::kInt32;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::UINT32:
-      return nitros::NitrosDataType::kUnsigned32;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::INT64:
-      return nitros::NitrosDataType::kInt64;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::UINT64:
-      return nitros::NitrosDataType::kUnsigned64;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32:
-      return nitros::NitrosDataType::kFloat32;
-    case gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT64:
-      return nitros::NitrosDataType::kFloat64;
-    default:
-      throw std::invalid_argument(
-              "TensorBundle bridge received unsupported project data_type " +
-              std::to_string(data_type));
-  }
-}
-
-std::vector<int32_t> ToNitrosShape(const std::vector<int64_t> & shape)
-{
-  if (shape.empty()) {
-    throw std::invalid_argument("TensorBundle bridge received a rank-zero tensor");
-  }
-  std::vector<int32_t> result;
-  result.reserve(shape.size());
-  for (const int64_t dimension : shape) {
-    if (dimension <= 0 || dimension > std::numeric_limits<int32_t>::max()) {
-      throw std::invalid_argument(
-              "TensorBundle bridge received a shape outside the NITROS int32 range");
-    }
-    result.push_back(static_cast<int32_t>(dimension));
-  }
-  return result;
-}
 }  // namespace
 
 // Subscribes via the configured input transport and republishes over NITROS.
@@ -119,8 +61,6 @@ public:
       throw std::invalid_argument("gpu_device_id must be non-negative");
     }
 
-    CheckCuda(cudaSetDevice(gpu_device_id_), "cudaSetDevice");
-    CheckCuda(cudaStreamCreate(&stream_), "cudaStreamCreate");
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
       this, "tensor_output",
       nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
@@ -135,13 +75,7 @@ public:
       });
   }
 
-  ~TensorBundleBridgeNode() override
-  {
-    if (cudaSetDevice(gpu_device_id_) != cudaSuccess) {
-      return;
-    }
-    cudaStreamDestroy(stream_);
-  }
+  ~TensorBundleBridgeNode() override = default;
 
 private:
   void Forward(gpu_ros_managed::ManagedTensorBundleView input)
@@ -161,35 +95,27 @@ private:
 
   void ForwardOrThrow(gpu_ros_managed::ManagedTensorBundleView input)
   {
-    CheckCuda(cudaSetDevice(gpu_device_id_), "cudaSetDevice");
     std::chrono::steady_clock::time_point start;
     if (enable_timing_) {
       start = std::chrono::steady_clock::now();
     }
 
-    nitros::NitrosTensorListBuilder builder;
-    builder.WithHeader(input.header());
+    std::vector<gpu_ros_managed::ManagedTensor> tensors;
+    tensors.reserve(input.tensors().size());
     for (const auto & tensor : input.tensors()) {
       const auto * host = std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage());
       if (host == nullptr) {
         throw std::invalid_argument("TensorBundleBridge only supports standard host-memory input");
       }
-      void * gpu_buffer = nullptr;
-      CheckCuda(cudaMallocAsync(&gpu_buffer, tensor.byte_size(), stream_), "cudaMallocAsync");
-      CheckCuda(
-        cudaMemcpyAsync(
-          gpu_buffer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice, stream_),
-        "cudaMemcpyAsync");
-      builder.AddTensor(
-        tensor.name(),
-        nitros::NitrosTensorBuilder()
-        .WithShape(nitros::NitrosTensorShape(ToNitrosShape(tensor.shape())))
-        .WithDataType(ToNitrosDataType(static_cast<uint8_t>(tensor.data_type())))
-        .WithData(gpu_buffer)
-        .Build());
+      auto device = gpu_ros_managed::cuda::allocate(tensor.byte_size(), gpu_device_id_);
+      device->copy_from_host_blocking(host->data(), tensor.byte_size());
+      tensors.emplace_back(
+        tensor.name(), tensor.data_type(), tensor.shape(), std::move(device), tensor.strides());
     }
-    CheckCuda(cudaStreamSynchronize(stream_), "cudaStreamSynchronize");
-    pub_->publish(builder.Build());
+    auto bundle = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
+      input.header(), std::move(tensors));
+    pub_->publish(BuildNitrosTensorBundle(
+      gpu_ros_managed::ManagedTensorBundleView(std::move(bundle)), gpu_device_id_));
 
     if (enable_timing_) {
       const auto end = std::chrono::steady_clock::now();
@@ -225,7 +151,6 @@ private:
     timings_ms_.clear();
   }
 
-  cudaStream_t stream_;
   int gpu_device_id_{0};
   bool enable_timing_{false};
   int timing_log_every_{500};
