@@ -164,7 +164,7 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
   std::stable_sort(indices.begin(), indices.end(), [&scores](int left, int right) {
       const float left_score = scores.at(static_cast<size_t>(left));
       const float right_score = scores.at(static_cast<size_t>(right));
-      return left_score == right_score ? left < right : left_score > right_score;
+      return left_score == right_score ? left<right : left_score> right_score;
     });
   vision_msgs::msg::Detection2DArray detections;
   detections.header = header;
