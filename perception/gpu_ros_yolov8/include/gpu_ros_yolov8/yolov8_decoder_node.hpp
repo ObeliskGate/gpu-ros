@@ -21,11 +21,10 @@
 #ifndef GPU_ROS_YOLOV8__YOLOV8_DECODER_NODE_HPP_
 #define GPU_ROS_YOLOV8__YOLOV8_DECODER_NODE_HPP_
 
-#include "gpu_ros_yolov8/yolov8_decoder.hpp"
-
-#include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 #include "vision_msgs/msg/detection2_d_array.hpp"
+#include "gpu_ros_yolov8/yolov8_decoder.hpp"
 
 namespace gpu_ros::yolov8
 {

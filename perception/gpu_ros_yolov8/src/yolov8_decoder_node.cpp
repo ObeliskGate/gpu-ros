@@ -22,6 +22,7 @@
 
 #include <exception>
 #include <string>
+#include <utility>
 
 #include "rclcpp_components/register_node_macro.hpp"
 
@@ -38,8 +39,8 @@ YoloV8DecoderNode::YoloV8DecoderNode(const rclcpp::NodeOptions options)
 
   pub_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
   sub_ = create_subscription<TensorBundle>(
-    "tensor_sub", 10,
-    std::bind(&YoloV8DecoderNode::InputCallback, this, std::placeholders::_1));
+    "tensor_sub", rclcpp::QoS(10),
+    [this](TensorBundle::SharedPtr msg) {InputCallback(std::move(msg));});
 }
 
 void YoloV8DecoderNode::InputCallback(const TensorBundle::SharedPtr msg)
