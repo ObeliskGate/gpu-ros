@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <hip/hip_runtime_api.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -25,8 +27,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <hip/hip_runtime_api.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
