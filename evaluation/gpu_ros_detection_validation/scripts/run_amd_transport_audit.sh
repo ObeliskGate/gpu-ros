@@ -73,7 +73,7 @@ if [[ ! ${TRACE_ATTACH_TIMEOUT_SECONDS} =~ ^[0-9]+$ ]]; then
   echo "ERROR: AUDIT_TRACE_ATTACH_TIMEOUT_SECONDS must be a non-negative integer." >&2
   exit 2
 fi
-if [[ ! -s ${ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx &&
+if [[ ! -s ${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx &&
   ${MODEL} == rtdetr ]]; then
   echo "ERROR: RT-DETR model is missing under ${ASSETS_ROOT}." >&2
   exit 1

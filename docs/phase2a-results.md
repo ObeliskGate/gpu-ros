@@ -128,8 +128,10 @@ unique nodes and CPU events for five postprocessor nodes:
 The saved profile records a known and controlled performance limitation. The
 main inference path ran on MIGraphX, and the CPU placement did not cause a
 correctness failure.
-Unexpected additional CPU placement remains an audit failure. Any future
-fallback reduction must preserve the model's integer-division semantics.
+The exact five-node set is an observation for this tested combination, not a
+whitelist. Future mixed profiles pass when MIGraphX nodes exist and must report
+their actual CPU node names and shares. Any fallback reduction must preserve
+the model's integer-division semantics.
 
 ## YOLOv8 results
 
@@ -165,7 +167,8 @@ The final YOLOv8 comparison paired all 397 reference and candidate frames:
 | Frame pass rate | 100% |
 | Comparison status | PASS |
 
-The MI350X profile showed MIGraphX execution with no CPU fallback. The standard
+The MI350X profile showed MIGraphX execution with no CPU fallback; that is a
+performance observation rather than a correctness contract. The standard
 YOLOv8 image encoder preserved the input header and produced the canonical
 `images` tensor contract used by the ONNX model.
 

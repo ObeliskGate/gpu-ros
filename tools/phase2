@@ -224,10 +224,10 @@ main() {
       esac ;;
     assets)
       case "${2:-status}" in
-        status|verify|import-rtdetr|import-yolov8|verify-yolov8)
-          "${ASSET_HELPER}" "${2:-status}" ;;
+        status|prepare|import-model|import-r2b|build-rtdetrv2-r50)
+          "${ASSET_HELPER}" "${2:-status}" "${@:3}" ;;
         *)
-          echo "usage: phase2 assets {status|verify|import-rtdetr|import-yolov8|verify-yolov8}" >&2
+          echo "usage: phase2 assets {status|prepare|import-model|import-r2b|build-rtdetrv2-r50} [options]" >&2
           return 2
           ;;
       esac ;;

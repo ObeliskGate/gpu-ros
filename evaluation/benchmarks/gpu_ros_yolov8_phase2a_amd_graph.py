@@ -45,11 +45,6 @@ MIGRAPHX_CACHE_PATH = os.environ.get(
 os.environ.setdefault("ORT_MIGRAPHX_MODEL_CACHE_PATH", MIGRAPHX_CACHE_PATH)
 MIGRAPHX_WARMUP_TIMEOUT_SEC = float(
     os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
-DEBUG_MESSAGE_FLOW = os.environ.get(
-    "YOLOV8_BENCHMARK_DEBUG_MESSAGE_FLOW", "false").lower() in {
-        "1", "true", "yes", "on"
-    }
-TIMING_REPORT_PREFIX = os.environ.get("YOLOV8_BENCHMARK_TIMING_PREFIX", "")
 
 
 def make_std_playback_node(namespace):
@@ -97,11 +92,6 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "tensor_name": common.ORT_INPUT_TENSOR_NAME,
             "output_width": common.NETWORK_RESOLUTION["width"],
             "output_height": common.NETWORK_RESOLUTION["height"],
-            "debug_message_flow": DEBUG_MESSAGE_FLOW,
-            "timing_report_path": (
-                f"{TIMING_REPORT_PREFIX}.encoder.csv"
-                if TIMING_REPORT_PREFIX else ""
-            ),
         }],
     )
 
@@ -114,11 +104,6 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "model_file_path": model_path,
             "execution_provider": "migraphx",
             "transport": "std",
-            "debug_message_flow": DEBUG_MESSAGE_FLOW,
-            "timing_report_path": (
-                f"{TIMING_REPORT_PREFIX}.inference.csv"
-                if TIMING_REPORT_PREFIX else ""
-            ),
         }],
         remappings=[
             ("tensor_input", "encoded_tensor"),
@@ -136,7 +121,6 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             "confidence_threshold": 0.25,
             "nms_threshold": 0.45,
             "num_classes": 80,
-            "debug_message_flow": DEBUG_MESSAGE_FLOW,
         }],
     )
 

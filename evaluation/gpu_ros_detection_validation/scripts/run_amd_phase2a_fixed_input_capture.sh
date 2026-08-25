@@ -126,7 +126,7 @@ if [[ ${PIPELINE} == "yolov8" ]]; then
     DEFAULT_NAMESPACE="yolov8"
   fi
 else
-  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx}"
+  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx}"
   if [[ ${TRANSPORT} == "managed" ]]; then
     GRAPH_LAUNCH_FILE="rtdetr_ort_managed_amd.launch.py"
     DEFAULT_NAMESPACE="rtdetr_managed"

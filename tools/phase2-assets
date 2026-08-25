@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-"""Idempotent Phase 2 asset manager with optional local ONNX validation."""
+#!/usr/bin/env python
+"""Offline Phase 2 asset import, validation, and RT-DETRv2 export."""
 
 from __future__ import annotations
 
@@ -11,654 +11,463 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 ASSETS_ROOT = Path(os.environ.get("OVG_ASSETS_ROOT", "/workspaces/ovg-assets"))
 CACHE_ROOT = Path(os.environ.get("OVG_CACHE_ROOT", "/workspaces/ovg-cache"))
 MANIFEST = ASSETS_ROOT / "manifest.json"
-RTDETR_MODEL_REL = Path(
-    "models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx"
-)
 DATASET_REL = Path("datasets/r2bdataset2024_v1/r2b_robotarm")
-YOLOV8_MODEL_REL = Path("models/yolov8/yolov8s.onnx")
-RTDETR_MODEL_SOURCE_REVISION = "b8957b30431abc938db16016f6b5e395b562c5dd"
-RTDETR_MODEL_URL = (
-    "https://github.com/CVHub520/X-AnyLabeling/releases/download/"
-    "v2.4.0/rtdetrv2_r50vd_6x_coco.onnx"
+UPSTREAM_COMMIT = "b8957b30431abc938db16016f6b5e395b562c5dd"
+CHECKPOINT_URL = (
+    "https://github.com/lyuwenyu/storage/releases/download/v0.1/"
+    "rtdetrv2_r50vd_6x_coco_ema.pth"
 )
-RTDETR_MODEL_IDENTITY = {
-    "model_name": "RT-DETRv2 R50vd 6x COCO",
-    "source_repository": "https://github.com/lyuwenyu/RT-DETR",
-    "source_revision": RTDETR_MODEL_SOURCE_REVISION,
-    "export_config": "rtdetrv2_pytorch/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml",
-    "export_opset": 16,
-    "input_names": ["images", "orig_target_sizes"],
-    "input_dtypes": {"images": "float32", "orig_target_sizes": "int64"},
-    "output_names": ["labels", "boxes", "scores"],
-    "output_dtypes": {"labels": "int64", "boxes": "float32", "scores": "float32"},
-    "input_shape": [1, 3, 640, 640],
-    "license": "NOASSERTION",
-    "download_url": RTDETR_MODEL_URL,
+CHECKPOINT_SHA256 = "a1f30829515a5096702dbf2ab2e06b5b0c7c6cd96234c257d9862abe45f03641"
+XANYLABELING_SHA256 = "777e5adb5a9e2914ba9ff1d0a1b1e50e5e12236099933e84d1dcfe738f0c90c0"
+# Filled only after two independent, byte-identical exports with the locked recipe.
+FORMAL_ONNX_SHA256 = "ba0c2c830edece85335aef60e30ad649e3e739c82ae90c3ec9074498a8092086"
+
+MODEL_PATHS = {
+    "nvidia_synthetica": Path("models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"),
+    "rtdetrv2_r50": Path("models/rtdetrv2_r50/rtdetrv2_r50.onnx"),
+    "xanylabeling_rtdetrv2_r50": Path(
+        "models/xanylabeling_rtdetrv2_r50/rtdetrv2_r50vd_6x_coco.onnx"
+    ),
+    "yolov8": Path("models/yolov8/yolov8s.onnx"),
 }
-YOLOV8_MODEL_SHA256 = (
-    "d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c"
-)
-YOLOV8_MODEL_IDENTITY = {
-    "model_name": "YOLOv8s",
-    "ultralytics_version": "8.4.67",
-    "num_classes": 80,
-    "opset_version": 17,
-    "input_name": "images",
-    "input_dtype": "float32",
-    "input_shape": [1, 3, 640, 640],
-    "output_name": "output0",
-    "output_dtype": "float32",
-    "output_shape": [1, 84, 8400],
-    "has_builtin_nms": False,
-    "sha256": YOLOV8_MODEL_SHA256,
-}
+PUBLIC_PROFILES = tuple(name for name in MODEL_PATHS if name != "yolov8")
 
 
 def digest(path: Path) -> str:
-    sha = hashlib.sha256()
+    value = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            sha.update(chunk)
-    return sha.hexdigest()
+            value.update(chunk)
+    return value.hexdigest()
 
 
-def yolo_model_path() -> Path:
-    return ASSETS_ROOT / YOLOV8_MODEL_REL
+def tree_digest(path: Path) -> str:
+    value = hashlib.sha256()
+    for item in sorted(candidate for candidate in path.rglob("*") if candidate.is_file()):
+        relative = item.relative_to(path).as_posix().encode()
+        value.update(len(relative).to_bytes(8, "big"))
+        value.update(relative)
+        value.update(bytes.fromhex(digest(item)))
+    return value.hexdigest()
 
 
-def _is_yolov8_entry(entry: dict[str, Any]) -> bool:
-    path = str(entry.get("path", ""))
-    return entry.get("asset_kind") == "yolov8" or path == str(YOLOV8_MODEL_REL)
+def atomic_copy(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        raise RuntimeError(f"refusing to overwrite existing asset: {destination}")
+    temporary = destination.with_name(destination.name + ".partial")
+    if temporary.exists():
+        temporary.unlink()
+    shutil.copy2(source, temporary)
+    temporary.replace(destination)
 
 
-def _required_manifest_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
-    return [
-        entry
-        for entry in data.get("files", [])
-        if isinstance(entry, dict) and not _is_yolov8_entry(entry)
-    ]
-
-
-def _default_manifest() -> dict[str, Any]:
-    return {
-        "schema_version": 2,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "model_version": (
-            f"lyuwenyu/RT-DETR@{RTDETR_MODEL_SOURCE_REVISION}:"
-            "rtdetrv2_r50vd_6x_coco"
-        ),
-        "model_identity": RTDETR_MODEL_IDENTITY,
-        "dataset_version": "nvidia/isaac/r2bdataset2024:1",
-        "optional_assets": {
-            "yolov8": {
-                "path": str(YOLOV8_MODEL_REL),
-                "sha256": YOLOV8_MODEL_SHA256,
-                "identity": YOLOV8_MODEL_IDENTITY,
-            }
-        },
-        "files": [],
-    }
-
-
-def _write_manifest_atomically(payload: dict[str, Any]) -> None:
-    ASSETS_ROOT.mkdir(parents=True, exist_ok=True)
-    temporary = MANIFEST.with_suffix(".json.partial")
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".partial")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    temporary.replace(MANIFEST)
+    temporary.replace(path)
 
 
-def _shape_from_onnx_value_info(value_info: Any) -> list[int | str | None]:
-    tensor_type = value_info.type.tensor_type
-    shape = tensor_type.shape
-    dimensions: list[int | str | None] = []
-    for dimension in shape.dim:
+def profile_evidence(profile: str) -> dict[str, Any]:
+    if profile == "nvidia_synthetica":
+        return {
+            "bytes_distributor": "NVIDIA NGC SyntheticaDETR asset acquired by the user outside this repository",
+            "architecture_upstream": "NVIDIA SyntheticaDETR",
+            "weights_source": "user-provided external asset",
+            "export_recipe": None,
+            "license_evidence": {
+                "source_code": "NOASSERTION",
+                "checkpoint_weights": "NOASSERTION",
+                "onnx_bytes": "NOASSERTION",
+            },
+            "redistributable_with_source_release": False,
+        }
+    if profile == "xanylabeling_rtdetrv2_r50":
+        return {
+            "bytes_distributor": (
+                "X-AnyLabeling v2.4.0 release: https://github.com/CVHub520/"
+                "X-AnyLabeling/releases/download/v2.4.0/rtdetrv2_r50vd_6x_coco.onnx"
+            ),
+            "architecture_upstream": "https://github.com/lyuwenyu/RT-DETR",
+            "weights_source": "not established by the distributed ONNX metadata",
+            "export_recipe": "not published with sufficient evidence for these exact bytes",
+            "license_evidence": {
+                "source_code": "Apache-2.0 for lyuwenyu/RT-DETR source",
+                "checkpoint_weights": "NOASSERTION",
+                "onnx_bytes": "NOASSERTION",
+            },
+            "known_sha256": XANYLABELING_SHA256,
+            "redistributable_with_source_release": False,
+        }
+    if profile == "rtdetrv2_r50":
+        return {
+            "bytes_distributor": "generated locally by the user; never downloaded by prepare",
+            "architecture_upstream": (
+                "https://github.com/lyuwenyu/RT-DETR@" + UPSTREAM_COMMIT
+            ),
+            "weights_source": {
+                "url": CHECKPOINT_URL,
+                "sha256": CHECKPOINT_SHA256,
+            },
+            "export_recipe": {
+                "config": "rtdetrv2_pytorch/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml",
+                "script": "rtdetrv2_pytorch/tools/export_onnx.py",
+                "opset": 16,
+                "input_size": [1, 3, 640, 640],
+                "uv_lock": "tools/rtdetrv2-export/uv.lock",
+                "expected_onnx_sha256": FORMAL_ONNX_SHA256 or None,
+            },
+            "license_evidence": {
+                "source_code": "Apache-2.0 at the pinned architecture upstream",
+                "checkpoint_weights": "NOASSERTION",
+                "onnx_bytes": "NOASSERTION (derived from weights with no weight-level grant found)",
+            },
+            "redistributable_with_source_release": False,
+        }
+    if profile == "yolov8":
+        return {
+            "bytes_distributor": "user-provided external asset",
+            "architecture_upstream": "Ultralytics YOLOv8",
+            "weights_source": "user-provided; provenance not inferred from its digest",
+            "export_recipe": None,
+            "license_evidence": {
+                "source_code": "NOASSERTION",
+                "checkpoint_weights": "NOASSERTION",
+                "onnx_bytes": "NOASSERTION",
+            },
+            "redistributable_with_source_release": False,
+        }
+    raise RuntimeError(f"unknown model profile: {profile}")
+
+
+def shape(value_info: Any) -> list[int | str | None]:
+    result: list[int | str | None] = []
+    for dimension in value_info.type.tensor_type.shape.dim:
         if dimension.HasField("dim_value"):
-            dimensions.append(int(dimension.dim_value))
+            result.append(int(dimension.dim_value))
         elif dimension.HasField("dim_param"):
-            dimensions.append(str(dimension.dim_param))
+            result.append(str(dimension.dim_param))
         else:
-            dimensions.append(None)
-    return dimensions
+            result.append(None)
+    return result
 
 
-def _require_known_shape_dimension(
-    shape: list[int | str | None],
-    index: int,
-    expected: int,
-    label: str,
-    *,
-    allow_symbolic: bool = False,
-) -> None:
-    if len(shape) <= index:
-        actual = shape
-    else:
-        actual = shape[index]
-    if actual is None or (allow_symbolic and isinstance(actual, str)):
-        return
-    if actual != expected:
-        raise RuntimeError(
-            f"RT-DETR ONNX {label} shape mismatch: expected dimension {index} "
-            f"to be {expected}, got {shape}"
-        )
-
-
-def _validate_rtdetr_with_onnx(path: Path) -> None:
+def validate_rtdetr(path: Path) -> str:
+    if not path.is_file():
+        raise RuntimeError(f"selected model asset is missing: {path}")
     try:
         import onnx  # type: ignore[import-not-found]
     except ImportError:
-        _validate_rtdetr_with_onnxruntime(path)
-        return
-
-    try:
-        model = onnx.load(str(path), load_external_data=False)
-        onnx.checker.check_model(model)
-    except Exception as error:
-        raise RuntimeError(f"RT-DETR ONNX model is not readable: {path}: {error}") from error
-
-    graph = model.graph
-    expected_inputs = RTDETR_MODEL_IDENTITY["input_names"]
-    expected_outputs = RTDETR_MODEL_IDENTITY["output_names"]
-    if [value_info.name for value_info in graph.input] != expected_inputs:
-        raise RuntimeError(
-            "RT-DETR ONNX input contract mismatch: expected "
-            f"{expected_inputs}, got {[value_info.name for value_info in graph.input]}"
+        project = REPOSITORY_ROOT / "tools/rtdetrv2-export"
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "UV_OFFLINE": "1",
+                "UV_PROJECT_ENVIRONMENT": os.environ.get(
+                    "OVG_RTDETR_EXPORT_VENV", str(CACHE_ROOT / "rtdetrv2-export-venv")
+                ),
+            }
         )
-    if [value_info.name for value_info in graph.output] != expected_outputs:
-        raise RuntimeError(
-            "RT-DETR ONNX output contract mismatch: expected "
-            f"{expected_outputs}, got {[value_info.name for value_info in graph.output]}"
+        result = subprocess.run(
+            [
+                "uv", "run", "--frozen", "--project", str(project),
+                str(Path(__file__).resolve()), "_validate-rtdetr", "--source", str(path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=environment,
         )
-
-    input_types = [value_info.type.tensor_type.elem_type for value_info in graph.input]
-    if input_types != [onnx.TensorProto.FLOAT, onnx.TensorProto.INT64]:
-        raise RuntimeError(
-            "RT-DETR ONNX input dtype mismatch: expected float32/int64, "
-            f"got {input_types}"
-        )
-    output_types = [value_info.type.tensor_type.elem_type for value_info in graph.output]
-    if output_types != [onnx.TensorProto.INT64, onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT]:
-        raise RuntimeError(
-            "RT-DETR ONNX output dtype mismatch: expected int64/float32/float32, "
-            f"got {output_types}"
-        )
-
-    input_shapes = [_shape_from_onnx_value_info(value_info) for value_info in graph.input]
-    output_shapes = [_shape_from_onnx_value_info(value_info) for value_info in graph.output]
-    if len(input_shapes[0]) != 4 or len(input_shapes[1]) != 2:
-        raise RuntimeError(f"RT-DETR ONNX input rank mismatch: got {input_shapes}")
-    _require_known_shape_dimension(input_shapes[0], 1, 3, "images")
-    _require_known_shape_dimension(input_shapes[0], 2, 640, "images")
-    _require_known_shape_dimension(input_shapes[0], 3, 640, "images")
-    _require_known_shape_dimension(input_shapes[1], 1, 2, "orig_target_sizes")
-    if len(output_shapes) != 3 or [len(shape) for shape in output_shapes] != [2, 3, 2]:
-        raise RuntimeError(f"RT-DETR ONNX output rank mismatch: got {output_shapes}")
-    # The pinned RT-DETRv2 export can describe postprocessor dimensions with
-    # symbolic names such as Sublabels_dim_*. The application contract and
-    # decoder still require the concrete runtime shapes [1,300], [1,300,4],
-    # and [1,300]; symbolic ONNX metadata is not itself a contract mismatch.
-    _require_known_shape_dimension(
-        output_shapes[0], 1, 300, "labels", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[1], 2, 4, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[2], 1, 300, "scores", allow_symbolic=True)
-
-    default_opsets = [
-        int(opset.version) for opset in model.opset_import if opset.domain in ("", "ai.onnx")
-    ]
-    if RTDETR_MODEL_IDENTITY["export_opset"] not in default_opsets:
-        raise RuntimeError(
-            "RT-DETR ONNX opset mismatch: expected opset 16, "
-            f"got {default_opsets}"
-        )
-
-
-def _validate_rtdetr_with_onnxruntime(path: Path) -> None:
-    try:
-        import onnxruntime  # type: ignore[import-not-found]
-    except ImportError as error:
-        raise RuntimeError(
-            "cannot read RT-DETR ONNX model: install python3-onnx or "
-            "onnxruntime before running asset verification"
-        ) from error
-    try:
-        session = onnxruntime.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-        inputs = session.get_inputs()
-        outputs = session.get_outputs()
-    except Exception as error:
-        raise RuntimeError(f"RT-DETR ONNX model is not readable: {path}: {error}") from error
-
-    if [item.name for item in inputs] != RTDETR_MODEL_IDENTITY["input_names"]:
-        raise RuntimeError(
-            "RT-DETR ONNX input contract mismatch: got "
-            f"{[(item.name, item.shape, item.type) for item in inputs]}"
-        )
-    if [item.name for item in outputs] != RTDETR_MODEL_IDENTITY["output_names"]:
-        raise RuntimeError(
-            "RT-DETR ONNX output contract mismatch: got "
-            f"{[(item.name, item.shape, item.type) for item in outputs]}"
-        )
-    if [item.type for item in inputs] != ["tensor(float)", "tensor(int64)"]:
-        raise RuntimeError("RT-DETR ONNX input dtype mismatch: expected float32/int64")
-    if [item.type for item in outputs] != ["tensor(int64)", "tensor(float)", "tensor(float)"]:
-        raise RuntimeError("RT-DETR ONNX output dtype mismatch: expected int64/float32/float32")
-    input_shapes = [list(item.shape) for item in inputs]
-    output_shapes = [list(item.shape) for item in outputs]
-    if len(input_shapes[0]) != 4 or len(input_shapes[1]) != 2:
-        raise RuntimeError(f"RT-DETR ONNX input rank mismatch: got {input_shapes}")
-    _require_known_shape_dimension(input_shapes[0], 1, 3, "images")
-    _require_known_shape_dimension(input_shapes[0], 2, 640, "images")
-    _require_known_shape_dimension(input_shapes[0], 3, 640, "images")
-    _require_known_shape_dimension(input_shapes[1], 1, 2, "orig_target_sizes")
-    if len(output_shapes) != 3 or [len(shape) for shape in output_shapes] != [2, 3, 2]:
-        raise RuntimeError(f"RT-DETR ONNX output rank mismatch: got {output_shapes}")
-    _require_known_shape_dimension(
-        output_shapes[0], 1, 300, "labels", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[1], 1, 300, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[1], 2, 4, "boxes", allow_symbolic=True)
-    _require_known_shape_dimension(
-        output_shapes[2], 1, 300, "scores", allow_symbolic=True)
-
-
-def validate_rtdetr_model(path: Path) -> str:
-    if not path.is_file():
-        raise RuntimeError(f"RT-DETRv2 ONNX asset is missing: {path}")
-    _validate_rtdetr_with_onnx(path)
+        return result.stdout.strip().splitlines()[-1]
+    model = onnx.load(str(path), load_external_data=False)
+    onnx.checker.check_model(model)
+    inputs = list(model.graph.input)
+    outputs = list(model.graph.output)
+    if [item.name for item in inputs] != ["images", "orig_target_sizes"]:
+        raise RuntimeError("RT-DETR input names do not match images/orig_target_sizes")
+    if [item.name for item in outputs] != ["labels", "boxes", "scores"]:
+        raise RuntimeError("RT-DETR output names do not match labels/boxes/scores")
+    if [item.type.tensor_type.elem_type for item in inputs] != [
+        onnx.TensorProto.FLOAT,
+        onnx.TensorProto.INT64,
+    ]:
+        raise RuntimeError("RT-DETR input dtypes do not match float32/int64")
+    if [item.type.tensor_type.elem_type for item in outputs] != [
+        onnx.TensorProto.INT64,
+        onnx.TensorProto.FLOAT,
+        onnx.TensorProto.FLOAT,
+    ]:
+        raise RuntimeError("RT-DETR output dtypes do not match int64/float32/float32")
+    input_shapes = [shape(item) for item in inputs]
+    if len(input_shapes[0]) != 4 or input_shapes[0][1:] != [3, 640, 640]:
+        raise RuntimeError(f"RT-DETR image shape must be [N,3,640,640], got {input_shapes[0]}")
+    if len(input_shapes[1]) != 2 or input_shapes[1][1] != 2:
+        raise RuntimeError(f"RT-DETR target size shape must be [N,2], got {input_shapes[1]}")
+    opsets = [item.version for item in model.opset_import if item.domain in ("", "ai.onnx")]
+    if 16 not in opsets:
+        raise RuntimeError(f"RT-DETR default-domain opset must be 16, got {opsets}")
     return digest(path)
 
 
-def _validate_yolov8_with_onnx(path: Path) -> None:
-    try:
-        import onnx  # type: ignore[import-not-found]
-    except ImportError:
-        _validate_yolov8_with_onnxruntime(path)
-        return
-
-    try:
-        model = onnx.load(str(path), load_external_data=False)
-        onnx.checker.check_model(model)
-    except Exception as error:
-        raise RuntimeError(f"YOLOv8 ONNX model is not readable: {path}: {error}") from error
-
-    graph = model.graph
-    if len(graph.input) != 1 or graph.input[0].name != YOLOV8_MODEL_IDENTITY["input_name"]:
-        names = [value_info.name for value_info in graph.input]
-        raise RuntimeError(
-            "YOLOv8 ONNX input contract mismatch: expected only input 'images', "
-            f"got {names}"
-        )
-    input_shape = _shape_from_onnx_value_info(graph.input[0])
-    if input_shape != YOLOV8_MODEL_IDENTITY["input_shape"]:
-        raise RuntimeError(
-            "YOLOv8 ONNX input shape mismatch: expected "
-            f"{YOLOV8_MODEL_IDENTITY['input_shape']}, got {input_shape}"
-        )
-    if graph.input[0].type.tensor_type.elem_type != onnx.TensorProto.FLOAT:
-        raise RuntimeError("YOLOv8 ONNX input contract mismatch: expected float32 input")
-
-    if len(graph.output) != 1 or graph.output[0].name != YOLOV8_MODEL_IDENTITY["output_name"]:
-        names = [value_info.name for value_info in graph.output]
-        raise RuntimeError(
-            "YOLOv8 ONNX output contract mismatch: expected only output 'output0', "
-            f"got {names}"
-        )
-    output_shape = _shape_from_onnx_value_info(graph.output[0])
-    if output_shape != YOLOV8_MODEL_IDENTITY["output_shape"]:
-        raise RuntimeError(
-            "YOLOv8 ONNX output shape mismatch: expected "
-            f"{YOLOV8_MODEL_IDENTITY['output_shape']}, got {output_shape}"
-        )
-    if graph.output[0].type.tensor_type.elem_type != onnx.TensorProto.FLOAT:
-        raise RuntimeError("YOLOv8 ONNX output contract mismatch: expected float32 output")
-
-    default_opsets = [
-        int(opset.version) for opset in model.opset_import if opset.domain in ("", "ai.onnx")
-    ]
-    if YOLOV8_MODEL_IDENTITY["opset_version"] not in default_opsets:
-        raise RuntimeError(
-            "YOLOv8 ONNX opset mismatch: expected opset 17, "
-            f"got {default_opsets}"
-        )
-    if any(
-        node.op_type == "NonMaxSuppression" or "NMS" in node.op_type.upper()
-        for node in graph.node
-    ):
-        raise RuntimeError("YOLOv8 ONNX output contract mismatch: built-in NMS is not allowed")
+def selected_profile(requested: str, provider: str) -> str:
+    if requested != "auto":
+        return requested
+    return "nvidia_synthetica" if provider == "cuda" else "rtdetrv2_r50"
 
 
-def _validate_yolov8_with_onnxruntime(path: Path) -> None:
-    try:
-        import onnxruntime  # type: ignore[import-not-found]
-    except ImportError as error:
-        raise RuntimeError(
-            "cannot read YOLOv8 ONNX model: install the runtime's python3-onnx "
-            "or onnxruntime package before running asset verification"
-        ) from error
-
-    try:
-        session = onnxruntime.InferenceSession(
-            str(path), providers=["CPUExecutionProvider"]
-        )
-        inputs = session.get_inputs()
-        outputs = session.get_outputs()
-    except Exception as error:
-        raise RuntimeError(f"YOLOv8 ONNX model is not readable: {path}: {error}") from error
-
-    input_shape = list(inputs[0].shape) if len(inputs) == 1 else []
-    output_shape = list(outputs[0].shape) if len(outputs) == 1 else []
-    if (
-        len(inputs) != 1
-        or inputs[0].name != YOLOV8_MODEL_IDENTITY["input_name"]
-        or input_shape != YOLOV8_MODEL_IDENTITY["input_shape"]
-        or inputs[0].type != "tensor(float)"
-    ):
-        raise RuntimeError(
-            "YOLOv8 ONNX input contract mismatch: expected input 'images' with shape "
-            f"{YOLOV8_MODEL_IDENTITY['input_shape']}, got "
-            f"{[(item.name, item.shape) for item in inputs]}"
-        )
-    if (
-        len(outputs) != 1
-        or outputs[0].name != YOLOV8_MODEL_IDENTITY["output_name"]
-        or output_shape != YOLOV8_MODEL_IDENTITY["output_shape"]
-        or outputs[0].type != "tensor(float)"
-    ):
-        raise RuntimeError(
-            "YOLOv8 ONNX output contract mismatch: expected output 'output0' with shape "
-            f"{YOLOV8_MODEL_IDENTITY['output_shape']}, got "
-            f"{[(item.name, item.shape) for item in outputs]}"
-        )
-
-
-def validate_yolov8_model(path: Path) -> str:
-    if not path.is_file():
-        raise RuntimeError(f"YOLOv8 ONNX asset is missing: {path}")
-    model_sha256 = digest(path)
-    if model_sha256 != YOLOV8_MODEL_SHA256:
-        raise RuntimeError(
-            "YOLOv8 ONNX SHA-256 mismatch: "
-            f"{model_sha256}; expected {YOLOV8_MODEL_SHA256}"
-        )
-    _validate_yolov8_with_onnx(path)
-    return model_sha256
-
-
-def status() -> None:
-    model = ASSETS_ROOT / RTDETR_MODEL_REL
-    dataset = ASSETS_ROOT / DATASET_REL
-    print(f"assets root: {ASSETS_ROOT}")
-    print(f"model: {'present' if model.is_file() else 'missing'} {model}")
-    print(f"dataset: {'present' if dataset.is_dir() else 'missing'} {dataset}")
-    print(f"manifest: {'present' if MANIFEST.is_file() else 'missing'} {MANIFEST}")
-    print(
-        "RT-DETR compatibility symlink: "
-        f"{'present' if (ASSETS_ROOT / 'models/rtdetr').is_symlink() else 'missing'}"
-    )
-    print(
-        "compat dataset symlink: "
-        f"{'present' if (ASSETS_ROOT / 'datasets/r2b_dataset/r2b_robotarm').is_symlink() else 'missing'}"
-    )
-    yolo = yolo_model_path()
-    print(f"YOLOv8 model (optional): {'present' if yolo.is_file() else 'missing'} {yolo}")
-    if yolo.is_file():
-        print(
-            "YOLOv8 SHA-256: "
-            f"{digest(yolo)} (expected {YOLOV8_MODEL_SHA256})"
-        )
-
-
-
-
-def import_rtdetr() -> None:
-    source_text = os.environ.get("OVG_RTDETR_ONNX_SOURCE", "").strip()
-    if not source_text:
-        raise RuntimeError(
-            "OVG_RTDETR_ONNX_SOURCE must point to a compatible RT-DETRv2 R50 ONNX file"
-        )
-    source = Path(source_text).expanduser()
-    if source.is_symlink() or not source.is_file():
-        raise RuntimeError(f"RT-DETRv2 ONNX source is not a regular file: {source}")
-
-    destination = ASSETS_ROOT / RTDETR_MODEL_REL
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent,
-            prefix=".rtdetrv2_r50vd_6x_coco.onnx.",
-            delete=False,
-        ) as stream:
-            temporary = Path(stream.name)
-        shutil.copyfile(source, temporary)
-        with temporary.open("rb") as stream:
-            os.fsync(stream.fileno())
-        validate_rtdetr_model(temporary)
-        temporary.replace(destination)
-        temporary = None
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-    print(f"installed RT-DETRv2 model: {destination}")
-    print(f"SHA-256: {digest(destination)}")
-
-
-
-
-def write_manifest() -> None:
-    files = []
-    for path in sorted(ASSETS_ROOT.rglob("*")):
-        if path.is_file() and path.resolve() != MANIFEST.resolve():
-            relative = path.relative_to(ASSETS_ROOT)
-            entry = {
-                "path": str(relative),
-                "size": path.stat().st_size,
-                "sha256": digest(path),
-            }
-            if relative == RTDETR_MODEL_REL:
-                entry["asset_kind"] = "rtdetrv2"
-                entry["identity"] = RTDETR_MODEL_IDENTITY
-            if relative == YOLOV8_MODEL_REL:
-                entry["asset_kind"] = "yolov8"
-                entry["optional"] = True
-                entry["identity"] = YOLOV8_MODEL_IDENTITY
-            files.append(entry)
-    payload = _default_manifest()
-    payload["files"] = files
-    _write_manifest_atomically(payload)
-
-
-def record_yolov8_manifest(model: Path) -> None:
-    if MANIFEST.is_file():
-        try:
-            payload = json.loads(MANIFEST.read_text())
-        except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError(f"asset manifest is not valid JSON: {MANIFEST}") from error
-        if not isinstance(payload, dict):
-            raise RuntimeError(f"asset manifest must contain a JSON object: {MANIFEST}")
+def model_record(profile: str) -> dict[str, Any]:
+    path = ASSETS_ROOT / MODEL_PATHS[profile]
+    record = profile_evidence(profile)
+    record.update({"profile": profile, "path": str(MODEL_PATHS[profile])})
+    if path.is_file():
+        record.update({"sha256": digest(path), "size_bytes": path.stat().st_size})
     else:
-        payload = _default_manifest()
+        record.update({"sha256": None, "size_bytes": None})
+    return record
 
-    entries = [
-        entry
-        for entry in payload.get("files", [])
-        if isinstance(entry, dict) and not _is_yolov8_entry(entry)
-    ]
-    entries.append(
-        {
-            "path": str(YOLOV8_MODEL_REL),
-            "size": model.stat().st_size,
-            "sha256": YOLOV8_MODEL_SHA256,
-            "asset_kind": "yolov8",
-            "optional": True,
-            "identity": YOLOV8_MODEL_IDENTITY,
-        }
-    )
-    payload["schema_version"] = max(int(payload.get("schema_version", 1)), 2)
-    payload["generated_at"] = datetime.now(timezone.utc).isoformat()
-    payload["optional_assets"] = {
-        **payload.get("optional_assets", {}),
-        "yolov8": {
-            "path": str(YOLOV8_MODEL_REL),
-            "sha256": YOLOV8_MODEL_SHA256,
-            "identity": YOLOV8_MODEL_IDENTITY,
+
+def write_manifest(profile: str) -> None:
+    dataset = ASSETS_ROOT / DATASET_REL
+    payload = {
+        "schema_version": 3,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "selected_model_profile": profile,
+        "models": {name: model_record(name) for name in MODEL_PATHS},
+        "dataset": {
+            "path": str(DATASET_REL),
+            "tree_sha256": tree_digest(dataset) if dataset.is_dir() else None,
+            "license": "NOASSERTION; user-provided external dataset",
+            "redistributable_with_source_release": False,
         },
     }
-    payload["files"] = sorted(entries, key=lambda entry: str(entry.get("path", "")))
-    _write_manifest_atomically(payload)
+    write_json(MANIFEST, payload)
 
 
-def import_yolov8() -> None:
-    source_text = os.environ.get("OVG_YOLOV8_ONNX_SOURCE", "").strip()
-    if not source_text:
-        raise RuntimeError(
-            "OVG_YOLOV8_ONNX_SOURCE must point to a user-provided YOLOv8 ONNX file"
-        )
-    source = Path(source_text).expanduser()
-    if source.is_symlink() or not source.is_file():
-        raise RuntimeError(f"YOLOv8 ONNX source is not a regular file: {source}")
-
-    source_sha256 = digest(source)
-    if source_sha256 != YOLOV8_MODEL_SHA256:
-        raise RuntimeError(
-            "YOLOv8 ONNX SHA-256 mismatch: "
-            f"{source_sha256}; expected {YOLOV8_MODEL_SHA256}"
-        )
-
-    destination = yolo_model_path()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=destination.parent, prefix=".yolov8s.onnx.", delete=False
-        ) as stream:
-            temporary = Path(stream.name)
-        shutil.copyfile(source, temporary)
-        with temporary.open("rb") as stream:
-            os.fsync(stream.fileno())
-        if digest(temporary) != YOLOV8_MODEL_SHA256:
-            raise RuntimeError("temporary YOLOv8 ONNX copy failed SHA-256 verification")
-        validate_yolov8_model(temporary)
-        temporary.replace(destination)
-        temporary = None
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-
-    record_yolov8_manifest(destination)
-    print(f"installed optional YOLOv8 model: {destination}")
-    print(f"SHA-256: {YOLOV8_MODEL_SHA256}")
-
-
-def verify_yolov8() -> None:
-    model = yolo_model_path()
-    model_sha256 = validate_yolov8_model(model)
-    if MANIFEST.is_file():
-        try:
-            data = json.loads(MANIFEST.read_text())
-        except (OSError, json.JSONDecodeError) as error:
-            raise RuntimeError(f"asset manifest is not valid JSON: {MANIFEST}") from error
-        if not isinstance(data, dict):
-            raise RuntimeError(f"asset manifest must contain a JSON object: {MANIFEST}")
-        optional_assets = data.get("optional_assets", {})
-        optional_asset = (
-            optional_assets.get("yolov8")
-            if isinstance(optional_assets, dict)
-            else None
-        )
-        if optional_asset is not None:
-            if not isinstance(optional_asset, dict) or optional_asset.get("path") != str(
-                YOLOV8_MODEL_REL
-            ):
-                raise RuntimeError(
-                    f"YOLOv8 optional manifest path mismatch: {MANIFEST}"
-                )
-            if optional_asset.get("identity") not in (None, YOLOV8_MODEL_IDENTITY):
-                raise RuntimeError(
-                    f"YOLOv8 optional manifest identity mismatch: {MANIFEST}"
-                )
-            if optional_asset.get("sha256") not in (None, model_sha256):
-                raise RuntimeError(
-                    f"YOLOv8 optional manifest checksum mismatch: {MANIFEST}"
-                )
-        for entry in data.get("files", []):
-            if not isinstance(entry, dict) or not _is_yolov8_entry(entry):
-                continue
-            if entry.get("sha256") != model_sha256:
-                raise RuntimeError(
-                    f"YOLOv8 optional manifest checksum mismatch: {MANIFEST}"
-                )
-            if entry.get("identity") not in (None, YOLOV8_MODEL_IDENTITY):
-                raise RuntimeError(
-                    f"YOLOv8 optional manifest identity mismatch: {MANIFEST}"
-                )
-            break
-    print(f"verified YOLOv8 model: {model}")
-    print(f"SHA-256: {model_sha256}")
-
-
-def replace_symlink(path: Path, target: str) -> None:
-    if path.exists() and not path.is_symlink():
-        raise RuntimeError(f"refusing to replace existing directory with symlink: {path}")
-    path.unlink(missing_ok=True)
-    path.symlink_to(target)
-
-
-
-
-def verify() -> None:
-    if not MANIFEST.is_file():
-        raise RuntimeError("asset manifest is missing; supply a manifest with the separately licensed external assets")
-    data = json.loads(MANIFEST.read_text())
-    if not isinstance(data, dict):
-        raise RuntimeError(f"asset manifest must contain a JSON object: {MANIFEST}")
-    model = ASSETS_ROOT / RTDETR_MODEL_REL
+def status(_: argparse.Namespace) -> None:
+    print(f"assets root: {ASSETS_ROOT}")
+    for name, relative in MODEL_PATHS.items():
+        path = ASSETS_ROOT / relative
+        state = f"present sha256={digest(path)}" if path.is_file() else "missing"
+        print(f"model {name}: {state} ({path})")
     dataset = ASSETS_ROOT / DATASET_REL
+    print(f"dataset r2b: {'present' if dataset.is_dir() else 'missing'} ({dataset})")
+
+
+def prepare(args: argparse.Namespace) -> None:
+    profile = selected_profile(args.model_profile, args.execution_provider)
+    model = ASSETS_ROOT / MODEL_PATHS[profile]
     if not model.is_file():
-        raise RuntimeError(f"missing required RT-DETR model: {model}")
-    validate_rtdetr_model(model)
+        raise RuntimeError(
+            f"selected profile {profile} is missing at {model}; import or build that exact "
+            "profile (automatic fallback is forbidden)"
+        )
+    if profile in ("rtdetrv2_r50", "xanylabeling_rtdetrv2_r50"):
+        found = validate_rtdetr(model)
+        expected = FORMAL_ONNX_SHA256 if profile == "rtdetrv2_r50" else XANYLABELING_SHA256
+        if expected and found != expected:
+            raise RuntimeError(f"{profile} SHA-256 mismatch: expected {expected}, got {found}")
+    dataset = ASSETS_ROOT / DATASET_REL
     if not dataset.is_dir():
-        raise RuntimeError(f"missing required R2B dataset: {dataset}")
-    required_entries = _required_manifest_entries(data)
-    for entry in required_entries:
-        path = ASSETS_ROOT / entry["path"]
-        if not path.is_file():
-            raise RuntimeError(f"missing asset file: {path}")
-        if path.stat().st_size != entry["size"] or digest(path) != entry["sha256"]:
-            raise RuntimeError(f"asset checksum mismatch: {path}")
-        if (
-            entry.get("asset_kind") == "rtdetrv2"
-            and entry.get("identity") != RTDETR_MODEL_IDENTITY
-        ):
-            raise RuntimeError(f"RT-DETRv2 model identity mismatch: {MANIFEST}")
-    print(f"verified {len(required_entries)} required asset files")
-    status()
+        raise RuntimeError(f"R2B dataset is missing: {dataset}")
+    write_manifest(profile)
+    print(f"validated model_profile={profile}: {model}")
+    print(f"validated dataset: {dataset}")
+
+
+def import_model(args: argparse.Namespace) -> None:
+    source = args.source.resolve()
+    if not source.is_file():
+        raise RuntimeError(f"model source is not a file: {source}")
+    found = digest(source)
+    if args.profile == "xanylabeling_rtdetrv2_r50" and found != XANYLABELING_SHA256:
+        raise RuntimeError(
+            f"X-AnyLabeling v2.4.0 SHA-256 mismatch: expected {XANYLABELING_SHA256}, got {found}"
+        )
+    if args.profile == "rtdetrv2_r50" and found != FORMAL_ONNX_SHA256:
+        raise RuntimeError(
+            f"formal RT-DETRv2 SHA-256 mismatch: expected {FORMAL_ONNX_SHA256}, got {found}; "
+            "use build-rtdetrv2-r50 for the locked local export"
+        )
+    if args.profile in ("rtdetrv2_r50", "xanylabeling_rtdetrv2_r50"):
+        validate_rtdetr(source)
+    destination = ASSETS_ROOT / MODEL_PATHS[args.profile]
+    atomic_copy(source, destination)
+    write_manifest(args.profile)
+    print(f"imported {args.profile}: {destination} sha256={found}")
+
+
+def import_r2b(args: argparse.Namespace) -> None:
+    source = args.source.resolve()
+    if not source.is_dir():
+        raise RuntimeError(f"R2B source is not a directory: {source}")
+    destination = ASSETS_ROOT / DATASET_REL
+    if destination.exists():
+        raise RuntimeError(f"refusing to overwrite existing dataset: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    partial = destination.with_name(destination.name + ".partial")
+    if partial.exists():
+        raise RuntimeError(f"remove incomplete prior import first: {partial}")
+    shutil.copytree(source, partial, symlinks=True)
+    partial.replace(destination)
+    print(f"imported R2B dataset: {destination} tree_sha256={tree_digest(destination)}")
+
+
+def run_export(upstream: Path, checkpoint: Path, output: Path) -> list[str]:
+    project = REPOSITORY_ROOT / "tools/rtdetrv2-export"
+    wrapper = project / "run_export.py"
+    official_config = (
+        upstream / "rtdetrv2_pytorch/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml"
+    )
+    config = output.parent / "offline_export_config.yml"
+    config.write_text(
+        "__include__:\n"
+        f"  - {json.dumps(str(official_config))}\n"
+        "PResNet:\n"
+        "  pretrained: false\n"
+    )
+    script = upstream / "rtdetrv2_pytorch/tools/export_onnx.py"
+    command = [
+        "uv", "run", "--frozen", "--project", str(project), str(wrapper),
+        "--upstream-script", str(script), "--config", str(config),
+        "--resume", str(checkpoint), "--output_file", str(output), "--check",
+    ]
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "PYTHONHASHSEED": "0",
+            "SOURCE_DATE_EPOCH": "0",
+            "TORCH_HOME": str(CACHE_ROOT / "torch"),
+            "UV_OFFLINE": "1",
+            "UV_PROJECT_ENVIRONMENT": os.environ.get(
+                "OVG_RTDETR_EXPORT_VENV", str(CACHE_ROOT / "rtdetrv2-export-venv")
+            ),
+        }
+    )
+    subprocess.run(
+        command,
+        cwd=upstream / "rtdetrv2_pytorch",
+        env=environment,
+        check=True,
+    )
+    return command
+
+
+def build_rtdetr(args: argparse.Namespace) -> None:
+    upstream = args.upstream_dir.resolve()
+    checkpoint = args.checkpoint.resolve()
+    if not (upstream / ".git").exists():
+        raise RuntimeError(f"upstream directory is not a Git checkout: {upstream}")
+    head = subprocess.run(
+        ["git", "-C", str(upstream), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if head != UPSTREAM_COMMIT:
+        raise RuntimeError(f"RT-DETR checkout mismatch: expected {UPSTREAM_COMMIT}, got {head}")
+    if not checkpoint.is_file():
+        raise RuntimeError(f"checkpoint is missing: {checkpoint}")
+    checkpoint_hash = digest(checkpoint)
+    if checkpoint_hash != CHECKPOINT_SHA256:
+        raise RuntimeError(
+            f"checkpoint SHA-256 mismatch: expected {CHECKPOINT_SHA256}, got {checkpoint_hash}"
+        )
+    destination = ASSETS_ROOT / MODEL_PATHS["rtdetrv2_r50"]
+    if destination.exists():
+        raise RuntimeError(f"refusing to overwrite existing formal model: {destination}")
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rtdetrv2-export-", dir=CACHE_ROOT) as temporary:
+        work = Path(temporary)
+        first = work / "first.onnx"
+        second = work / "second.onnx"
+        command = run_export(upstream, checkpoint, first)
+        first_hash = validate_rtdetr(first)
+        command = run_export(upstream, checkpoint, second)
+        second_hash = validate_rtdetr(second)
+        if first_hash != second_hash:
+            raise RuntimeError(
+                "locked RT-DETRv2 export is not byte reproducible: "
+                f"first={first_hash}, second={second_hash}"
+            )
+        if FORMAL_ONNX_SHA256 and first_hash != FORMAL_ONNX_SHA256:
+            raise RuntimeError(
+                f"formal ONNX SHA-256 mismatch: expected {FORMAL_ONNX_SHA256}, got {first_hash}"
+            )
+        atomic_copy(first, destination)
+    lock = REPOSITORY_ROOT / "tools/rtdetrv2-export/uv.lock"
+    provenance = profile_evidence("rtdetrv2_r50")
+    provenance.update(
+        {
+            "upstream_commit": head,
+            "checkpoint_sha256": checkpoint_hash,
+            "uv_lock_sha256": digest(lock),
+            "first_export_sha256": first_hash,
+            "second_export_sha256": second_hash,
+            "command": command,
+            "config_override": {
+                "PResNet.pretrained": False,
+                "reason": (
+                    "the complete EMA checkpoint supplies all model parameters; disable the "
+                    "configuration's redundant network fetch before loading that checkpoint"
+                ),
+            },
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    write_json(destination.with_suffix(".provenance.json"), provenance)
+    write_manifest("rtdetrv2_r50")
+    print(f"built reproducible rtdetrv2_r50: {destination} sha256={first_hash}")
+
+
+def validate_command(args: argparse.Namespace) -> None:
+    print(validate_rtdetr(args.source.resolve()))
+
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(description=__doc__)
+    commands = root.add_subparsers(dest="command", required=True)
+    status_parser = commands.add_parser("status")
+    status_parser.set_defaults(handler=status)
+    prepare_parser = commands.add_parser("prepare")
+    prepare_parser.add_argument(
+        "--model-profile", choices=("auto",) + PUBLIC_PROFILES, default="auto"
+    )
+    prepare_parser.add_argument(
+        "--execution-provider", choices=("cuda", "migraphx", "rocm", "cpu"), required=True
+    )
+    prepare_parser.set_defaults(handler=prepare)
+    model_parser = commands.add_parser("import-model")
+    model_parser.add_argument("--profile", choices=tuple(MODEL_PATHS), required=True)
+    model_parser.add_argument("--source", type=Path, required=True)
+    model_parser.set_defaults(handler=import_model)
+    dataset_parser = commands.add_parser("import-r2b")
+    dataset_parser.add_argument("--source", type=Path, required=True)
+    dataset_parser.set_defaults(handler=import_r2b)
+    build_parser = commands.add_parser("build-rtdetrv2-r50")
+    build_parser.add_argument("--upstream-dir", type=Path, required=True)
+    build_parser.add_argument("--checkpoint", type=Path, required=True)
+    build_parser.set_defaults(handler=build_rtdetr)
+    validate_parser = commands.add_parser("_validate-rtdetr", help=argparse.SUPPRESS)
+    validate_parser.add_argument("--source", type=Path, required=True)
+    validate_parser.set_defaults(handler=validate_command)
+    return root
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "command",
-        choices=('status', 'verify', 'import-rtdetr', 'import-yolov8', 'verify-yolov8'),
-    )
-    args = parser.parse_args()
+    args = parser().parse_args()
     try:
-        {'status': status, 'verify': verify, 'import-rtdetr': import_rtdetr, 'import-yolov8': import_yolov8, 'verify-yolov8': verify_yolov8}[args.command]()
-    except (OSError, RuntimeError, urllib.error.URLError) as error:
+        args.handler(args)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     return 0

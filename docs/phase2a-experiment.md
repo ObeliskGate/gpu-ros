@@ -78,15 +78,11 @@ export OVG_ORT_ROOT=<container-path-to-external-ort-install>
 ~~~
 
 `preflight` is mandatory before `colcon`, `verify`, capture, or benchmark
-work. It checks the active allocation, AMD GPU partition, device access, and
-required host paths. After an SSH disconnect or an expired allocation, request
-a new allocation and rerun the environment block; do not reuse stale scheduler
-state.
-
-The launcher requires the key Apptainer host variables explicitly. The
-supported local bypass is `OVG_REQUIRE_SLURM=0` for a deliberate
-non-scheduler Apptainer setup. Docker workflows do not use this scheduler
-guard.
+work. AMD device-node access and required host paths are always hard gates.
+Slurm metadata is collected but mismatches only warn by default; setting
+`OVG_REQUIRE_SLURM=1` as above makes missing, stale, wrong-partition, or
+wrong-node allocation state fatal. Docker workflows do not use this scheduler
+policy.
 
 Every AMD build, validation, capture, and benchmark run uses the
 project-built external ONNX Runtime, regardless of GPU architecture. Any
@@ -147,7 +143,7 @@ phase2 assets verify
 The canonical AMD paths, relative to `${OVG_ASSETS_ROOT}`, are:
 
 ~~~text
-${OVG_ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx
+${OVG_ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx
 ${OVG_ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm
 ~~~
 
@@ -355,7 +351,7 @@ use_max_dim_for_orig_size=false:
 ros2 launch \
   gpu_ros_rtdetr \
   rtdetr_ort_std_image.launch.py \
-  model_file_path:=${OVG_ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx \
+  model_file_path:=${OVG_ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx \
   image_topic:=/camera_1/color/image_raw \
   execution_provider:=migraphx
 ~~~
@@ -419,12 +415,11 @@ all in the postprocessor:
 /postprocessor/Unsqueeze_5
 ~~~
 
-The fallback is a known, controlled performance limitation and does not
-invalidate Phase 2A correctness. An unexpected additional CPU node is an audit
-failure.
-Do not use `--require-no-cpu-nodes` for RT-DETR. The YOLOv8 closure profile
-showed no CPU fallback, so a YOLOv8 profile may use that strict check when the
-profile is isolated from the RT-DETR run.
+This five-node set is an observation from one tested ORT/model combination,
+not a correctness whitelist. A MIGraphX request fails the audit only when no
+MIGraphX node appears. Mixed MIGraphX/CPU profiles pass while reporting CPU
+node names, counts, and shares. The same rule applies to YOLOv8; its no-CPU
+closure profile is a measured result, not a contract.
 
 While the graph is running, inspect the ORT session process:
 

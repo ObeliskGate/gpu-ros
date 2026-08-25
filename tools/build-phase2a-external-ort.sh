@@ -5,7 +5,10 @@ set -euo pipefail
 trap 'echo "ERROR: external ORT build failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ORT_VERSION="${ORT_VERSION:-1.23.1}"
+ORT_LOCK="${ROOT_DIR}/config/onnxruntime.lock"
+[[ -f "${ORT_LOCK}" ]] || { echo "ERROR: ORT lock is missing: ${ORT_LOCK}" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "${ORT_LOCK}"
 ORT_STATE_ROOT="${OVG_ORT_STATE_ROOT:-/workspaces/ovg-ort}"
 SOURCE_ROOT="${ORT_STATE_ROOT}/source/onnxruntime"
 BUILD_PARENT="${ORT_STATE_ROOT}/build"
@@ -19,7 +22,8 @@ die() {
   exit 1
 }
 
-[[ "${ORT_VERSION}" == 1.23.1 ]] || die "this external builder is pinned to ORT 1.23.1"
+[[ "${ORT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid ORT_VERSION in ${ORT_LOCK}"
+[[ "${ORT_COMMIT}" =~ ^[0-9a-f]{40}$ ]] || die "invalid ORT_COMMIT in ${ORT_LOCK}"
 [[ -d "${SOURCE_ROOT}/.git" ]] || die \
   "pristine recursive ORT source is missing: ${SOURCE_ROOT}"
 [[ -f "${PATCH_SERIES}" ]] || die "patch series is missing: ${PATCH_SERIES}"
@@ -31,9 +35,8 @@ git_source() {
 }
 
 source_commit="$(git_source rev-parse --verify HEAD)"
-tag_commit="$(git_source rev-parse --verify "refs/tags/v${ORT_VERSION}^{commit}" 2>/dev/null || true)"
-[[ -n "${tag_commit}" && "${tag_commit}" == "${source_commit}" ]] || die \
-  "source must be exactly tag v${ORT_VERSION} (HEAD=${source_commit})"
+[[ "${source_commit}" == "${ORT_COMMIT}" ]] || die \
+  "source HEAD must equal locked ORT commit ${ORT_COMMIT} (HEAD=${source_commit}, tag v${ORT_VERSION})"
 
 if [[ -n "$(git_source status --porcelain)" ]]; then
   die "ORT source is not clean: ${SOURCE_ROOT}"

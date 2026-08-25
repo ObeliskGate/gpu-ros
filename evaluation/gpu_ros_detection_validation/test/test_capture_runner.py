@@ -82,6 +82,77 @@ AMD_COLCON_DEFAULTS_PATH = (
     Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
 )
 BENCHMARKS_ROOT = Path(__file__).parents[3] / 'migrated_packages' / 'benchmarks'
+REPOSITORY_ROOT = Path(__file__).parents[3]
+
+
+def test_staged_control_metadata_matches_component_topology():
+    for name in (
+            'gpu_ros_rtdetr_phase2b_amd_staged_control_graph.py',
+            'gpu_ros_yolov8_phase2b_amd_staged_control_graph.py'):
+        source = (BENCHMARKS_ROOT / name).read_text()
+        assert 'Managed->std->Managed before ORT; ' in source
+        assert 'Managed->std->standard decoder after ORT' in source
+        assert source.index('managed_to_std_input =') < source.index('std_to_managed_input =')
+        assert source.index('std_to_managed_input =') < source.index('onnx =')
+        assert source.index('onnx =') < source.index('managed_to_std_output =')
+        assert source.index('managed_to_std_output =') < source.index('decoder =')
+        assert 'std_to_managed_output =' not in source
+
+
+def test_benchmark_manifest_records_complete_dirty_repository_state():
+    source = AMD_MATRIX_SCRIPT_PATH.read_text()
+    assert 'git -C "${path}" diff HEAD --binary' in source
+    assert 'ls-files --others --exclude-standard' in source
+    assert 'application_untracked_paths=' in source
+    assert 'application_untracked_content_sha256=' in source
+    assert 'gpu_ros_managed_diff_head_binary_sha256=' in source
+    assert 'gpu_ros_managed_untracked_content_sha256=' in source
+    assert 'submodule_status' not in source
+
+
+def test_nvidia_sources_are_opt_in_external_checkouts():
+    assert not (REPOSITORY_ROOT / '.gitmodules').exists()
+    manifest = (REPOSITORY_ROOT / 'external' / 'nvidia-isaac-ros.repos').read_text()
+    assert '060ced887bd8a3a0be60b1fa454365942eefd128' in manifest
+    assert 'f46699e124262c5bfb6f00099061f6718f026b3f' in manifest
+    amd_dockerfile = (REPOSITORY_ROOT / 'docker' / 'phase2a-amd.Dockerfile').read_text()
+    assert 'bootstrap-nvidia-external' not in amd_dockerfile
+    assert 'isaac_ros_object_detection.git' not in amd_dockerfile
+
+
+def test_ort_lock_is_the_only_version_and_commit_source():
+    lock = (REPOSITORY_ROOT / 'config' / 'onnxruntime.lock').read_text()
+    assert 'ORT_VERSION=1.23.1' in lock
+    assert 'ORT_COMMIT=d9b2048791efb5804fe3d53a04b4971256addebf' in lock
+    builder = (REPOSITORY_ROOT / 'tools' / 'build-phase2a-external-ort.sh').read_text()
+    assert 'source "${ORT_LOCK}"' in builder
+    assert '"${source_commit}" == "${ORT_COMMIT}"' in builder
+
+
+def test_cpu_defaults_and_offline_asset_profiles_are_explicit():
+    cmake = (
+        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        'CMakeLists.txt').read_text()
+    assert 'option(ORT_ENABLE_CUDA "Enable CUDAExecutionProvider selection" OFF)' in cmake
+    assert 'option(BUILD_NITROS_TRANSPORT' in cmake
+    assert 'NVIDIA Isaac ROS)" OFF)' in cmake
+    assets = (REPOSITORY_ROOT / 'tools' / 'phase2-assets').read_text()
+    assert 'urllib' not in assets
+    assert 'nvidia_synthetica" if provider == "cuda" else "rtdetrv2_r50"' in assets
+    assert 'automatic fallback is forbidden' in assets
+
+
+def test_nitros_conversion_callbacks_drop_exceptions():
+    source = (
+        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        'src' / 'nitros_managed_tensor_bundle_nodes.cpp').read_text()
+    assert source.count('catch (const std::exception & error)') >= 2
+    assert source.count('catch (...)') >= 2
+    io_source = (
+        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        'src' / 'nitros_tensor_bundle_io.cpp').read_text()
+    assert 'Dropping NITROS input frame' in io_source
+    assert 'Dropping NITROS output frame' in io_source
 
 
 def test_capture_runner_is_executable_and_has_valid_bash_syntax():
@@ -154,8 +225,8 @@ def test_amd_launcher_requires_external_ort_for_formal_runs():
     assert 'bootstrap|up|colcon|verify' in script
 
 
-def test_amd_launcher_fails_closed_before_apptainer_work():
-    """Guard HPC Apptainer work against login-node and stale-job execution."""
+def test_amd_launcher_keeps_device_gate_when_slurm_is_warning_only():
+    """Slurm policy is optional, while real AMD device visibility is not."""
     script = AMD_PHASE2_LAUNCHER_PATH.read_text()
     assert 'require_explicit_apptainer_environment' in script
     assert 'require_slurm_compute_node' in script
@@ -164,6 +235,10 @@ def test_amd_launcher_fails_closed_before_apptainer_work():
     assert '/dev/kfd' in script
     assert '/dev/dri' in script
     assert 'OVG_REQUIRE_SLURM' in script
+    assert 'local require_slurm="${OVG_REQUIRE_SLURM:-0}"' in script
+    assert 'set OVG_REQUIRE_SLURM=1 to make this fatal' in script
+    assert 'scontrol show hostnames' in script
+    assert 'OVG_REQUIRE_SLURM=0 explicitly disables' not in script
     assert 'OVG_ALLOW_BUILD_ONLY_SHELL' in script
     assert 'preflight' in script
 

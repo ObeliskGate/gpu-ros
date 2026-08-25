@@ -93,6 +93,20 @@ def summarize_profile(path):
         }
         for provider, data in sorted(providers.items())
     }
+    total_kernel_events = sum(
+        data['kernel_events'] for data in provider_report.values())
+    all_unique_nodes = {
+        node
+        for data in provider_report.values()
+        for node in data['unique_nodes']
+    }
+    for data in provider_report.values():
+        data['kernel_event_fraction'] = (
+            data['kernel_events'] / total_kernel_events
+            if total_kernel_events else 0.0)
+        data['unique_node_fraction'] = (
+            len(data['unique_nodes']) / len(all_unique_nodes)
+            if all_unique_nodes else 0.0)
     return {
         'path': str(path),
         'provider_kernel_events_found': bool(provider_report),
@@ -121,6 +135,11 @@ def print_report(report, max_node_names):
         return
 
     print(f'  CPU fallback: detected ({len(cpu_nodes)} unique nodes)')
+    cpu_data = providers[CPU_PROVIDER]
+    print(
+        f"  CPU fallback share: {cpu_data['kernel_events']} kernel events "
+        f"({cpu_data['kernel_event_fraction']:.2%}), {len(cpu_nodes)} unique nodes "
+        f"({cpu_data['unique_node_fraction']:.2%})")
     for node_name in cpu_nodes[:max_node_names]:
         print(f'    - {node_name}')
     omitted = len(cpu_nodes) - max_node_names

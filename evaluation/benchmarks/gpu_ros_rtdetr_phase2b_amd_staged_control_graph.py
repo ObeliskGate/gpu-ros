@@ -210,7 +210,10 @@ class TestGpuRosRtDetrPhase2bAmdStagedControl(
             "model": common.AMD_MODEL_FILE_NAME,
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorBundle with std control lane",
-            "staging": "Managed->std->Managed before and after ORT",
+            "staging": (
+                "Managed->std->Managed before ORT; "
+                "Managed->std->standard decoder after ORT"
+            ),
             "managed_io_contract": "hip_managed_strict",
             "build_type": "Release",
             "result_directory": RESULTS_DIR,

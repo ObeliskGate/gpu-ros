@@ -296,6 +296,16 @@ def _add_amd_classifications(result: Dict[str, Any]) -> None:
             item['classification'] = 'staging_shaped_evidence'
 
 
+def format_unresolved_kernel(item: Mapping[str, Any]) -> str:
+    """Format named kernel evidence and incomplete-domain records safely."""
+    if item.get('name'):
+        return f"name={item['name']} reason={item.get('reason', 'unspecified')}"
+    return (
+        f"lane={item.get('lane', 'unknown')} "
+        f"classification={item.get('classification', 'unresolved_kernel_evidence')} "
+        f"reason={item.get('reason', 'unspecified')}")
+
+
 def compare(
         std_events: Iterable[Mapping[str, Any]],
         managed_events: Iterable[Mapping[str, Any]],
@@ -496,9 +506,7 @@ def main() -> int:
             f"direction={item['direction']} bytes={item['bytes']} "
             f"reason={item['reason']}")
     for item in result.get('unresolved_kernel_evidence', []):
-        print(
-            'Unresolved AMD kernel evidence: '
-            f"name={item['name']} reason={item['reason']}")
+        print('Unresolved AMD kernel evidence: ' + format_unresolved_kernel(item))
     for item in result.get('adapter_copy_evidence', []):
         print(
             'Staging-shaped Managed copy evidence: '

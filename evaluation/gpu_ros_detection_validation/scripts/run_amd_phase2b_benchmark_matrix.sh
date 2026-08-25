@@ -58,7 +58,7 @@ GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}
 if [[ ${MODEL} == yolov8 ]]; then
   MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
 else
-  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx}"
+  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx}"
 fi
 DATASET_PATH="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
@@ -133,9 +133,50 @@ repo_revision() {
 repo_diff_hash() {
   local path="$1"
   if [[ -d ${path}/.git ]]; then
-    git -C "${path}" diff --binary | sha256sum | awk '{print $1}'
+    git -C "${path}" diff HEAD --binary | sha256sum | awk '{print $1}'
   else
     echo "MISSING"
+  fi
+}
+
+repo_untracked_paths() {
+  local path="$1"
+  if [[ ! -d ${path}/.git ]]; then
+    echo "MISSING"
+    return 0
+  fi
+  local item first=1
+  while IFS= read -r -d '' item; do
+    ((first == 1)) || printf ';'
+    printf '%q' "${item}"
+    first=0
+  done < <(git -C "${path}" ls-files --others --exclude-standard -z | sort -z)
+  printf '\n'
+}
+
+repo_untracked_content_hash() {
+  local path="$1"
+  if [[ ! -d ${path}/.git ]]; then
+    echo "MISSING"
+    return 0
+  fi
+  (
+    cd "${path}"
+    while IFS= read -r -d '' item; do
+      printf '%s\0' "${item}"
+      sha256sum -- "${item}"
+    done < <(git ls-files --others --exclude-standard -z | sort -z)
+  ) | sha256sum | awk '{print $1}'
+}
+
+repo_dirty() {
+  local path="$1"
+  if [[ ! -d ${path}/.git ]]; then
+    echo "MISSING"
+  elif [[ -n $(git -C "${path}" status --porcelain) ]]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
@@ -153,7 +194,7 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 {
-  echo "schema_version=1"
+  echo "schema_version=2"
   echo "model=${MODEL}"
   echo "matrix_name=${MATRIX_NAME}"
   echo "started_at=$(date --iso-8601=seconds)"
@@ -166,11 +207,15 @@ trap 'exit 130' INT TERM
   echo "ort_root=${ONNXRUNTIME_ROOT:-}"
   echo "ort_library_sha256=$(hash_path "${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}")"
   echo "application_revision=$(git -C "${WORKSPACE_ROOT}" rev-parse HEAD)"
-  echo "application_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
-  if [[ -d ${GPU_MANAGED_ROOT}/.git ]]; then
-    echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
-    echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
-  fi
+  echo "application_diff_head_binary_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
+  echo "application_untracked_paths=$(repo_untracked_paths "${WORKSPACE_ROOT}")"
+  echo "application_untracked_content_sha256=$(repo_untracked_content_hash "${WORKSPACE_ROOT}")"
+  echo "application_dirty=$(repo_dirty "${WORKSPACE_ROOT}")"
+  echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_diff_head_binary_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_untracked_paths=$(repo_untracked_paths "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_untracked_content_sha256=$(repo_untracked_content_hash "${GPU_MANAGED_ROOT}")"
+  echo "gpu_ros_managed_dirty=$(repo_dirty "${GPU_MANAGED_ROOT}")"
   echo "fixed_rates_hz=10,30,60"
   echo "round_count=3"
   echo "lane_order_round_1=std,staged,direct"

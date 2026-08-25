@@ -167,6 +167,31 @@ def test_class_mismatch_fails():
     assert result.class_match_rate == 0.0
 
 
+def test_formal_class_aware_pair_thresholds_are_per_detection():
+    strict = compare.Thresholds(
+        min_mean_iou=0.99,
+        max_mean_score_delta=0.001,
+        min_frame_pass_rate=1.0,
+        min_paired_frames=1,
+        min_class_match_rate=1.0,
+        min_pair_iou=0.99,
+        max_pair_score_delta=0.001,
+        class_aware_matching=True,
+    )
+    reference = frame(0, 1, [
+        make_detection(10, 10, 4, 4, score=0.9, class_id='cup'),
+        make_detection(20, 20, 4, 4, score=0.8, class_id='box'),
+    ])
+    candidate = frame(0, 1, [
+        make_detection(10, 10, 4, 4, score=0.9005, class_id='cup'),
+        make_detection(20.1, 20, 4, 4, score=0.8, class_id='box'),
+    ])
+    result = compare.compare_frame(reference, candidate, strict)
+    assert not result.passed
+    assert result.unmatched_count == 0
+    assert min(result.iou_values) < 0.99
+
+
 def test_pair_frames_by_index():
     reference = [frame(0, 10, []), frame(1, 20, [])]
     candidate = [frame(0, 99, [])]

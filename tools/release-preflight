@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TREEISH="${1:-HEAD}"
+OUTPUT="${2:-${REPOSITORY_ROOT}/release/amd_ros_object_detection-source.tar.gz}"
+
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+git -C "${REPOSITORY_ROOT}" rev-parse --verify "${TREEISH}^{tree}" >/dev/null ||
+  die "unknown tree-ish: ${TREEISH}"
+
+if git -C "${REPOSITORY_ROOT}" ls-tree -r "${TREEISH}" |
+  awk '$1 == "160000" {print $4}' | grep -q .; then
+  die "tracked snapshot contains a gitlink"
+fi
+
+tracked_paths="$(git -C "${REPOSITORY_ROOT}" ls-tree -r --name-only "${TREEISH}")"
+if grep -E '(^|/)\.env($|\.)|\.(onnx|pt|pth|engine|plan|sif)$' <<<"${tracked_paths}"; then
+  die "tracked snapshot contains a credential filename or external binary asset"
+fi
+
+if git -C "${REPOSITORY_ROOT}" ls-tree -rl "${TREEISH}" |
+  awk '$4 != "-" && $4 > 5242880 {print $5 " (" $4 " bytes)"}' | grep -q .; then
+  git -C "${REPOSITORY_ROOT}" ls-tree -rl "${TREEISH}" |
+    awk '$4 != "-" && $4 > 5242880 {print $5 " (" $4 " bytes)"}' >&2
+  die "tracked snapshot contains a file larger than 5 MiB"
+fi
+
+if git -C "${REPOSITORY_ROOT}" grep -I -E \
+  '(NGC_CLI_API_KEY|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY|api[_-]?key[[:space:]]*=[[:space:]]*[^$<{[:space:]])' \
+  "${TREEISH}" -- . ':!tools/release-preflight'; then
+  die "tracked snapshot contains a credential-like value"
+fi
+
+mkdir -p "$(dirname "${OUTPUT}")"
+git -C "${REPOSITORY_ROOT}" archive \
+  --format=tar.gz \
+  --prefix=amd_ros_object_detection/ \
+  --output="${OUTPUT}" \
+  "${TREEISH}"
+sha256sum "${OUTPUT}"
+echo "tracked source snapshot created: ${OUTPUT}"
+echo "NOTE: Git history is excluded; history sanitization and final license review remain mandatory."

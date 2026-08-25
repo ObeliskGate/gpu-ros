@@ -1,0 +1,3 @@
+# Single source of truth for every ONNX Runtime source and image build.
+ORT_VERSION=1.23.1
+ORT_COMMIT=d9b2048791efb5804fe3d53a04b4971256addebf

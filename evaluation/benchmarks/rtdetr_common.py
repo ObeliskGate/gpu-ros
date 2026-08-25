@@ -38,7 +38,7 @@ MODEL_FILE_NAME = 'synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx'
 # Keep MODEL_FILE_NAME unchanged because it is the historical NVIDIA matrix
 # asset and must remain reproducible.
 AMD_MODEL_FILE_NAME = (
-    'rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx'
+    'rtdetrv2_r50/rtdetrv2_r50.onnx'
 )
 TRT_FP16_ENGINE_FILE_PATH = '/tmp/sdetr_grasp.plan'
 TRT_FP32_ENGINE_FILE_PATH = '/tmp/sdetr_grasp_fp32.plan'

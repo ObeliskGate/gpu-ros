@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -f "${FP32_ONNX}" ]]; then
   echo "ERROR: FP32 model not found at ${FP32_ONNX}" >&2
-  echo "Provide the model locally under its applicable terms; this source release does not grant model rights." >&2
+  echo "Import the user-acquired external asset first (see docs/phase0-benchmark-reproduction.md)." >&2
   exit 1
 fi
 

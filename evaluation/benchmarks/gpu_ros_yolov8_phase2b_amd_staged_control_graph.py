@@ -14,8 +14,9 @@
 """Phase 2B YOLOv8 staged-control benchmark.
 
 This lane deliberately uses the same Managed HIP encoder, strict ORT contract,
-and standard decoder as the direct lane.  The only transport additions are one
-Managed->standard and one standard->Managed adapter on each side of ORT.
+and standard decoder as the direct lane. Before ORT it stages
+Managed->standard->Managed; after ORT it stages Managed->standard and feeds
+the standard decoder directly.
 """
 
 import os
@@ -188,7 +189,10 @@ class TestGpuRosYoloV8Phase2bAmdStagedControl(
             "model": common.MODEL_FILE_NAME,
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorBundle with std control lane",
-            "staging": "Managed->std->Managed before and after ORT",
+            "staging": (
+                "Managed->std->Managed before ORT; "
+                "Managed->std->standard decoder after ORT"
+            ),
             "managed_io_contract": "hip_managed_strict",
             "build_type": "Release",
             "result_directory": RESULTS_DIR,

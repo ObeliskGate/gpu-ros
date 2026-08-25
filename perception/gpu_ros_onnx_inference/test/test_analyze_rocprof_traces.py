@@ -225,6 +225,17 @@ def test_requested_empty_memory_copy_domain_is_inconclusive():
     assert result['criteria']['memory_copy_manifest_complete'] is False
 
 
+def test_incomplete_kernel_record_without_name_formats_as_unresolved():
+    rendered = ROC.format_unresolved_kernel({
+        'lane': 'managed',
+        'classification': 'unresolved_kernel_evidence',
+        'reason': 'kernel domain incomplete',
+    })
+    assert rendered == (
+        'lane=managed classification=unresolved_kernel_evidence '
+        'reason=kernel domain incomplete')
+
+
 def test_staging_shaped_h2d_d2h_evidence_is_not_claimed_as_adapter_proof():
     result = ROC.compare(
         [kernel('std_provider_kernel')],

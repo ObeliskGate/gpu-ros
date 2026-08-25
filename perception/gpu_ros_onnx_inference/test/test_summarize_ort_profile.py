@@ -72,6 +72,26 @@ def test_reports_cpu_node_names(tmp_path):
     assert cpu_data['unique_nodes'] == ['shape (Shape)']
 
 
+def test_mixed_migraphx_cpu_profile_reports_share_without_failing_provider_audit(tmp_path):
+    profile_path = tmp_path / 'mixed-migraphx.json'
+    write_profile(profile_path, [
+        {
+            'name': 'fused_kernel_time',
+            'args': {'provider': 'MIGraphXExecutionProvider', 'op_name': 'MIGraphX'},
+        },
+        {
+            'name': 'shape_kernel_time',
+            'args': {'provider': 'CPUExecutionProvider', 'op_name': 'Shape'},
+        },
+    ])
+
+    report = PROFILE_SUMMARY.summarize_profile(profile_path)
+
+    assert 'MIGraphXExecutionProvider' in report['providers']
+    assert report['providers']['CPUExecutionProvider']['kernel_event_fraction'] == 0.5
+    assert report['providers']['CPUExecutionProvider']['unique_node_fraction'] == 0.5
+
+
 def test_ignores_non_provider_events(tmp_path):
     """Session-level timing events are not mistaken for graph nodes."""
     profile_path = tmp_path / 'session-only.json'

@@ -43,6 +43,9 @@ REPORT_ONLY_DEFAULTS = {
     'min_frame_pass_rate': 0.70,
     'min_paired_frames': 20,
     'min_class_match_rate': 1.0,
+    'min_pair_iou': 0.0,
+    'max_pair_score_delta': float('inf'),
+    'class_aware_matching': False,
 }
 
 
@@ -86,6 +89,9 @@ class Thresholds:
     min_frame_pass_rate: float
     min_paired_frames: int
     min_class_match_rate: float
+    min_pair_iou: float = 0.0
+    max_pair_score_delta: float = float('inf')
+    class_aware_matching: bool = False
 
 
 @dataclass(frozen=True)
@@ -295,6 +301,7 @@ def pair_frames(
 def match_detections(
     reference_detections: Sequence[Detection2D],
     candidate_detections: Sequence[Detection2D],
+    class_aware: bool = False,
 ) -> Tuple[List[float], List[float], int, int, int]:
     if not reference_detections and not candidate_detections:
         return [], [], 0, 0, 0
@@ -305,6 +312,8 @@ def match_detections(
     for ref_index, ref_det in enumerate(reference_detections):
         ref_box = to_xyxy(ref_det)
         for cand_index, cand_det in enumerate(candidate_detections):
+            if class_aware and detection_class_id(ref_det) != detection_class_id(cand_det):
+                continue
             candidate_pairs.append((iou(ref_box, to_xyxy(cand_det)), ref_index, cand_index))
     # Explicitly include the source indices in the tie-breaker.  Class is
     # intentionally not part of the pairing decision.
@@ -354,7 +363,11 @@ def compare_frame(
         unmatched_reference_count,
         unmatched_candidate_count,
         class_matches,
-    ) = match_detections(reference.detections, candidate.detections)
+    ) = match_detections(
+        reference.detections,
+        candidate.detections,
+        class_aware=thresholds.class_aware_matching,
+    )
     unmatched_count = unmatched_reference_count + unmatched_candidate_count
 
     if not ious and unmatched_count == 0:
@@ -377,7 +390,9 @@ def compare_frame(
         unmatched_count == 0 and
         mean_iou >= thresholds.min_mean_iou and
         mean_score_delta <= thresholds.max_mean_score_delta and
-        class_match_rate >= thresholds.min_class_match_rate
+        class_match_rate >= thresholds.min_class_match_rate and
+        all(value >= thresholds.min_pair_iou for value in ious) and
+        all(value <= thresholds.max_pair_score_delta for value in score_deltas)
     )
     return FrameComparison(
         reference_index=reference.index,
@@ -628,7 +643,10 @@ def print_summary(
           f'min_mean_iou={thresholds.min_mean_iou:.4f}, '
           f'max_mean_score_delta={thresholds.max_mean_score_delta:.4f}, '
           f'min_frame_pass_rate={thresholds.min_frame_pass_rate:.4f}, '
-          f'min_class_match_rate={thresholds.min_class_match_rate:.4f}')
+          f'min_class_match_rate={thresholds.min_class_match_rate:.4f}, '
+          f'min_pair_iou={thresholds.min_pair_iou:.4f}, '
+          f'max_pair_score_delta={thresholds.max_pair_score_delta:.4f}, '
+          f'class_aware_matching={thresholds.class_aware_matching}')
     print('REPORT_ONLY' if report_only else ('PASS' if summary['pass'] else 'FAIL'))
 
 
@@ -658,6 +676,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--min-frame-pass-rate', type=float, default=0.70)
     parser.add_argument('--min-paired-frames', type=int, default=20)
     parser.add_argument('--min-class-match-rate', type=float, default=1.0)
+    parser.add_argument('--min-pair-iou', type=float, default=0.0)
+    parser.add_argument('--max-pair-score-delta', type=float, default=float('inf'))
+    parser.add_argument(
+        '--class-aware-matching', action='store_true',
+        help='Only consider same-class detection pairs during IoU matching.')
     parser.add_argument('--min-score', type=float, default=0.0,
                         help='Drop detections below this confidence score before comparing.')
     parser.add_argument('--max-detections-per-frame', type=int, default=0,
@@ -726,6 +749,9 @@ def main() -> int:
             min_frame_pass_rate=args.min_frame_pass_rate,
             min_paired_frames=args.min_paired_frames,
             min_class_match_rate=args.min_class_match_rate,
+            min_pair_iou=args.min_pair_iou,
+            max_pair_score_delta=args.max_pair_score_delta,
+            class_aware_matching=args.class_aware_matching,
         )
         reference_frames = read_detection_frames(
             args.reference_bag, args.reference_topic, detection_filters, args.storage_id)
@@ -779,6 +805,10 @@ def main() -> int:
                 'min_frame_pass_rate': thresholds.min_frame_pass_rate,
                 'min_paired_frames': thresholds.min_paired_frames,
                 'min_class_match_rate': thresholds.min_class_match_rate,
+                'min_pair_iou': thresholds.min_pair_iou,
+                'max_pair_score_delta': finite_or_none(
+                    thresholds.max_pair_score_delta),
+                'class_aware_matching': thresholds.class_aware_matching,
             },
             'summary': report_summary,
             'per_frame': [comparison_to_dict(comparison) for comparison in comparisons],

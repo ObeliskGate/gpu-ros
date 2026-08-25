@@ -42,7 +42,7 @@ case "${MODEL}" in
   rtdetr)
     LAUNCH_FILE="rtdetr_ort_managed_amd.launch.py"
     NAMESPACE="rtdetr_managed"
-    MODEL_RELATIVE_PATH="models/rtdetrv2_r50vd_6x_coco/rtdetrv2_r50vd_6x_coco.onnx"
+    MODEL_RELATIVE_PATH="models/rtdetrv2_r50/rtdetrv2_r50.onnx"
     ;;
   *)
     echo "ERROR: model must be yolov8 or rtdetr, got '${MODEL}'." >&2
