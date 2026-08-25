@@ -125,7 +125,10 @@ public:
       this, "tensor_output",
       nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
 
-    input_io_ = CreateTensorBundleIO(this, input_transport);
+    // The bridge owns its NITROS output publisher. The transport IO is input
+    // only; creating its normal tensor_output publisher would collide with
+    // the remapped NITROS output topic.
+    input_io_ = CreateTensorBundleIO(this, input_transport, false);
     input_io_->Subscribe(
       [this](gpu_ros_managed::ManagedTensorBundleView tensors) {
         Forward(std::move(tensors));

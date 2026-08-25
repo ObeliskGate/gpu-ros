@@ -20,28 +20,31 @@
 namespace gpu_ros::onnx_inference
 {
 
-std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node);
+std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(
+  rclcpp::Node * node, bool publish_output);
 #ifdef BUILD_NITROS_TRANSPORT
-std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(rclcpp::Node * node);
+std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(
+  rclcpp::Node * node, bool publish_output);
 #endif
-std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(rclcpp::Node * node);
+std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
+  rclcpp::Node * node, bool publish_output);
 
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
-  rclcpp::Node * node, const std::string & transport)
+  rclcpp::Node * node, const std::string & transport, bool publish_output)
 {
   if (transport == "std") {
-    return CreateStdTensorBundleIO(node);
+    return CreateStdTensorBundleIO(node, publish_output);
   }
   if (transport == "nitros") {
 #ifdef BUILD_NITROS_TRANSPORT
-    return CreateNitrosTensorBundleIO(node);
+    return CreateNitrosTensorBundleIO(node, publish_output);
 #else
     throw std::runtime_error(
             "transport=nitros requested but built without BUILD_NITROS_TRANSPORT.");
 #endif
   }
   if (transport == "managed") {
-    return CreateManagedTensorBundleIO(node);
+    return CreateManagedTensorBundleIO(node, publish_output);
   }
   throw std::invalid_argument("Unknown transport: " + transport);
 }

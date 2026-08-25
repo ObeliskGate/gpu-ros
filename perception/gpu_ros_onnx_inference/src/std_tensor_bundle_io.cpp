@@ -34,10 +34,12 @@ using TensorBundleMsg = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 class StdTensorBundleIO : public ITensorBundleIO
 {
 public:
-  explicit StdTensorBundleIO(rclcpp::Node * node)
+  explicit StdTensorBundleIO(rclcpp::Node * node, bool publish_output)
   : node_{node}
   {
-    pub_ = node_->create_publisher<TensorBundleMsg>("tensor_output", 10);
+    if (publish_output) {
+      pub_ = node_->create_publisher<TensorBundleMsg>("tensor_output", 10);
+    }
   }
 
   void Subscribe(Callback callback) override
@@ -55,6 +57,9 @@ public:
 
   void Publish(TensorBundleOutput && output) override
   {
+    if (!pub_) {
+      throw std::logic_error("standard TensorBundle output is disabled for this IO");
+    }
     auto loaned_message = pub_->borrow_loaned_message();
     auto & msg = loaned_message.get();
     msg.header = std::move(output.header);
@@ -99,9 +104,10 @@ private:
 
 }  // namespace
 
-std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node)
+std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(
+  rclcpp::Node * node, bool publish_output)
 {
-  return std::make_unique<StdTensorBundleIO>(node);
+  return std::make_unique<StdTensorBundleIO>(node, publish_output);
 }
 
 }  // namespace gpu_ros::onnx_inference

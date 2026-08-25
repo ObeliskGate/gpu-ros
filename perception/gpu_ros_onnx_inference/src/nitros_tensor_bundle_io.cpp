@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <exception>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -32,16 +33,19 @@ namespace nitros = nvidia::isaac_ros::nitros;
 class NitrosTensorBundleIO final : public ITensorBundleIO
 {
 public:
-  explicit NitrosTensorBundleIO(rclcpp::Node * node)
+  explicit NitrosTensorBundleIO(rclcpp::Node * node, bool publish_output)
   : node_(node),
     gpu_device_id_(node_->has_parameter("gpu_device_id") ?
       static_cast<int>(node_->get_parameter("gpu_device_id").as_int()) :
       node_->declare_parameter<int>("gpu_device_id", 0)),
     input_adapter_(gpu_device_id_)
   {
-    publisher_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-      node_, "tensor_output", NitrosTensorBundleFormat(), nitros::NitrosDiagnosticsConfig{},
-      rclcpp::QoS(10));
+    if (publish_output) {
+      publisher_ = std::make_shared<
+        nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
+        node_, "tensor_output", NitrosTensorBundleFormat(),
+        nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
+    }
   }
 
   void Subscribe(Callback callback) override
@@ -61,6 +65,9 @@ public:
 
   void Publish(TensorBundleOutput && output) override
   {
+    if (!publisher_) {
+      throw std::logic_error("NITROS TensorBundle output is disabled for this IO");
+    }
     try {
       publisher_->publish(BuildNitrosTensorBundle(std::move(output), gpu_device_id_));
     } catch (const std::exception & error) {
@@ -101,9 +108,10 @@ private:
 };
 }  // namespace
 
-std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(rclcpp::Node * node)
+std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(
+  rclcpp::Node * node, bool publish_output)
 {
-  return std::make_unique<NitrosTensorBundleIO>(node);
+  return std::make_unique<NitrosTensorBundleIO>(node, publish_output);
 }
 
 }  // namespace gpu_ros::onnx_inference

@@ -44,7 +44,7 @@ public:
 
 // Factory: transport is "std", "nitros", or "managed".
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
-  rclcpp::Node * node, const std::string & transport);
+  rclcpp::Node * node, const std::string & transport, bool publish_output = true);
 
 }  // namespace gpu_ros::onnx_inference
 

@@ -37,14 +37,19 @@ gpu_ros_managed::TensorDataType ToManagedType(ONNXTensorElementDataType dtype)
 class ManagedTensorBundleIO final : public ITensorBundleIO
 {
 public:
-  explicit ManagedTensorBundleIO(rclcpp::Node * node)
+  explicit ManagedTensorBundleIO(rclcpp::Node * node, bool publish_output)
   : placement_(
       (node->get_parameter("execution_provider").as_string() == "cuda" ||
       node->get_parameter("execution_provider").as_string() == "migraphx") ?
       OutputPlacement::kDevice : OutputPlacement::kHost),
-    publisher_(node, "tensor_output", rclcpp::QoS(10)),
     node_(node)
-  {}
+  {
+    if (publish_output) {
+      publisher_ = std::make_unique<
+        gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
+        node, "tensor_output", rclcpp::QoS(10));
+    }
+  }
 
   void Subscribe(Callback callback) override
   {
@@ -57,6 +62,9 @@ public:
 
   void Publish(TensorBundleOutput && output) override
   {
+    if (!publisher_) {
+      throw std::logic_error("managed TensorBundle output is disabled for this IO");
+    }
     std::vector<gpu_ros_managed::ManagedTensor> tensors;
     tensors.reserve(output.tensors.size());
     for (auto & tensor : output.tensors) {
@@ -71,21 +79,23 @@ public:
           std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(std::move(tensor.storage)));
       }
     }
-    publisher_.publish(gpu_ros_managed::ManagedTensorBundle(
+    publisher_->publish(gpu_ros_managed::ManagedTensorBundle(
         std::move(output.header), std::move(tensors)));
   }
 
 private:
   OutputPlacement placement_;
-  gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle> publisher_;
+  std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
+    publisher_;
   rclcpp::Node * node_;
   std::unique_ptr<
     gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
 };
 }  // namespace
 
-std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(rclcpp::Node * node)
+std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
+  rclcpp::Node * node, bool publish_output)
 {
-  return std::make_unique<ManagedTensorBundleIO>(node);
+  return std::make_unique<ManagedTensorBundleIO>(node, publish_output);
 }
 }  // namespace gpu_ros::onnx_inference
