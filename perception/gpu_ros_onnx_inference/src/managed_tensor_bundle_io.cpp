@@ -86,7 +86,7 @@ public:
 private:
   OutputPlacement placement_;
   std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
-    publisher_;
+  publisher_;
   rclcpp::Node * node_;
   std::unique_ptr<
     gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
