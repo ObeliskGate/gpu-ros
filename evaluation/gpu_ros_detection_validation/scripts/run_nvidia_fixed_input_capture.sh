@@ -90,7 +90,7 @@ case "${LANE}" in
     ;;
   rtdetr-managed)
     MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
-    LAUNCH_PACKAGE="gpu_ros_onnx_inference"
+    LAUNCH_PACKAGE="gpu_ros_nvidia_tensor_bundle_compat"
     LAUNCH_FILE="rtdetr_ort_managed.launch.py"
     LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
@@ -100,7 +100,7 @@ case "${LANE}" in
     ;;
   yolov8-c)
     MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
-    LAUNCH_PACKAGE="gpu_ros_onnx_inference"
+    LAUNCH_PACKAGE="gpu_ros_nvidia_tensor_bundle_compat"
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
     EXTRA_LAUNCH_ARGS+=(transport:=nitros execution_provider:=cuda)
@@ -129,7 +129,7 @@ case "${LANE}" in
     ;;
   yolov8-managed)
     MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
-    LAUNCH_PACKAGE="gpu_ros_onnx_inference"
+    LAUNCH_PACKAGE="gpu_ros_nvidia_tensor_bundle_compat"
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
     LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)

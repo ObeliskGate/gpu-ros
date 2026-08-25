@@ -171,6 +171,13 @@ def test_capture_runner_help_does_not_require_ros_environment():
         result.stdout)
 
 
+def test_nvidia_capture_runner_uses_compat_package_for_nitros_launches():
+    script = SCRIPT_PATH.read_text()
+    assert 'LAUNCH_PACKAGE="gpu_ros_nvidia_tensor_bundle_compat"' in script
+    assert script.count('LAUNCH_PACKAGE="gpu_ros_nvidia_tensor_bundle_compat"') == 3
+    assert 'LAUNCH_PACKAGE="gpu_ros_onnx_inference"' not in script
+
+
 def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():
     result = subprocess.run(
         [str(SCRIPT_PATH), 'unknown', 'capture_name'],
