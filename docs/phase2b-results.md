@@ -71,9 +71,23 @@ audit captures contained 388 and 390 messages.
 | YOLOv8 C → Managed | 392 / 392 / 392 | 1.000000 | 1.000000 | 0 / 0 | 1.0 | 0 |
 
 RT-DETR is numerically close and labels agree, but the maximum score delta is
-above a strict `1e-3` gate and the comparator reports five unmatched
-detections. It is therefore retained as an observation, not described as a
-strict no-unmatched pass. YOLOv8 passes the reported numerical checks.
+above a strict `1e-3` gate, so it is retained as an observation rather than a
+strict score-gate pass. The aggregate `5` unmatched detections are not five
+paired-frame model mismatches: exact-stamp pairing leaves one first frame
+unpaired on each side, containing 2 reference detections and 3 candidate
+detections. All 390 paired frames have `unmatched_count=0`. The first source
+header stamps differ by 33.36 ms, while the next source stamp is identical;
+this is a capture/playback startup boundary artifact.
+
+The independent audit capture had no unpaired frames and one paired-frame
+unmatched candidate detection (frame index 178). It is a class-22 box with
+score `0.600004554` and is almost fully contained in the other candidate
+class-22 box (box IoU about `0.544`). The NVIDIA RT-DETR decoder threshold is
+`0.6`, so this is consistent with a tiny C-versus-Managed score perturbation
+at the emission boundary (the reference does not emit that query). As a
+diagnostic only, filtering detections below `0.6001` removes this one extra
+box and gives zero unmatched detections; the formal `min_score=0` comparison
+is retained unchanged. YOLOv8 passes the reported numerical checks.
 
 ### Provider, pointer, and copy audit
 
