@@ -19,11 +19,11 @@ and quality requirements in this `AGENTS.md` remain authoritative.
 ## Long-term Goals
 
 0. **Phase 0 (completed)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
-1. **Phase 1 (completed)**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using the project-owned `gpu_ros_tensor_bundle_msgs/msg/TensorBundle` interface. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four configurations (2x2 matrix of inference backend and transport). The historical NVIDIA/reference lane may cross the old interface through `gpu_ros_nvidia_tensor_bundle_compat`:
+1. **Phase 1 (completed)**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using the project-owned `gpu_ros_tensor_bundle_msgs/msg/TensorBundle` interface. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four complete configurations organized by inference backend and application-interface variant; this is not a strict additive two-factor measurement. The historical NVIDIA/reference lane may cross the old interface through `gpu_ros_nvidia_tensor_bundle_compat`:
    - (A) TensorRT + NITROS (baseline)
-   - (B) TensorRT + standard ROS 2 interfaces (isolate NITROS overhead)
-   - (C) ONNX Runtime + NITROS (isolate inference backend overhead)
-   - (D) ONNX Runtime + standard ROS 2 interfaces (target)
+   - (B) TensorRT + standard ROS 2-compatible migrated interfaces
+   - (C) ONNX Runtime + NITROS (same NVIDIA/native pipeline side as A)
+   - (D) ONNX Runtime + standard ROS 2 migrated interfaces (target)
 2. **Phase 2A (completed)**: Validate the AMD standard ROS 2 paths for RT-DETR and YOLOv8 with ONNX Runtime MIGraphX EP. These paths are the accepted reference implementations for later managed-transport work.
 3. **Phase 2B (active, separate sibling repository)**: Build the reusable `gpu_ros_managed` device-buffer TensorBundle transport/runtime layer and integrate it through the owning `ITensorBundleIO` contract in this repository. Phase 2B uses the completed Phase 2A standard ROS 2 paths as its AMD reference.
 4. **Phase 3**: Extend the migrated AMD/std ROS 2 pattern to Grounding DINO and other deferred object detection pipelines.
@@ -246,13 +246,15 @@ Image → YoloV8ImageEncoderNode → OnnxInferenceNode(transport=std, EP=MIGraph
 
 ## Profiling Plan
 
-Phase 1 compares four configurations on the same NVIDIA GPU (2×2 matrix):
+Phase 1 compares four complete configurations on the same NVIDIA GPU, arranged
+as a backend/interface matrix. The matrix is an organizing view, not a claim
+that each neighboring pair differs by one transport wire only:
 
-| Config | Inference Backend | Transport | Purpose |
+| Config | Inference Backend | Application/interface variant | Purpose |
 |--------|------------------|-----------|---------|
 | (A) | TensorRT | NITROS | Baseline: original performance |
-| (B) | TensorRT | Standard ROS 2 TensorBundle | Isolate NITROS overhead |
-| (C) | ONNX Runtime (CUDA EP) | NITROS | Isolate inference backend overhead |
+| (B) | TensorRT | Standard ROS 2 TensorBundle | Standard-compatible migrated TRT configuration |
+| (C) | ONNX Runtime (CUDA EP) | NITROS | NVIDIA/native ORT counterpart to A |
 | (D) | ONNX Runtime (CUDA EP) | Standard ROS 2 TensorBundle | Target vendor-neutral stack |
 
 Metrics:

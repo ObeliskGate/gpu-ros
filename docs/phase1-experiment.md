@@ -1,23 +1,62 @@
-# Phase 1: NVIDIA Backend and Transport Experiment
+# Phase 1: NVIDIA Backend and Pipeline-Variant Experiment
 
 ## Scope
 
-Phase 1 compares inference backend and TensorBundle transport on the same
-NVIDIA environment. These are complete pipeline configurations, not strictly
-additive two-factor measurements.
+Phase 1 compares complete pipeline configurations on the same NVIDIA
+environment. Backend and application-interface variants provide useful matrix
+labels, but the configurations are not strictly additive two-factor
+measurements: changing the variant also changes the model-specific pre/post
+nodes and any required compatibility boundaries.
 
 RT-DETR uses the precision-aligned matrix:
 
-| Config | Backend | Transport | Precision |
+| Config | Backend | Application/interface variant | Precision |
 | --- | --- | --- | --- |
-| A_fp32 | TensorRT | NITROS | FP32 |
-| B_fp32 | TensorRT | standard ROS 2 bridge | FP32 |
-| C | ONNX Runtime CUDA EP | NITROS | FP32 |
-| D | ONNX Runtime CUDA EP | standard ROS 2 | FP32 |
+| A_fp32 | TensorRT | NVIDIA/NITROS native | FP32 |
+| B_fp32 | TensorRT | standard ROS 2-compatible migrated | FP32 |
+| C | ONNX Runtime CUDA EP | NVIDIA/NITROS native | FP32 |
+| D | ONNX Runtime CUDA EP | standard ROS 2 migrated | FP32 |
 
 The ordinary A/B RT-DETR graphs are TensorRT FP16 and must not be confused
 with A_fp32/B_fp32. YOLOv8 A/B use TensorRT FP16; C/D use ORT FP32. YOLOv8
 A/C therefore is not a pure backend comparison.
+
+For RT-DETR, the shared six-node image/tensor preprocessing chain remains the
+NVIDIA/NITROS part in all four configurations. A_fp32 and C retain the
+NVIDIA/NITROS RT-DETR preprocessor and decoder. B_fp32 and D use the
+project-owned standard RT-DETR preprocessor and decoder. B_fp32 keeps the
+TensorRT node, so explicit NVIDIA TensorList-to-project-TensorBundle adapters
+and a standard-to-NITROS bridge surround that node; D uses ORT with standard
+TensorBundle transport after its input boundary. Thus B_fp32 is the
+standard-compatible TRT configuration, not a transport-only ablation, while D
+is the migrated standard ORT target configuration.
+
+The open-source remediation also changed the concrete standard interface from
+the earlier NVIDIA TensorList-compatible path to
+`gpu_ros_tensor_bundle_msgs/msg/TensorBundle`, with explicit conversion only
+inside `gpu_ros_nvidia_tensor_bundle_compat`. This preserves the experiment's
+native-versus-migrated roles but changes adapter and ownership costs. Historical
+4.4 B/D numbers are therefore reference results for earlier implementations,
+not direct regression baselines for the current 4.5-compatible source.
+
+YOLOv8 follows the same A/B/C/D roles without the RT-DETR-specific
+preprocessor: A/C retain the NVIDIA/NITROS decoder, while B/D use the project
+standard decoder. B still needs the explicit TensorBundle/NITROS bridge around
+TensorRT; D stays on the standard TensorBundle inference path after its input
+boundary.
+
+### RT-DETR original-size input
+
+RT-DETR's `orig_target_sizes` is a real `1x2` `int64` model input. It controls
+the coordinate scale of the returned boxes; it is not merely transport
+metadata. The tensor is tiny and does not add a material image or inference
+workload, so it is not expected to change the throughput conclusions of the
+Phase 1 benchmark. It does, however, change the coordinate units in
+`Detection2DArray`. Every fixed-input numeric comparison must therefore record
+and use the same `orig_target_sizes` policy across the compared lanes. The
+official benchmark graph and the numerical-capture recipe are separate: the
+former remains the performance reference, while the latter makes the
+coordinate policy explicit for output comparison.
 
 ## Environment and build
 

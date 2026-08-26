@@ -1,15 +1,94 @@
 # Phase 2B Validation Results
 
-This report records the historical NVIDIA validation archive. The revised AMD
-direct Managed HIP implementation is present, but no allocation-backed AMD
-real-model result is claimed until its required capture, contract, topology,
-and high-load gates complete. Procedures and interpretation rules are in
-phase2b-managed-transport.md.
+This report keeps the historical archive and the current NVIDIA validation
+observation together. The revised AMD direct Managed HIP implementation is
+present, but no allocation-backed AMD real-model result is claimed until its
+required capture, contract, topology, and high-load gates complete. Procedures
+and interpretation rules are in phase2b-managed-transport.md.
 
-The unified NVIDIA/AMD audit tooling added afterward has not been run against
-new hardware traces in this change. Its implementation status is therefore
-`tooling implemented`; no new `PASS` is claimed here. The NVIDIA values below
-remain historical, and the allocation-backed AMD copy audit remains pending.
+The current NVIDIA campaign used the existing Isaac ROS 4.5 development
+container after a fast-forward `git pull`; it did not rebuild or change the
+Phase 1 A/B/C/D definitions. Its raw archive remains outside Git on the NV
+host. The benchmark reports are useful observations, while clean-release
+promotion remains blocked by the component-container teardown fault described
+below.
+
+## Current NVIDIA Phase 2B campaign — 2026-08-26
+
+The campaign compares Config C with the separate Managed transport candidate
+for RT-DETR and YOLOv8. Both lanes use the same NVIDIA/NITROS preprocessing and
+decoder; Managed only wraps the ORT CUDA boundary with the two TensorBundle
+bridges. The formal YOLOv8 Managed row is the rerun with bridge timing disabled;
+the timing-enabled run is diagnostic and is not used as the result.
+
+| Field | Value |
+| --- | --- |
+| GPU / driver | NVIDIA A100-SXM4-40GB / 595.84 |
+| Runtime | Isaac ROS 4.5, ROS 2 Jazzy |
+| Image | `sha256:52ba16a38a6c03eeb4533c6006d44459140e0517b59483b186df798b79ec1453` |
+| Application HEAD | `f427e1ab5dbbba6ccb22d2026edcb0b119a3f484` |
+| Managed HEAD | `caaf6cbb599bfb194671bc957f096443b94bef01` |
+| ORT | Triton `libonnxruntime.so`, version 1.23.1 |
+| Dataset | `r2bdataset2024_v1/r2b_robotarm`, hash `8eee68848ee1a95e21b1cd44d5d6ba71` |
+
+### Throughput observation
+
+| Model/lane | Peak prediction (Hz) | Mean output at peak (fps) | Peak misses / sent | Fixed 10 / 30 / 60 Hz misses |
+| --- | ---: | ---: | ---: | --- |
+| RT-DETR Config C | 102.813 | 100.544 | 4 / 514 | 0 / 0 / 0 |
+| RT-DETR Managed | 102.813 | 97.403 | 19.333 / 514 | 0 / 0 / 0 |
+| YOLOv8 Config C | 133.750 | 130.588 | 8.667 / 668 | 0 / 0 / 0 |
+| YOLOv8 Managed (no timing) | 141.484 | 126.665 | 67 / 707 | 0 / 0 / 0 |
+
+The 30 Hz first/last sent-to-received latency endpoints (milliseconds) were
+RT-DETR C `14.540 / 13.805`, RT-DETR Managed `19.181 / 14.463`, YOLOv8 C
+`17.181 / 14.511`, and YOLOv8 Managed `16.121 / 13.799`; the raw JSONs retain
+the peak-search and other fixed-rate endpoint values.
+
+Each graph wrote a valid benchmark JSON and reported `Ran 1 test ... OK`, but
+the component container then exited with `SIGSEGV (-11)` during teardown. The
+four rows are consequently `INCONCLUSIVE` for clean-release promotion, not
+failed throughput runs. The benchmark JSONs include fixed-rate metrics,
+missed-frame counts, and latency endpoints.
+
+### Fixed-input numerical comparison
+
+The formal comparator used exact source-header stamp matching in report-only
+mode. Standalone captures contained 391 RT-DETR and 392 YOLOv8 messages; the
+audit captures contained 388 and 390 messages.
+
+| Comparison | Paired / reference / candidate | Mean IoU | Minimum IoU | Mean / max score delta | Class match | Unmatched detections |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| RT-DETR C → Managed | 390 / 391 / 391 | 0.999947 | 0.997523 | 0.000060 / 0.002654 | 1.0 | 5 |
+| YOLOv8 C → Managed | 392 / 392 / 392 | 1.000000 | 1.000000 | 0 / 0 | 1.0 | 0 |
+
+RT-DETR is numerically close and labels agree, but the maximum score delta is
+above a strict `1e-3` gate and the comparator reports five unmatched
+detections. It is therefore retained as an observation, not described as a
+strict no-unmatched pass. YOLOv8 passes the reported numerical checks.
+
+### Provider, pointer, and copy audit
+
+The unified audit returned `PASS` for both models. It found CUDA provider
+activity, complete pointer/lifetime evidence, no Managed-only tensor-payload
+copy signature, and explainable frame-normalized copy records. RT-DETR CPU
+shape/bookkeeping nodes were reported as diagnostic fallback and did not
+invalidate the CUDA placement result.
+
+| Audit | C / Managed frames | Status | Detection comparison |
+| --- | ---: | --- | --- |
+| RT-DETR C → Managed | 388 / 388 | PASS | paired; min IoU 0.998747 |
+| YOLOv8 C → Managed | 390 / 390 | PASS | paired; IoU 1.0, score delta 0 |
+
+The raw audit roots are approximately 851 MB and 176 MB. They remain on the
+NV host; no single audit command exceeded 1 GB, although the two raw audit
+directories together are about 1.1 GB. Concise reports and the full raw paths
+are recorded in
+`inner_docs/docs_drafts/results/phase2b-nvidia-20260826.md`.
+
+The incremental Release build succeeded. Targeted Managed, adapter, RT-DETR,
+and YOLOv8 runtime suites passed. The RT-DETR package's complete post-fix CTest
+suite passed 9/9, including its Python lint checks.
 
 ## Provenance
 

@@ -45,6 +45,37 @@ allocation owner, preserve stream/event ordering, and add no tensor-payload
 copy. Callback timing is diagnostic only and is enabled with
 enable_timing=true on the bridge nodes.
 
+### NVIDIA Phase 2B execution shortcut
+
+On a host that already has the pinned Isaac ROS 4.5 image, external source
+mounts, assets, and a development container, a new image build is unnecessary.
+Fast-forward the application checkout and run the existing container with the
+same environment:
+
+~~~bash
+git pull --ff-only origin opensource-prep
+
+docker exec <isaac-ros-4.5-container> bash -lc \
+  'source /opt/ros/jazzy/setup.bash; \
+   source /workspaces/isaac_ros-dev/install/setup.bash; \
+   cd /workspaces/isaac_ros-dev; \
+   colcon build --event-handlers console_cohesion+'
+~~~
+
+The NVIDIA Phase 2B run consists of four fixed-input captures (Config C and
+Managed for RT-DETR and YOLOv8), stamp-paired detection comparisons, four
+benchmark graphs, and one provider/pointer/copy audit per model. Use the
+commands and archive layout in the draft runbook
+`inner_docs/docs_drafts/experiments/phase2b-nvidia.md`. Keep bridge timing,
+Nsight, and ORT profiling disabled in formal throughput runs. The current
+campaign's concise evidence is in
+`inner_docs/docs_drafts/results/phase2b-nvidia-20260826.md`.
+
+The benchmark framework can write a valid JSON before the component container
+reports a teardown `SIGSEGV`; retain that report but classify clean-release
+promotion as `INCONCLUSIVE` until teardown is repaired. Raw Nsight traces are
+large and remain on the NV host.
+
 ## Zero-copy meaning
 
 Zero-copy means that the Managed transport boundary adds no tensor-payload

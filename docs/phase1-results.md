@@ -2,11 +2,21 @@
 
 Phase 1 is complete at the implementation and detection-output validation
 levels. RT-DETR and YOLOv8 run end to end on the NVIDIA A100 with TensorRT or
-ONNX Runtime and with the NITROS or standard ROS 2 pipeline variants.
+ONNX Runtime and with the NVIDIA/NITROS or standard-ROS-compatible migrated
+pipeline variants.
 
 These historical results were collected with Isaac ROS 4.4. The active source
 and container pins have since moved to 4.5; no number below should be presented
 as a 4.5 result without a new run.
+
+The current open-source-prep source preserves the Phase 1 roles: A/C are the
+NVIDIA/NITROS native configurations and B/D are the standard-ROS-compatible
+migrated configurations. It does not preserve the old implementation byte for
+byte. In particular, B/D now use the project-owned
+`gpu_ros_tensor_bundle_msgs/msg/TensorBundle` with explicit NVIDIA
+TensorList-to-TensorBundle compatibility boundaries. Historical B/D values
+therefore include the earlier interface and bridge implementation and must not
+be read as direct performance baselines for the current source.
 
 The final performance runs used an A100-SXM4-40GB, a Release build, the same
 1280x720 input dataset, a 640x640 network resolution, and dataset hash
@@ -19,17 +29,25 @@ an external result archive rather than in Git.
 RT-DETR is precision-aligned: A/B use a TensorRT FP32 engine generated from the
 same FP32 ONNX model used by C/D.
 
-| Config | Backend and transport | Peak prediction | Mean output at peak | 30 Hz first / last latency |
+The RT-DETR `orig_target_sizes` input controls the coordinate scale of emitted
+boxes but is a two-element metadata-sized tensor. It is not expected to
+materially affect the throughput values below. It must nevertheless be held
+constant, and recorded, for any Detection2DArray numerical comparison; a
+different size policy can produce a valid run with differently scaled boxes.
+
+| Config | Backend and application/interface variant | Peak prediction | Mean output at peak | 30 Hz first / last latency |
 |---|---|---:|---:|---:|
 | A_fp32 | TensorRT FP32 + NITROS | 195.63 fps | 188.07 fps | 15.38 / 11.54 ms |
-| B_fp32 | TensorRT FP32 + std ROS 2 bridge | 187.89 fps | 180.37 fps | 21.55 / 17.56 ms |
+| B_fp32 | TensorRT FP32 + standard-ROS-compatible migrated pipeline | 187.89 fps | 180.37 fps | 21.55 / 17.56 ms |
 | C | ORT FP32 CUDA EP + NITROS | 100.08 fps | 95.61 fps | 19.03 / 16.60 ms |
-| D | ORT FP32 CUDA EP + std ROS 2 | 87.34 fps | 83.86 fps | 29.64 / 27.73 ms |
+| D | ORT FP32 CUDA EP + standard-ROS migrated pipeline | 87.34 fps | 83.86 fps | 29.64 / 27.73 ms |
 
-At peak, changing A to B reduced predicted throughput by 3.95%; changing C to
-D reduced it by 12.72%. Reciprocal throughput is more useful than subtracting
+Within these complete configurations, B's predicted peak was 3.95% below A's,
+and D's was 12.72% below C's. These differences include the migrated
+pre/post-processing and compatibility boundaries; they are not isolated
+transport penalties. Reciprocal throughput is more useful than subtracting
 FPS: the implied period increased by about 0.21 ms for A to B and 1.46 ms for C
-to D. At fixed 60 Hz, the last-frame transport penalties were much closer:
+to D. At fixed 60 Hz, the last-frame endpoint differences were much closer:
 5.58 ms for A to B and 4.77 ms for C to D.
 
 The B configuration performs its host-to-device copy in a separate bridge
@@ -44,15 +62,15 @@ than the sum of every component's wall time.
 
 YOLOv8 is not precision-aligned across backends. A/B use TensorRT FP16 while
 C/D use ORT FP32. A/C also use the upstream NITROS decoder, while B/D use the
-migrated standard decoder. Backend or transport causality must not be inferred
-from the four peak-FPS values alone.
+migrated standard decoder. Backend or interface-variant causality must not be
+inferred from the four peak-FPS values alone.
 
-| Config | Backend and transport | Peak prediction | Mean output at peak | 30 Hz first / last latency |
+| Config | Backend and application/interface variant | Peak prediction | Mean output at peak | 30 Hz first / last latency |
 |---|---|---:|---:|---:|
 | A | TensorRT FP16 + NITROS | 141.48 fps | 133.60 fps | 21.31 / 15.83 ms |
-| B | TensorRT FP16 + std ROS 2 bridge | 242.03 fps | 237.08 fps | 22.37 / 17.25 ms |
+| B | TensorRT FP16 + standard-ROS-compatible migrated pipeline | 242.03 fps | 237.08 fps | 22.37 / 17.25 ms |
 | C | ORT FP32 CUDA EP + NITROS | 126.02 fps | 122.89 fps | 19.64 / 19.48 ms |
-| D | ORT FP32 CUDA EP + std ROS 2 | 141.48 fps | 137.88 fps | 19.59 / 13.29 ms |
+| D | ORT FP32 CUDA EP + standard-ROS migrated pipeline | 141.48 fps | 137.88 fps | 19.59 / 13.29 ms |
 
 B and D can outperform their NITROS counterparts because the migrated decoder
 avoids the upstream decoder's per-box temporary allocations and repeated class

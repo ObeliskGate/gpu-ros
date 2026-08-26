@@ -59,8 +59,10 @@ result or asset location and are not part of the source tree.
 
 - Phase 0 reproduces the unmodified NVIDIA RT-DETR and Grounding DINO
   benchmarks.
-- Phase 1 compares TensorRT and ONNX Runtime, and NITROS and standard ROS 2,
-  on NVIDIA.
+- Phase 1 compares complete NVIDIA pipeline configurations organized by
+  TensorRT/ONNX Runtime backend and NVIDIA/NITROS versus standard-ROS migrated
+  interface variant. The four configurations are not strict one-wire
+  transport ablations.
 - Phase 2A validates AMD RT-DETR and YOLOv8 standard ROS 2 TensorBundle paths
   with ONNX Runtime and MIGraphX. It does not reproduce the NVIDIA A/B/C/D
   matrix on AMD.
