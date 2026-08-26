@@ -71,10 +71,14 @@ Nsight, and ORT profiling disabled in formal throughput runs. The current
 campaign's concise evidence is in
 `inner_docs/docs_drafts/results/phase2b-nvidia-20260826.md`.
 
-The benchmark framework can write a valid JSON before the component container
-reports a teardown `SIGSEGV`; retain that report but classify clean-release
-promotion as `INCONCLUSIVE` until teardown is repaired. Raw Nsight traces are
-large and remain on the NV host.
+The first 2026-08-26 benchmark archive wrote valid JSON before the component
+container reported a teardown `SIGSEGV`; retain those measurements as pre-fix
+observations. The lifecycle race is now repaired: active inference and NITROS
+readiness callbacks are drained before IO/stream destruction, and a short
+real-input regression exited cleanly for RT-DETR C/D and YOLOv8 C/Managed. Run
+the formal throughput rows once more after pulling the fix before promoting
+them as final release results. Raw Nsight traces are large and remain on the NV
+host.
 
 ## Zero-copy meaning
 

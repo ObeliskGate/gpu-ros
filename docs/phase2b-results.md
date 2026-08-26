@@ -9,9 +9,9 @@ and interpretation rules are in phase2b-managed-transport.md.
 The current NVIDIA campaign used the existing Isaac ROS 4.5 development
 container after a fast-forward `git pull`; it did not rebuild or change the
 Phase 1 A/B/C/D definitions. Its raw archive remains outside Git on the NV
-host. The benchmark reports are useful observations, while clean-release
-promotion remains blocked by the component-container teardown fault described
-below.
+host. The benchmark reports below were produced before the teardown fix, so
+their numerical data is retained but their process-exit status was initially
+`INCONCLUSIVE` for clean-release promotion.
 
 ## Current NVIDIA Phase 2B campaign — 2026-08-26
 
@@ -45,11 +45,19 @@ RT-DETR C `14.540 / 13.805`, RT-DETR Managed `19.181 / 14.463`, YOLOv8 C
 `17.181 / 14.511`, and YOLOv8 Managed `16.121 / 13.799`; the raw JSONs retain
 the peak-search and other fixed-rate endpoint values.
 
-Each graph wrote a valid benchmark JSON and reported `Ran 1 test ... OK`, but
-the component container then exited with `SIGSEGV (-11)` during teardown. The
-four rows are consequently `INCONCLUSIVE` for clean-release promotion, not
-failed throughput runs. The benchmark JSONs include fixed-rate metrics,
-missed-frame counts, and latency endpoints.
+Each graph wrote a valid benchmark JSON and reported `Ran 1 test ... OK`.
+In that campaign the component container then exited with `SIGSEGV (-11)` during
+teardown; this did not invalidate the already-written throughput measurements,
+but it made clean-release promotion `INCONCLUSIVE`.
+
+The teardown race was subsequently fixed in the ONNX/NITROS lifecycle. The
+node now drains active inference callbacks before destroying its IO object, and
+the NITROS IO object counts callbacks through input readiness conversion before
+destroying its CUDA stream. A short real-input regression (15 seconds of the
+same R2B bag at 0.25x) then exited cleanly for all four ORT lanes: RT-DETR C,
+RT-DETR D, YOLOv8 C, and YOLOv8 Managed. The ONNX package suite passed 17/17.
+The formal throughput rows above still need one clean rerun after this fix
+before they are promoted as final release results.
 
 ### Fixed-input numerical comparison
 

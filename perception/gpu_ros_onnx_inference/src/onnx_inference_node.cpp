@@ -23,6 +23,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rclcpp_components/register_node_macro.hpp"
@@ -140,10 +141,33 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
             "hip_managed_strict requires a non-empty model_file_path");
   }
 
+  callback_state_ = std::make_shared<CallbackState>();
+  callback_state_->node = this;
   io_ = CreateTensorBundleIO(this, transport);
   io_->Subscribe(
-    [this](gpu_ros_managed::ManagedTensorBundleView inputs) {
-      OnTensors(std::move(inputs));
+    [state = callback_state_](gpu_ros_managed::ManagedTensorBundleView inputs) {
+      OnnxInferenceNode * node = nullptr;
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->shutting_down || state->node == nullptr) {
+          return;
+        }
+        node = state->node;
+        ++state->active_callbacks;
+      }
+
+      try {
+        node->OnTensors(std::move(inputs));
+      } catch (...) {
+        // OnTensors handles the expected failures. Keep an executor callback
+        // from escaping even if a future implementation adds a new throw.
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        --state->active_callbacks;
+      }
+      state->cv.notify_all();
     });
 
   if (model_file_path.empty()) {
@@ -190,8 +214,24 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
 OnnxInferenceNode::~OnnxInferenceNode()
 {
-  // Destroy the subscriber/publisher before draining fixed pools so no ROS
-  // callback can retain a TensorBundle buffer during pool shutdown.
+  // Stop new callbacks first. The callback state is captured by value, so a
+  // queued executor callback remains safe after io_ is reset and observes the
+  // shutdown flag instead of dereferencing a destroyed node.
+  if (callback_state_) {
+    std::lock_guard<std::mutex> lock(callback_state_->mutex);
+    callback_state_->shutting_down = true;
+    callback_state_->node = nullptr;
+  }
+
+  // Drain any callback that was already active before destroying the IO.  An
+  // active callback may still be inside OnTensors and can publish through
+  // io_; resetting io_ first would turn a normal SIGINT into a use-after-free.
+  if (callback_state_) {
+    std::unique_lock<std::mutex> lock(callback_state_->mutex);
+    callback_state_->cv.wait(lock, [this] {
+        return callback_state_->active_callbacks == 0;
+    });
+  }
   io_.reset();
   if (core_ && !core_->shutdown(std::chrono::seconds(5))) {
     RCLCPP_ERROR(
@@ -200,6 +240,7 @@ OnnxInferenceNode::~OnnxInferenceNode()
       "buffers remain orphan-safe and were not force-released.");
   }
   FinalizeOrtProfile("shutdown");
+  callback_state_.reset();
 }
 
 void OnnxInferenceNode::FinalizeOrtProfile(const char * reason) noexcept

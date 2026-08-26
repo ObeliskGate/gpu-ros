@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <condition_variable>
+#include <cstddef>
+#include <exception>
 #include <functional>
 #include <memory>
-#include <exception>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -53,9 +56,27 @@ public:
     callback_ = std::move(callback);
     subscription_ = std::make_shared<
       nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
-      node_, "tensor_input", NitrosTensorBundleFormat(),
+        node_, "tensor_input", NitrosTensorBundleFormat(),
       [this](const nitros::NitrosTensorListView & view) {OnView(view);},
       nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
+  }
+
+  ~NitrosTensorBundleIO() override
+  {
+    // A NITROS callback performs input readiness work before it invokes the
+    // node callback.  Keep this object (and its CUDA stream) alive until all
+    // such callbacks have left OnView; otherwise shutdown can destroy the
+    // stream while a callback is still synchronizing it.
+    {
+      std::lock_guard<std::mutex> lock(callback_mutex_);
+      shutting_down_ = true;
+    }
+    {
+      std::unique_lock<std::mutex> lock(callback_mutex_);
+      callback_cv_.wait(lock, [this] {return active_views_ == 0;});
+    }
+    subscription_.reset();
+    publisher_.reset();
   }
 
   OutputPlacement output_placement() const noexcept override
@@ -82,8 +103,43 @@ public:
   }
 
 private:
+  class ActiveViewGuard final
+  {
+public:
+    explicit ActiveViewGuard(NitrosTensorBundleIO * owner) noexcept
+    : owner_(owner) {}
+    ~ActiveViewGuard() noexcept
+    {
+      owner_->LeaveView();
+    }
+
+    ActiveViewGuard(const ActiveViewGuard &) = delete;
+    ActiveViewGuard & operator=(const ActiveViewGuard &) = delete;
+
+private:
+    NitrosTensorBundleIO * owner_;
+  };
+
+  void LeaveView() noexcept
+  {
+    {
+      std::lock_guard<std::mutex> lock(callback_mutex_);
+      --active_views_;
+    }
+    callback_cv_.notify_all();
+  }
+
   void OnView(const nitros::NitrosTensorListView & view)
   {
+    {
+      std::lock_guard<std::mutex> lock(callback_mutex_);
+      if (shutting_down_) {
+        return;
+      }
+      ++active_views_;
+    }
+    ActiveViewGuard active_view(this);
+
     try {
       auto list =
         std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
@@ -103,6 +159,10 @@ private:
   Callback callback_;
   int gpu_device_id_;
   NitrosToManagedTensorBundleAdapter input_adapter_;
+  std::mutex callback_mutex_;
+  std::condition_variable callback_cv_;
+  size_t active_views_{0};
+  bool shutting_down_{false};
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> publisher_;
   std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> subscription_;
 };

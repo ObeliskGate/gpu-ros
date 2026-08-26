@@ -16,6 +16,7 @@
 #define GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
 
 #include <cstddef>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 
@@ -34,11 +35,21 @@ public:
   ~OnnxInferenceNode() override;
 
 private:
+  struct CallbackState
+  {
+    std::mutex mutex;
+    std::condition_variable cv;
+    OnnxInferenceNode * node{nullptr};
+    size_t active_callbacks{0};
+    bool shutting_down{false};
+  };
+
   void OnTensors(gpu_ros_managed::ManagedTensorBundleView inputs);
   void FinalizeOrtProfile(const char * reason) noexcept;
 
   std::unique_ptr<OnnxInferenceCore> core_;
   std::unique_ptr<ITensorBundleIO> io_;
+  std::shared_ptr<CallbackState> callback_state_;
   // OnnxInferenceCore owns mutable binding/profiling state and is explicitly
   // not thread-safe. Keep the inference and publish sequence serialized even
   // when the node is hosted by component_container_mt.
