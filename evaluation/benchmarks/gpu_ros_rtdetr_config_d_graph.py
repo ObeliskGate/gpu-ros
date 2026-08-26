@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config D benchmark: ONNX Runtime (CUDA EP) + standard ROS2 transport.
+"""Config D benchmark: ONNX Runtime (CUDA EP) + standard ROS2 migrated pipeline.
 
 The vendor-neutral target stack. Shares the framework + 6-node preprocessing
 with configs A/B/C (see rtdetr_common); only the inference segment differs:
@@ -105,7 +105,7 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigD(ROS2BenchmarkTest):
-    """Config D: ONNX Runtime + standard ROS2 transport."""
+    """Config D: ONNX Runtime + standard ROS2 migrated pipeline."""
 
     config = ROS2BenchmarkConfig(
         benchmark_name='GPU ROS RT-DETR (NVIDIA reference D: ORT + std ROS2)',

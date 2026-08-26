@@ -18,10 +18,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """Shared building blocks for the RT-DETR 2x2 benchmark matrix (configs A-D).
 
-The framework nodes (data loader / playback / monitor) and the 6-node
+The framework nodes (data loader / playback / monitor) and the 6-node shared
 preprocessing chain are identical across all four configurations and live here
-so there is a single source of truth — only the inference segment differs per
-config. Mirrors upstream isaac_ros_rtdetr_graph.py.
+so there is a single source of truth. The post-shared inference segment,
+including each lane's model-specific pre/post nodes and compatibility
+boundaries, differs per config. Mirrors upstream isaac_ros_rtdetr_graph.py.
 """
 
 from launch_ros.descriptions import ComposableNode

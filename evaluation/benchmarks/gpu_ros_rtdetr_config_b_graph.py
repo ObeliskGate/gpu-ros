@@ -16,12 +16,14 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config B benchmark: TensorRT + standard ROS2 transport.
+"""Config B benchmark: TensorRT + standard ROS 2-compatible migrated pipeline.
 
-Isolates NITROS transport cost on the TensorRT backend (compare against A).
-The TensorRT node only speaks NITROS, so a std->NITROS bridge feeds it from our
-std preprocessor. The NVIDIA TensorList output then crosses the explicit
-gpu_ros_nvidia_tensor_bundle_compat boundary before reaching our std decoder.
+Compares the NVIDIA/NITROS TensorRT configuration with the project-owned
+standard ROS 2-compatible configuration. The shared six-node image/tensor
+preprocessing remains NITROS. The RT-DETR-specific preprocessor and decoder
+use the project TensorBundle interface; TensorRT remains NITROS-only, so
+explicit TensorBundle/NITROS compatibility boundaries surround the TensorRT
+node. This is a complete pipeline comparison, not a transport-only ablation.
 Shares framework + preprocessing with the other configs (see rtdetr_common).
 """
 
@@ -152,7 +154,7 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigB(ROS2BenchmarkTest):
-    """Config B: TensorRT + standard ROS2 transport."""
+    """Config B: TensorRT + standard ROS 2-compatible migrated pipeline."""
 
     config = ROS2BenchmarkConfig(
         benchmark_name='GPU ROS RT-DETR (NVIDIA reference B: TRT + std ROS2)',

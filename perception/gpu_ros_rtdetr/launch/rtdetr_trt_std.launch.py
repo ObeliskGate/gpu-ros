@@ -13,12 +13,13 @@
 # limitations under the License.
 
 """
-RT-DETR config B: TensorRT + standard ROS2 transport.
+RT-DETR config B: TensorRT + standard ROS2-compatible migrated pipeline.
 
-Upstream NITROS preprocess chain + upstream TensorRT inference node, but our
-std-ROS2 RtDetrPreprocessor/Decoder. The TensorRT NITROS publisher bridges to
-our std decoder via NITROS auto-compat. Isolates the NITROS transport cost on
-the TensorRT backend (compare against config A).
+The shared six-node NVIDIA/NITROS preprocessing and upstream TensorRT node are
+retained, while the RT-DETR-specific preprocessor and decoder use the project
+standard TensorBundle interface. Because TensorRTNode only speaks NITROS,
+explicit TensorBundle/NITROS compatibility boundaries surround it. This is a
+complete pipeline comparison with config A, not a transport-only ablation.
 """
 
 import launch

@@ -24,7 +24,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
-        parameters=[{'nitros_to_managed.enable_timing': True}],
+        parameters=[{'nitros_to_managed.enable_timing': False}],
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'managed_tensor_input'),
@@ -53,7 +53,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
-        parameters=[{'managed_to_nitros.enable_timing': True}],
+        parameters=[{'managed_to_nitros.enable_timing': False}],
         remappings=[
             ('tensor_input', 'managed_tensor_output'),
             ('tensor_output', 'tensor_sub'),

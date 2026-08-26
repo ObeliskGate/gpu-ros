@@ -13,12 +13,15 @@
 # limitations under the License.
 
 """
-RT-DETR config D: ONNX Runtime + standard ROS2 transport (vendor-neutral target).
+RT-DETR config D: ONNX Runtime + standard ROS2 migrated pipeline.
+
+This is the vendor-neutral target.
 
 Forks the upstream isaac_ros_rtdetr_oss launch, replacing the final three nodes
-(preprocessor / inference / decoder) with our std-ROS2 + ORT versions. The
-upstream 6-node NITROS preprocess chain is reused and bridges to our std
-preprocessor via NITROS auto-compat. All nodes share one component container.
+(preprocessor / inference / decoder) with our standard-ROS2 + ORT versions.
+The upstream 6-node NITROS preprocessing chain is reused, then crosses an
+explicit NVIDIA TensorList-to-project-TensorBundle boundary before entering
+the project standard path. All nodes share one component container.
 """
 
 import launch

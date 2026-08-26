@@ -16,10 +16,12 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config B_fp32 benchmark: TensorRT FP32 + standard ROS2 transport.
+"""Config B_fp32 benchmark: TensorRT FP32 + standard ROS 2-compatible pipeline.
 
-This pairs with A_fp32/C/D for a precision-aligned FP32 2x2 matrix. Config B
-remains the NVIDIA-style TRT FP16 transport-isolation run.
+This pairs with A_fp32/C/D for a precision-aligned FP32 matrix. It keeps
+TensorRT FP32 while using the project-owned standard RT-DETR preprocessor and
+decoder with explicit TensorBundle/NITROS compatibility boundaries. It is not
+the FP16 run and is not a transport-only ablation.
 """
 
 import os
@@ -147,7 +149,7 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigBFp32(ROS2BenchmarkTest):
-    """Config B_fp32: TensorRT FP32 + standard ROS2 transport."""
+    """Config B_fp32: TensorRT FP32 + standard ROS 2-compatible pipeline."""
 
     config = ROS2BenchmarkConfig(
         benchmark_name='GPU ROS RT-DETR (NVIDIA reference B_fp32: TRT FP32 + std ROS2)',
