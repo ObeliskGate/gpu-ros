@@ -71,6 +71,39 @@ def atomic_copy(source: Path, destination: Path) -> None:
     temporary.replace(destination)
 
 
+def project_python_command(project: Path, *arguments: str) -> list[str]:
+    """Return the locked export-project command without requiring uv in a runtime image.
+
+    The AMD runtime image intentionally contains the ROS/ONNX validation pieces,
+    not the PyTorch export environment.  A caller that prepared that environment
+    outside the image can point at its interpreter with
+    ``OVG_RTDETR_EXPORT_PYTHON``.  Otherwise use uv when it is available and
+    fail with an actionable message when neither runner exists.
+    """
+    configured = os.environ.get("OVG_RTDETR_EXPORT_PYTHON", "").strip()
+    if configured:
+        executable = Path(configured).expanduser()
+        if executable.is_file() and os.access(executable, os.X_OK):
+            return [str(executable), *arguments]
+        resolved = shutil.which(configured)
+        if resolved:
+            return [resolved, *arguments]
+        raise RuntimeError(
+            "OVG_RTDETR_EXPORT_PYTHON is not an executable: " + configured
+        )
+
+    uv = shutil.which("uv")
+    if uv:
+        return [uv, "run", "--frozen", "--project", str(project), *arguments]
+
+    raise RuntimeError(
+        "RT-DETR export/ONNX fallback validation needs uv or "
+        "OVG_RTDETR_EXPORT_PYTHON. The AMD runtime image intentionally omits "
+        "uv and the PyTorch export environment; run export in the external "
+        "locked environment, then import the generated ONNX."
+    )
+
+
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".partial")
@@ -162,12 +195,16 @@ def shape(value_info: Any) -> list[int | str | None]:
     return result
 
 
-def validate_rtdetr(path: Path) -> str:
+def validate_rtdetr(path: Path, *, allow_external: bool = True) -> str:
     if not path.is_file():
         raise RuntimeError(f"selected model asset is missing: {path}")
     try:
         import onnx  # type: ignore[import-not-found]
     except ImportError:
+        if not allow_external:
+            raise RuntimeError(
+                "the selected Python environment is missing the 'onnx' package"
+            )
         project = REPOSITORY_ROOT / "tools/rtdetrv2-export"
         environment = os.environ.copy()
         environment.update(
@@ -179,10 +216,13 @@ def validate_rtdetr(path: Path) -> str:
             }
         )
         result = subprocess.run(
-            [
-                "uv", "run", "--frozen", "--project", str(project),
-                str(Path(__file__).resolve()), "_validate-rtdetr", "--source", str(path),
-            ],
+            project_python_command(
+                project,
+                str(Path(__file__).resolve()),
+                "_validate-rtdetr",
+                "--source",
+                str(path),
+            ),
             check=True,
             capture_output=True,
             text=True,
@@ -336,11 +376,19 @@ def run_export(upstream: Path, checkpoint: Path, output: Path) -> list[str]:
         "  pretrained: false\n"
     )
     script = upstream / "rtdetrv2_pytorch/tools/export_onnx.py"
-    command = [
-        "uv", "run", "--frozen", "--project", str(project), str(wrapper),
-        "--upstream-script", str(script), "--config", str(config),
-        "--resume", str(checkpoint), "--output_file", str(output), "--check",
-    ]
+    command = project_python_command(
+        project,
+        str(wrapper),
+        "--upstream-script",
+        str(script),
+        "--config",
+        str(config),
+        "--resume",
+        str(checkpoint),
+        "--output_file",
+        str(output),
+        "--check",
+    )
     environment = os.environ.copy()
     environment.update(
         {
@@ -430,7 +478,7 @@ def build_rtdetr(args: argparse.Namespace) -> None:
 
 
 def validate_command(args: argparse.Namespace) -> None:
-    print(validate_rtdetr(args.source.resolve()))
+    print(validate_rtdetr(args.source.resolve(), allow_external=False))
 
 
 def parser() -> argparse.ArgumentParser:
