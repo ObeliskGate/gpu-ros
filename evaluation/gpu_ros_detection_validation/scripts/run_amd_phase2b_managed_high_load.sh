@@ -19,6 +19,7 @@ usage() {
   echo "  PHASE2B_HIGH_LOAD_DURATION_SECONDS (default: 600)"
   echo "  PHASE2B_HIGH_LOAD_MIN_INPUT_MESSAGES (default: 10000)"
   echo "  PHASE2B_HIGH_LOAD_PLAYBACK_RATE (default: 1.0)"
+  echo "  PHASE2B_HIGH_LOAD_TOPIC_WAIT_SECONDS (default: 900)"
   echo "  OVG_ASSETS_ROOT, OVG_RESULTS_ROOT, OVG_WORKSPACE_ROOT"
 }
 
@@ -65,6 +66,7 @@ DURATION_SECONDS="${PHASE2B_HIGH_LOAD_DURATION_SECONDS:-600}"
 MIN_INPUT_MESSAGES="${PHASE2B_HIGH_LOAD_MIN_INPUT_MESSAGES:-10000}"
 PLAYBACK_RATE="${PHASE2B_HIGH_LOAD_PLAYBACK_RATE:-1.0}"
 DRAIN_SECONDS="${PHASE2B_HIGH_LOAD_DRAIN_SECONDS:-10}"
+TOPIC_WAIT_TIMEOUT_SECONDS="${PHASE2B_HIGH_LOAD_TOPIC_WAIT_SECONDS:-900}"
 PROFILE_PREFIX="${PHASE2B_HIGH_LOAD_ORT_PROFILE_PREFIX:-${OUTPUT_ROOT}/ort/profile}"
 BINDING_REPORT="${PHASE2B_HIGH_LOAD_BINDING_REPORT:-${OUTPUT_ROOT}/binding.json}"
 DETECTION_TOPIC="/${NAMESPACE}/detections_output"
@@ -97,6 +99,11 @@ if [[ ! ${DRAIN_SECONDS} =~ ^[0-9]+$ ]]; then
   echo "ERROR: PHASE2B_HIGH_LOAD_DRAIN_SECONDS must be a non-negative integer." >&2
   exit 2
 fi
+if [[ ! ${TOPIC_WAIT_TIMEOUT_SECONDS} =~ ^[0-9]+$ ]] ||
+  ((TOPIC_WAIT_TIMEOUT_SECONDS < 1)); then
+  echo "ERROR: PHASE2B_HIGH_LOAD_TOPIC_WAIT_SECONDS must be a positive integer." >&2
+  exit 2
+fi
 if [[ ! ${PLAYBACK_RATE} =~ ^[0-9]+([.][0-9]+)?$ ]] ||
   [[ ${PLAYBACK_RATE} == 0 || ${PLAYBACK_RATE} == 0.0 ]]; then
   echo "ERROR: PHASE2B_HIGH_LOAD_PLAYBACK_RATE must be positive." >&2
@@ -123,7 +130,7 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in awk date find git grep mkdir ros2 sha256sum sleep sort timeout xargs; do
+for command_name in awk date find git grep mkdir ros2 sha256sum sleep sort tail timeout xargs; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
@@ -132,6 +139,15 @@ done
 
 mkdir -p "${OUTPUT_ROOT}/logs" "${OUTPUT_ROOT}/ort" \
   "$(dirname "${PROFILE_PREFIX}")" "$(dirname "${BINDING_REPORT}")"
+STARTUP_LOG="${OUTPUT_ROOT}/logs/startup.log"
+CURRENT_PHASE="initializing"
+
+startup_log() {
+  local message="$*"
+  printf '%s %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "${message}" \
+    >>"${STARTUP_LOG}"
+  echo "${message}"
+}
 
 hash_path() {
   local path="$1"
@@ -200,6 +216,9 @@ stop_process() {
 
 cleanup() {
   local status=$?
+  if [[ -n ${STARTUP_LOG:-} ]]; then
+    startup_log "cleanup status=${status} phase=${CURRENT_PHASE:-unknown}"
+  fi
   trap - EXIT INT TERM
   set +e
   stop_process "${PLAYBACK_PID}" "playback"
@@ -242,6 +261,7 @@ fi
   echo "managed_io_contract=hip_managed_strict"
   echo "managed_pool_capacity=16"
   echo "managed_pool_wait_timeout_ms=100"
+  echo "topic_wait_timeout_seconds=${TOPIC_WAIT_TIMEOUT_SECONDS}"
   echo "ort_root=${ONNXRUNTIME_ROOT:-}"
   echo "ort_library_sha256=$(hash_path "${ORT_LIBRARY_PATH}")"
   echo "application_revision=$(repo_revision "${WORKSPACE_ROOT}")"
@@ -253,47 +273,98 @@ fi
   echo
 } >"${OUTPUT_ROOT}/run_config.txt"
 
-echo "Starting direct Managed HIP graph..."
+CURRENT_PHASE="starting graph"
+startup_log "Starting direct Managed HIP graph..."
 setsid bash -c 'trap - INT TERM; exec "$@"' high-load-graph \
   "${LAUNCH_COMMAND[@]}" >"${OUTPUT_ROOT}/logs/graph.log" 2>&1 &
 LAUNCH_PID=$!
+
+topic_count() {
+  local topic="$1"
+  local kind="$2"
+  local count
+  count="$(ros2 topic info "${topic}" 2>/dev/null |
+    awk -v kind="${kind}" '$1 == kind && $2 == "count:" {print $3; exit}' || true)"
+  if [[ ${count:-} =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "${count}"
+  else
+    printf '0\n'
+  fi
+}
+
+write_startup_diagnostics() {
+  local reason="$1"
+  local topic="$2"
+  {
+    echo "reason=${reason}"
+    echo "phase=${CURRENT_PHASE:-unknown}"
+    echo "topic=${topic}"
+    echo "topic_wait_timeout_seconds=${TOPIC_WAIT_TIMEOUT_SECONDS}"
+    echo "--- topic info ---"
+    ros2 topic info "${topic}" 2>&1 || true
+    echo "--- graph log tail ---"
+    tail -n 100 "${OUTPUT_ROOT}/logs/graph.log" 2>&1 || true
+  } >>"${STARTUP_LOG}"
+  cat "${STARTUP_LOG}" >&2
+}
 
 wait_for_topic() {
   local topic="$1"
   local kind="$2"
   local pid="$3"
-  for _ in {1..1800}; do
-    if ros2 topic info "${topic}" 2>/dev/null | awk -v kind="${kind}" \
-      '$1 == kind && $2 == "count:" && $3 >= 1 {found=1} END {exit !found}'; then
+  local label="${4:-${kind,,} on ${topic}}"
+  local attempts=$((TOPIC_WAIT_TIMEOUT_SECONDS * 2))
+  local attempt
+  local count
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    count="$(topic_count "${topic}" "${kind}")"
+    if ((count >= 1)); then
+      startup_log "Ready: ${label} (${kind} count=${count})."
       return 0
     fi
     if ! kill -0 "${pid}" 2>/dev/null; then
-      echo "ERROR: graph exited while waiting for ${kind} on ${topic}." >&2
+      echo "ERROR: process exited while waiting for ${label}." >&2
+      write_startup_diagnostics "process exited while waiting for ${label}" "${topic}"
       return 1
+    fi
+    if ((attempt == 1 || attempt % 20 == 0)); then
+      startup_log "Waiting for ${label} (${attempt}/${attempts}, ${count} found)..."
     fi
     sleep 0.5
   done
-  echo "ERROR: timed out waiting for ${kind} on ${topic}." >&2
+  echo "ERROR: timed out waiting for ${label} after ${TOPIC_WAIT_TIMEOUT_SECONDS}s." >&2
+  write_startup_diagnostics "timeout waiting for ${label}" "${topic}"
   return 1
 }
 
-wait_for_topic "${IMAGE_TOPIC}" Subscription "${LAUNCH_PID}"
-wait_for_topic "${DETECTION_TOPIC}" Publisher "${LAUNCH_PID}"
+CURRENT_PHASE="waiting for graph input subscription"
+wait_for_topic "${IMAGE_TOPIC}" Subscription "${LAUNCH_PID}" \
+  "graph input subscription on ${IMAGE_TOPIC}"
+CURRENT_PHASE="waiting for graph detection publisher"
+wait_for_topic "${DETECTION_TOPIC}" Publisher "${LAUNCH_PID}" \
+  "graph detection publisher on ${DETECTION_TOPIC}"
 
+CURRENT_PHASE="starting input counter"
 ros2 run gpu_ros_detection_validation count_ros_messages.py \
   --topic "${IMAGE_TOPIC}" \
   --output-json "${OUTPUT_ROOT}/input_counter.json" \
   >"${OUTPUT_ROOT}/logs/input_counter.log" 2>&1 &
 COUNTER_PID=$!
-wait_for_topic "${IMAGE_TOPIC}" Subscription "${COUNTER_PID}"
+CURRENT_PHASE="waiting for input counter subscription"
+wait_for_topic "${IMAGE_TOPIC}" Subscription "${COUNTER_PID}" \
+  "input counter subscription on ${IMAGE_TOPIC}"
 
+CURRENT_PHASE="starting detection recorder"
 ros2 bag record --disable-keyboard-controls \
   --output "${OUTPUT_ROOT}/detections" \
   --topics "${DETECTION_TOPIC}" \
   >"${OUTPUT_ROOT}/logs/recorder.log" 2>&1 &
 RECORDER_PID=$!
-wait_for_topic "${DETECTION_TOPIC}" Subscription "${RECORDER_PID}"
+CURRENT_PHASE="waiting for detection recorder subscription"
+wait_for_topic "${DETECTION_TOPIC}" Subscription "${RECORDER_PID}" \
+  "detection recorder subscription on ${DETECTION_TOPIC}"
 
+CURRENT_PHASE="running bounded high-load playback"
 echo "Running bounded high-load playback for ${DURATION_SECONDS}s..."
 set +e
 timeout --signal=INT --kill-after=30 "${DURATION_SECONDS}s" \
