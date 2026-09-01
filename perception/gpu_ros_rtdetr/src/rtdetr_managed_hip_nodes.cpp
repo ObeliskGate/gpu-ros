@@ -195,6 +195,10 @@ void RtDetrManagedHipImageEncoderNode::InputCallback(
     output_work_submitted = true;
     detection_common::LaunchHipPreprocess(
       raw->writer.data(), reinterpret_cast<float *>(output->writer.data()), plan, stream_->get());
+    // The raw image is an internal staging buffer, not a published tensor.
+    // Finalize it after queuing the copy and preprocess so the pool can recycle
+    // it once this stream reaches the event.
+    raw->writer.finalize();
 
     gpu_ros_managed::ManagedTensor tensor(
       tensor_name_, gpu_ros_managed::TensorDataType::kFloat32,
