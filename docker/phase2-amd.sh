@@ -537,7 +537,9 @@ main() {
       start_runtime
       run_phase2 env
       if [[ "${OVG_PREPARE_ASSETS:-0}" == 1 ]]; then
-        run_phase2 assets
+        run_phase2 assets \
+          --model-profile rtdetrv2_r50 \
+          --execution-provider migraphx
       fi
       ;;
     build)

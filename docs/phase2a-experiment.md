@@ -96,7 +96,7 @@ Inside the runtime, verify the device, selected ORT, and workspace:
 
 ~~~bash
 phase2 env --verify
-phase2 assets verify
+phase2 assets status
 ~~~
 
 For Apptainer, set `OVG_RUNTIME=apptainer` and the explicit host paths shown
@@ -137,7 +137,9 @@ After entering the runtime, verify assets:
 
 ~~~bash
 phase2 assets status
-phase2 assets verify
+phase2 assets \
+  --model-profile rtdetrv2_r50 \
+  --execution-provider migraphx
 ~~~
 
 The canonical AMD paths, relative to `${OVG_ASSETS_ROOT}`, are:
@@ -158,7 +160,8 @@ accepts the pinned release URL recorded in its source. Do not substitute the
 historical NVIDIA Synthetica model in an AMD run.
 
 The asset manager validates the ONNX graph before installation and during
-`phase2 assets verify`: input names/types are `images` (float32) and
+`phase2 assets --model-profile rtdetrv2_r50 --execution-provider migraphx`:
+input names/types are `images` (float32) and
 `orig_target_sizes` (int64), output names/types are `labels` (int64),
 `boxes` (float32), and `scores` (float32), and the graph must expose the
 opset-16 export contract. Dynamic batch dimensions are accepted, and the
@@ -176,13 +179,15 @@ responsible for its source, applicable license, and lawful use:
 
 ~~~bash
 export OVG_YOLOV8_ONNX_SOURCE=/path/to/user-provided/yolov8s.onnx
-phase2 assets import-yolov8
-phase2 assets verify-yolov8
+phase2 assets import-model \
+  --profile yolov8 \
+  --source "${OVG_YOLOV8_ONNX_SOURCE}"
+phase2 assets status
 ~~~
 
-`phase2 assets` and the default `phase2 assets verify` manage and
-verify only the required RT-DETR/R2B assets; YOLOv8 is optional. Compatibility
-is identified by the recorded SHA-256
+`phase2 assets --model-profile rtdetrv2_r50
+--execution-provider migraphx` validates only the required RT-DETR/R2B assets;
+YOLOv8 is optional. Compatibility is identified by the recorded SHA-256
 `d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c` and the
 following contract: YOLOv8s, Ultralytics 8.4.67, COCO 80 classes, opset 17,
 static input `[1,3,640,640]` named `images`, and output `[1,84,8400]` named
@@ -239,7 +244,7 @@ export OVG_ORT_ROOT=${OVG_ORT_STATE_ROOT}/install/<ort-fingerprint>
 ./docker/phase2-amd.sh colcon
 ./docker/phase2-amd.sh shell
 phase2 env --verify
-phase2 assets verify
+phase2 assets status
 ~~~
 
 The ordered patch series contains MIGraphX Linux build compatibility,
