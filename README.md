@@ -30,9 +30,9 @@ The public application packages are under `migrated_packages/`:
   `isaac_ros_tensor_list_interfaces` and is not part of an AMD build.
 - `gpu_ros_detection_validation` provides source-level tests and offline
   comparison/profiling tools.
-- The package and namespace migration table is in
-  [`docs/open-source-migration.md`](docs/open-source-migration.md). It lists
-  supported names only; no old project-name aliases are installed.
+- The package and namespace migration guidance is in
+  [`docs/README.md`](docs/README.md). It lists supported names only; no old
+  project-name aliases are installed.
 - The reusable `gpu_ros_managed_tensor_bundle` package is maintained in the
   sibling `gpu_ros_managed` repository and must be checked out explicitly.
 - `migrated_packages/benchmarks/` contains the A/B/C/D, Phase 2A, and Phase 2B
@@ -134,7 +134,7 @@ never triggers fallback. `tools/phase2-assets` only validates existing
 assets. Use its `import-model`, `import-r2b`, or `build-rtdetrv2-r50` commands
 to populate an external asset root.
 The reproducible export and CPU/MIGraphX, bag, and COCO acceptance commands are
-in [`docs/rtdetrv2-model-validation.md`](docs/rtdetrv2-model-validation.md).
+in [`docs/experiments/rtdetrv2-validation.md`](docs/experiments/rtdetrv2-validation.md).
 
 ## License and third parties
 

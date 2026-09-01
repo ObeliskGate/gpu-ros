@@ -1,72 +1,62 @@
-# Project Documentation
+# Experiment documentation
 
-This directory contains the public build, experiment, validation, and result
-documentation for the AMD object-detection migration. Procedures use
-parameterized paths and external artifact locations so that they can be used
-on different hosts and runtime backends.
+This directory contains acceptance-stage runbooks and result summaries. The
+runbooks use logical external paths and contain no host, user, scheduler,
+device-instance, driver, kernel, container, or deployment identifiers. Result
+records include the hardware model while omitting those local identifiers.
 
-## Supported baseline
+- [`experiments/`](experiments/) contains the executable runbooks.
+- [`results/`](results/) contains cleaned result summaries and the promotion
+  status.
 
-| Dependency | Baseline |
+## Source and dependency identity
+
+Record the following in each external run archive rather than in a public
+document:
+
+| Item | Policy |
 | --- | --- |
-| ROS 2 | Jazzy |
-| Isaac ROS compatibility | 4.5 |
-| ONNX Runtime | 1.23.1 with the MIGraphX patch series described in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) |
-| `gpu_ros_managed` | Required sibling checkout; select and record its revision for each run |
+| Application | Record the exact repository revision used by the runner. |
+| Managed sibling | Record the exact selected sibling revision. |
+| Runtime image | Record the immutable image identity in the external archive. |
+| ONNX Runtime | Record version, source revision, and applied patches. |
+| Model | Record profile, source/checkpoint provenance, and digest. |
 
-Set the locations used by a local runtime before following a procedure:
+The NVIDIA `auto` profile selects the historical Synthetica asset. CPU, ROCm,
+and MIGraphX `auto` select the formal RT-DETRv2 R50 profile. A selected profile
+must exist and pass its digest check; there is no silent fallback.
 
-```bash
-export GPU_ROS_MANAGED_DIR=<path-to-gpu_ros_managed>
-export OVG_ASSETS_ROOT=<external-assets-root>
-export OVG_RESULTS_ROOT=<external-results-root>
-export OVG_STATE_ROOT=<persistent-runtime-state-root>
-```
+## Asset and source boundary
 
-The launchers record the selected sibling revision and external ORT identity
-in the run archive. Exact source revisions and license boundaries are
-centralized in [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md), rather
-than repeated in source headers.
+Model files, checkpoints, bags, COCO data, external checkouts, ORT
+source/build/install trees, caches, traces, and benchmark output stay outside
+the repository. The tracked source manifests are reproducibility inputs, not
+submodules or license grants. External checkout licenses remain authoritative.
 
-## Documents
+## Build policy
 
-Procedures:
+- NVIDIA builds enable only the CUDA/NITROS components required by their
+  reference lane.
+- AMD and CPU builds disable application CUDA/NITROS transports and enable the
+  requested MIGraphX or CPU provider explicitly.
+- AMD validation uses the project-built external ORT install selected for the
+  run; build-only fallback libraries are never formal runtime selections.
+- Scheduler and runtime checks are performed by the launcher. Their local
+  identifiers are retained only in the external archive.
 
-- [`open-source-migration.md`](open-source-migration.md) — supported package
-  names, namespace boundaries, and the NVIDIA compatibility edge.
-- [`phase0-benchmark-reproduction.md`](phase0-benchmark-reproduction.md) — the
-  NVIDIA RT-DETR and Grounding DINO reference benchmarks.
-- [`phase1-experiment.md`](phase1-experiment.md) — the NVIDIA A/B/C/D comparison.
-- [`phase2a-experiment.md`](phase2a-experiment.md) — AMD standard ROS 2 and
-  MIGraphX build, validation, and benchmark procedure.
-- [`phase2b-managed-transport.md`](phase2b-managed-transport.md) — managed
-  transport contracts and comparison procedure.
+## Evidence required for promotion
 
-Results and interpretation:
+Each result archive must include application and sibling revisions, diff and
+untracked-content hashes, runtime/ORT identity, model and dataset hashes,
+command lines, raw benchmark/audit output, and an explicit
+`PASS`, `FAIL`, `INCONCLUSIVE`, or `REPORT_ONLY` status. Keep any sensitive
+deployment metadata in an access-controlled archive, not in these documents.
 
-- [`phase1-results.md`](phase1-results.md) — historical NVIDIA results.
-- [`phase2a-results.md`](phase2a-results.md) — AMD Phase 2A closure results.
-- [`phase2b-results.md`](phase2b-results.md) — current Phase 2B implementation
-  and validation status.
-- [`nitros-4.5-port-map.md`](nitros-4.5-port-map.md) — the NITROS port and
-  upstream attribution map.
+## Current promotion status
 
-Raw JSON, bags, traces, profiles, logs, container images, and model/data
-assets are run artifacts. They are kept in an explicitly selected external
-result or asset location and are not part of the source tree.
-
-## Phase boundaries
-
-- Phase 0 reproduces the unmodified NVIDIA RT-DETR and Grounding DINO
-  benchmarks.
-- Phase 1 compares complete NVIDIA pipeline configurations organized by
-  TensorRT/ONNX Runtime backend and NVIDIA/NITROS versus standard-ROS migrated
-  interface variant. The four configurations are not strict one-wire
-  transport ablations.
-- Phase 2A validates AMD RT-DETR and YOLOv8 standard ROS 2 TensorBundle paths
-  with ONNX Runtime and MIGraphX. It does not reproduce the NVIDIA A/B/C/D
-  matrix on AMD.
-- Phase 2B develops reusable `gpu_ros_managed` device-buffer transport against
-  the Phase 2A reference. The standard ROS 2 path remains independently
-  available, and direct Managed HIP and staged-control graphs are documented
-  as separate comparison lanes.
+The current AMD campaign has completed model export validation, fixed-input
+numeric comparison, the HIP copy probe, and the three-lane performance
+matrices. The RT-DETR transport audit remains `INCONCLUSIVE` because the trace
+parser retained unresolved evidence. COCO val2017 and Python
+CPU↔MIGraphX-provider parity are deferred; the removed high-load experiment is
+not a gate.

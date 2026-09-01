@@ -30,7 +30,7 @@ and quality requirements in this `AGENTS.md` remain authoritative.
 
 The final Phase 1 NVIDIA results, correctness checks, provider-placement audit,
 and interpretation limits are recorded in
-[`docs/phase1-results.md`](docs/phase1-results.md). The normalized machine-readable
+[`docs/experiments/phase1-nvidia.md`](docs/experiments/phase1-nvidia.md). The normalized machine-readable
 summary is
 [`migrated_packages/benchmark_results/phase1_final_summary_20260722.json`](migrated_packages/benchmark_results/phase1_final_summary_20260722.json).
 
@@ -88,7 +88,7 @@ Each `*-benchmark` package transitively pulls in the corresponding graph impleme
 
 ### Reproduction Procedure
 
-See [`docs/phase0-benchmark-reproduction.md`](docs/phase0-benchmark-reproduction.md)
+See [`docs/experiments/README.md`](docs/experiments/README.md)
 for the actual commands and gotchas.
 
 ### Running Benchmarks
@@ -142,7 +142,7 @@ Image -> YoloV8ImageEncoderNode (std ROS 2)
       -> Detection2DArray
 ```
 
-Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking measures the standard ROS 2 plus ONNX Runtime MIGraphX paths above. See [`docs/phase2a-results.md`](docs/phase2a-results.md) for the accepted implementation and results.
+Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking measures the standard ROS 2 plus ONNX Runtime MIGraphX paths above. See [`docs/results/amd-phase2-campaign-20260901.md`](docs/results/amd-phase2-campaign-20260901.md) for the current implementation and results.
 
 ### Requirements
 
@@ -158,9 +158,7 @@ Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking 
 - Every AMD build, validation, capture, and benchmark run must use the project-built external ONNX Runtime for its selected GPU target. The SIF copy at `/opt/onnxruntime` is legacy build-only content and is never a formal AMD runtime fallback.
 - Build the AMD Phase 2A profile with `-DBUILD_NITROS_TRANSPORT=OFF`, `-DORT_ENABLE_CUDA=OFF`, `-DORT_ENABLE_ROCM=OFF`, `-DORT_ENABLE_MIGRAPHX=ON`, and `-DBUILD_MIGRAPHX_POL_TEST=ON`.
 - Build AMD/CPU standard ROS 2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present. If `execution_provider:=migraphx` is requested without `-DORT_ENABLE_MIGRAPHX=ON`, the node must fail clearly instead of silently falling back to CPU.
-- The AMD RT-DETR default is the fixed-revision Apache-2.0 RT-DETRv2 R50
-  ONNX export documented in `docs/phase2a-experiment.md`; SyntheticaDETR is
-  retained only for the historical NVIDIA/reference profile.
+- The AMD RT-DETR default is the fixed-revision RT-DETRv2 R50 ONNX export documented in docs/experiments/phase2a-amd.md. Apache-2.0 describes the pinned upstream source code, not a grant for checkpoint or ONNX bytes. Those assets have separate applicable terms and are not distributed by this source release. SyntheticaDETR is retained only as a historical NVIDIA/reference profile, subject to its model terms.
 - The repository does not contain, download, or export YOLOv8 weights. YOLOv8 is an optional asset supplied by the user through the explicit local import command. Compatibility is determined by the canonical ONNX SHA-256 recorded in the runbook.
 
 ### Benchmark And Validation
@@ -242,7 +240,7 @@ Image → YoloV8ImageEncoderNode → OnnxInferenceNode(transport=std, EP=MIGraph
 ## Development Notes
 
 - The upstream `isaac_ros_object_detection` repo is kept as-is in `./isaac_ros_object_detection/` for reference.
-- YOLOv8 model files are user-provided external assets. Do not instruct maintainers to download or export them. The canonical ONNX identity and SHA-256 are documented in `docs/phase2a-experiment.md`.
+- YOLOv8 model files are user-provided external assets. Do not instruct maintainers to download or export them. The canonical ONNX identity and SHA-256 are documented in `docs/experiments/phase2a-amd.md`.
 
 ## Profiling Plan
 
