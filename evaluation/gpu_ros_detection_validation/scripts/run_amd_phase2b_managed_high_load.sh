@@ -69,7 +69,11 @@ DRAIN_SECONDS="${PHASE2B_HIGH_LOAD_DRAIN_SECONDS:-10}"
 TOPIC_WAIT_TIMEOUT_SECONDS="${PHASE2B_HIGH_LOAD_TOPIC_WAIT_SECONDS:-900}"
 PROFILE_PREFIX="${PHASE2B_HIGH_LOAD_ORT_PROFILE_PREFIX:-${OUTPUT_ROOT}/ort/profile}"
 BINDING_REPORT="${PHASE2B_HIGH_LOAD_BINDING_REPORT:-${OUTPUT_ROOT}/binding.json}"
-DETECTION_TOPIC="/${NAMESPACE}/detections_output"
+DETECTION_TOPIC=""
+DETECTION_CANDIDATES=(
+  /detections_output
+  "/${NAMESPACE}/detections_output"
+)
 LAUNCH_PID=""
 COUNTER_PID=""
 RECORDER_PID=""
@@ -254,7 +258,10 @@ fi
   echo "input_bag=${INPUT_BAG}"
   echo "dataset_tree_sha256=$(hash_path "${INPUT_BAG}")"
   echo "input_topic=${IMAGE_TOPIC}"
-  echo "detection_topic=${DETECTION_TOPIC}"
+  echo "detection_topic=auto"
+  printf 'detection_topic_candidates='
+  printf '%s,' "${DETECTION_CANDIDATES[@]}"
+  echo
   echo "duration_seconds=${DURATION_SECONDS}"
   echo "minimum_input_messages=${MIN_INPUT_MESSAGES}"
   echo "playback_rate=${PLAYBACK_RATE}"
@@ -308,6 +315,40 @@ write_startup_diagnostics() {
   cat "${STARTUP_LOG}" >&2
 }
 
+discover_detection_topic() {
+  local attempts=$((TOPIC_WAIT_TIMEOUT_SECONDS * 2))
+  local attempt
+  local candidate
+  local count
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    for candidate in "${DETECTION_CANDIDATES[@]}"; do
+      count="$(topic_count "${candidate}" Publisher)"
+      if ((count >= 1)); then
+        DETECTION_TOPIC="${candidate}"
+        startup_log "Ready: graph detection publisher on ${DETECTION_TOPIC} (Publisher count=${count})."
+        printf 'resolved_detection_topic=%s\n' "${DETECTION_TOPIC}" \
+          >>"${OUTPUT_ROOT}/run_config.txt"
+        return 0
+      fi
+    done
+    if ! kill -0 "${LAUNCH_PID}" 2>/dev/null; then
+      echo "ERROR: process exited while waiting for a graph detection publisher." >&2
+      write_startup_diagnostics \
+        "process exited while waiting for a graph detection publisher" \
+        "${DETECTION_CANDIDATES[0]}"
+      return 1
+    fi
+    if ((attempt == 1 || attempt % 20 == 0)); then
+      startup_log "Waiting for graph detection publisher (candidates: ${DETECTION_CANDIDATES[*]}; ${attempt}/${attempts})..."
+    fi
+    sleep 0.5
+  done
+  echo "ERROR: timed out waiting for a graph detection publisher after ${TOPIC_WAIT_TIMEOUT_SECONDS}s." >&2
+  write_startup_diagnostics \
+    "timeout waiting for a graph detection publisher" "${DETECTION_CANDIDATES[0]}"
+  return 1
+}
+
 wait_for_topic() {
   local topic="$1"
   local kind="$2"
@@ -341,8 +382,7 @@ CURRENT_PHASE="waiting for graph input subscription"
 wait_for_topic "${IMAGE_TOPIC}" Subscription "${LAUNCH_PID}" \
   "graph input subscription on ${IMAGE_TOPIC}"
 CURRENT_PHASE="waiting for graph detection publisher"
-wait_for_topic "${DETECTION_TOPIC}" Publisher "${LAUNCH_PID}" \
-  "graph detection publisher on ${DETECTION_TOPIC}"
+discover_detection_topic
 
 CURRENT_PHASE="starting input counter"
 ros2 run gpu_ros_detection_validation count_ros_messages.py \

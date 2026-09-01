@@ -378,6 +378,14 @@ def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
     assert 'hip_managed_strict' in script
 
 
+def test_amd_phase2b_high_load_discovers_root_detection_topic():
+    script = AMD_HIGH_LOAD_SCRIPT_PATH.read_text()
+    assert 'DETECTION_CANDIDATES=(' in script
+    assert '/detections_output' in script
+    assert 'discover_detection_topic()' in script
+    assert 'resolved_detection_topic=' in script
+
+
 def test_unified_nvidia_audit_runner_is_executable_and_has_valid_bash_syntax():
     assert UNIFIED_NVIDIA_AUDIT_SCRIPT_PATH.stat().st_mode & 0o111
     subprocess.run(['bash', '-n', str(UNIFIED_NVIDIA_AUDIT_SCRIPT_PATH)], check=True)
