@@ -76,6 +76,7 @@ DETECTION_CANDIDATES=(
   "/${NAMESPACE}/detections_output"
 )
 LAUNCH_PID=""
+LAUNCH_PGID=""
 COUNTER_PID=""
 RECORDER_PID=""
 PLAYBACK_PID=""
@@ -135,7 +136,7 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in awk date find git grep mkdir ros2 sha256sum sleep sort tail timeout xargs; do
+for command_name in awk date find git grep mkdir ps ros2 sha256sum sleep sort tail timeout xargs; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
@@ -204,32 +205,62 @@ if [[ ! -x ${COUNTER_EXECUTABLE} ]]; then
   exit 1
 fi
 
+process_group_id() {
+  local pid="$1"
+  ps -o pgid= -p "${pid}" 2>/dev/null | awk 'NF {print $1; exit}' || true
+}
+
 stop_process() {
   local pid="$1"
   local label="$2"
+  local saved_pgid="${3:-}"
+  local pgid="${saved_pgid:-$(process_group_id "${pid}")}"
+  local self_pgid
+  self_pgid="$(process_group_id "$$")"
   [[ -n ${pid} ]] || return 0
-  if ! kill -0 "${pid}" 2>/dev/null; then
+  local safe_group=0
+  if [[ ${pgid:-} =~ ^[0-9]+$ ]] &&
+    [[ ${pgid} != 1 && ${pgid} != ${self_pgid:-} ]]; then
+    safe_group=1
+  fi
+  if ! kill -0 "${pid}" 2>/dev/null &&
+    ! ((safe_group)) ||
+    ((safe_group)) && ! kill -0 -- "-${pgid}" 2>/dev/null; then
     wait "${pid}" 2>/dev/null || true
     return 0
   fi
   echo "Stopping ${label} (PID ${pid})..."
-  kill -INT "${pid}" 2>/dev/null || true
+  if ((safe_group)); then
+    kill -INT -- "-${pgid}" 2>/dev/null || true
+  else
+    kill -INT "${pid}" 2>/dev/null || true
+  fi
   for _ in {1..20}; do
-    if ! kill -0 "${pid}" 2>/dev/null; then
+    if ! kill -0 "${pid}" 2>/dev/null &&
+      { (( ! safe_group )) || ! kill -0 -- "-${pgid}" 2>/dev/null; }; then
       wait "${pid}" 2>/dev/null || true
       return 0
     fi
     sleep 0.5
   done
-  kill -TERM "${pid}" 2>/dev/null || true
+  if ((safe_group)); then
+    kill -TERM -- "-${pgid}" 2>/dev/null || true
+  else
+    kill -TERM "${pid}" 2>/dev/null || true
+  fi
   for _ in {1..20}; do
-    if ! kill -0 "${pid}" 2>/dev/null; then
+    if ! kill -0 "${pid}" 2>/dev/null &&
+      { (( ! safe_group )) || ! kill -0 -- "-${pgid}" 2>/dev/null; }; then
       wait "${pid}" 2>/dev/null || true
       return 0
     fi
     sleep 0.5
   done
-  kill -KILL "${pid}" 2>/dev/null || true
+  if ((safe_group)); then
+    kill -KILL -- "-${pgid}" 2>/dev/null || true
+  else
+    kill -KILL "${pid}" 2>/dev/null || true
+  fi
   wait "${pid}" 2>/dev/null || true
 }
 
@@ -246,7 +277,7 @@ cleanup() {
     : >"${COUNTER_STOP_FILE}"
   fi
   stop_process "${COUNTER_PID}" "input counter"
-  stop_process "${LAUNCH_PID}" "Managed HIP graph"
+  stop_process "${LAUNCH_PID}" "Managed HIP graph" "${LAUNCH_PGID}"
   exit "${status}"
 }
 trap cleanup EXIT
@@ -303,6 +334,7 @@ startup_log "Starting direct Managed HIP graph..."
 setsid bash -c 'trap - INT TERM; exec "$@"' high-load-graph \
   "${LAUNCH_COMMAND[@]}" >"${OUTPUT_ROOT}/logs/graph.log" 2>&1 &
 LAUNCH_PID=$!
+LAUNCH_PGID="$(process_group_id "${LAUNCH_PID}")"
 
 topic_count() {
   local topic="$1"
@@ -446,8 +478,9 @@ RECORDER_PID=""
 : >"${COUNTER_STOP_FILE}"
 stop_process "${COUNTER_PID}" "input counter"
 COUNTER_PID=""
-stop_process "${LAUNCH_PID}" "Managed HIP graph"
+stop_process "${LAUNCH_PID}" "Managed HIP graph" "${LAUNCH_PGID}"
 LAUNCH_PID=""
+LAUNCH_PGID=""
 
 if [[ ! -s ${OUTPUT_ROOT}/input_counter.json ]]; then
   echo "ERROR: input counter did not write a report." >&2
