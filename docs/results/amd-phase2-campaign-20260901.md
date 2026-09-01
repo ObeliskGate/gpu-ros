@@ -28,6 +28,7 @@ claims.
 | Container recipe revision | `1a02236ce09b245ed6d6d4f26128f11f54470c95` (same launch tip; verify against the external matrix manifest) |
 | Image digest | `not-captured`; use the recipe/base identity above until a SIF or OCI digest is archived |
 | Application revision (RT-DETR matrix) | `1a02236ce09b245ed6d6d4f26128f11f54470c95` (verify against the external matrix manifest) |
+| Application worktree state (RT-DETR matrix) | `dirty=true` in the matrix manifest; the external manifest retains the untracked-content hash |
 | Application revision (YOLOv8 records) | `698cc86ab179a04d274b7aeb80c44580052c3122` (verify each raw report) |
 | `gpu_ros_managed` revision | `caaf6cbb599bfb194671bc957f096443b94bef01` |
 | Driver version | `not-captured` |
@@ -54,23 +55,56 @@ relationship and deliberately does not manufacture an aggregate PASS/FAIL.
 
 ## RT-DETR matrix numerical record
 
-The checked-in campaign record currently contains the matrix runner's execution
-status but not the nine per-round RT-DETR JSON summaries. Until those JSONs are
-copied to the public result archive, the matrix has the deliberately split
-status **execution PASS / numerical baseline pending**:
+The nine RT-DETR JSON reports and their logs were mirrored from the AMD Slurm
+result archive and verified file-for-file and byte-for-byte (19 files). The
+archive ID is `rtdetr_phase2b_matrix_amd-mi350x-20260901-112808`; its manifest
+records three rounds, rotated lane order, and fixed rates of 10, 30, and 60 Hz.
+The tables below are rounded to three decimal places; the raw JSON reports
+remain authoritative.
+
+The exact matrix invocation was:
+
+```bash
+ros2 run gpu_ros_detection_validation \
+  run_amd_phase2b_benchmark_matrix.sh \
+  rtdetr "rtdetr_phase2b_matrix_${RUN_ID}"
+```
+
+Peak-search misses are expected saturation behavior. Fixed-rate misses are the
+reliability check. The aggregate table is the arithmetic mean of the three
+round reports for every scalar rate/count field, as required by
+[`results/README.md`](README.md).
+
+### Per-round reports
+
+`Peak misses / sent` refers to the peak-search run. Each fixed-rate cell is
+`output fps; misses / sent`.
+
+| Round | Formal lane | Peak prediction (Hz) | Mean output at peak (fps) | Peak misses / sent | Fixed 10 Hz | Fixed 30 Hz | Fixed 60 Hz |
+| ---: | --- | ---: | ---: | ---: | --- | --- | --- |
+| 1 | Standard ROS 2 | 102.461 | 98.379 | 15.667 / 512 | 10.201; 0 / 50 | 30.201; 0 / 150 | 59.909; 0 / 300 |
+| 2 | Standard ROS 2 | 115.266 | 103.102 | 52.000 / 576 | 10.204; 0 / 50 | 30.204; 0 / 150 | 60.213; 0 / 300 |
+| 3 | Standard ROS 2 | 107.461 | 103.941 | 8.667 / 537 | 10.205; 0 / 50 | 30.211; 0 / 150 | 60.189; 0 / 300 |
+| 1 | Staged control | 141.484 | 131.026 | 45.000 / 707 | 10.205; 0 / 50 | 30.206; 0 / 150 | 60.213; 0 / 300 |
+| 2 | Staged control | 130.875 | 125.135 | 27.333 / 654 | 10.207; 0 / 50 | 30.188; 0 / 150 | 60.215; 0 / 300 |
+| 3 | Staged control | 125.875 | 121.280 | 19.667 / 629 | 10.203; 0 / 50 | 30.127; 0 / 150 | 60.189; 0 / 300 |
+| 1 | Direct Managed HIP | 141.484 | 122.816 | 86.000 / 707 | 10.206; 0 / 50 | 30.207; 0 / 150 | 60.275; 0 / 300 |
+| 2 | Direct Managed HIP | 138.680 | 125.441 | 60.667 / 693 | 10.206; 0 / 50 | 30.209; 0 / 150 | 60.216; 0 / 300 |
+| 3 | Direct Managed HIP | 128.070 | 127.826 | 2.333 / 640 | 10.205; 0 / 50 | 30.208; 0 / 150 | 60.209; 0 / 300 |
+
+### Three-round aggregate
 
 | Formal lane | Peak prediction (Hz) | Mean output at peak (fps) | Peak misses / sent | Fixed 10 / 30 / 60 Hz output (fps) | Fixed 10 / 30 / 60 misses / sent |
 | --- | ---: | ---: | ---: | --- | --- |
-| Standard ROS 2 | pending archive | pending archive | pending archive | pending archive | pending archive |
-| Staged control | pending archive | pending archive | pending archive | pending archive | pending archive |
-| Direct Managed HIP | pending archive | pending archive | pending archive | pending archive | pending archive |
+| Standard ROS 2 | 108.396 | 101.807 | 25.444 / 541.667 | 10.203 / 30.205 / 60.103 | 0 / 50 · 0 / 150 · 0 / 300 |
+| Staged control | 132.745 | 125.814 | 30.667 / 663.333 | 10.205 / 30.174 / 60.206 | 0 / 50 · 0 / 150 · 0 / 300 |
+| Direct Managed HIP | 136.078 | 125.361 | 49.667 / 680.000 | 10.206 / 30.208 / 60.233 | 0 / 50 · 0 / 150 · 0 / 300 |
 
-Do not fill this table from the older Synthetica/RT-DETR archive: its model and
-software provenance do not match the formal `rtdetrv2_r50` campaign. The raw
-matrix archive must retain each round's values, the arithmetic-mean aggregation,
-the fixed-rate rows, and the manifest before this campaign can be used as a
-performance reproduction baseline. The acceptance semantics are defined in
-[`results/README.md`](README.md).
+Do not substitute the older Synthetica/RT-DETR archive: its model and software
+provenance do not match this formal `rtdetrv2_r50` campaign. The acceptance
+semantics for a future same-hardware reproduction are defined in
+[`results/README.md`](README.md); these values are the campaign baseline, not a
+claim that another GPU model will achieve the same rates.
 
 ## YOLOv8 observations from the same campaign
 
@@ -121,8 +155,8 @@ site-specific identifiers into a public result document.
 ## Promotion status
 
 The model export, numeric comparison, profiler probe, and matrix executions are
-ready for review. The RT-DETR transport audit remains an explicitly labelled
-`INCONCLUSIVE` observation. The RT-DETR performance baseline is not promoted
-until its per-round JSON values are added to this record. The deferred
+ready for review. The RT-DETR performance baseline is now numerically recorded
+with its per-round reports and arithmetic-mean summary. The RT-DETR transport
+audit remains an explicitly labelled `INCONCLUSIVE` observation. The deferred
 COCO/provider-parity checks must remain visible as deferred rather than silently
 treated as passed.

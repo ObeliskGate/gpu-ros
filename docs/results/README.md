@@ -14,7 +14,7 @@ datasets remain in an external archive below `${OVG_RESULTS_ROOT}`.
 | --- | --- |
 | NVIDIA reference work | Historical observations; keep separate from current AMD results. |
 | AMD Phase 2A standard paths | Completed for the current model/assets used by the campaign. |
-| AMD Phase 2B three-lane matrix execution | Completed for YOLOv8 and RT-DETRv2 R50; RT-DETR numerical baseline is pending per-round archive promotion. |
+| AMD Phase 2B three-lane matrix execution | Completed for YOLOv8 and RT-DETRv2 R50; both numerical baselines are recorded with per-round values and external raw archives. |
 | RT-DETRv2 export and CPU validation | Passed; exact model digest is recorded in the source profile. |
 | CPU ↔ Managed HIP report-only comparison | Completed with exact stamp pairing; see the AMD campaign record. |
 | HIP copy probe | Completed with JSON, CSV, and manifest output. |
