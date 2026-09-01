@@ -375,6 +375,12 @@ def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
     assert 'DURATION_SECONDS < 600' in script
     assert 'MIN_INPUT_MESSAGES < 10000' in script
     assert 'count_ros_messages.py' in script
+    assert (
+        'COUNTER_EXECUTABLE="${WORKSPACE_ROOT}/install/lib/'
+        'gpu_ros_detection_validation/count_ros_messages.py"' in script
+    )
+    assert '"${COUNTER_EXECUTABLE}" \\' in script
+    assert 'ros2 run gpu_ros_detection_validation count_ros_messages.py' not in script
     assert 'hip_managed_strict' in script
 
 

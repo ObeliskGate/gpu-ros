@@ -186,6 +186,7 @@ repo_diff_hash() {
 
 ORT_LIBRARY_PATH="${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}"
 GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}"
+COUNTER_EXECUTABLE="${WORKSPACE_ROOT}/install/lib/gpu_ros_detection_validation/count_ros_messages.py"
 for target in \
   "${OUTPUT_ROOT}/input_counter.json" \
   "${OUTPUT_ROOT}/detections" \
@@ -196,6 +197,10 @@ for target in \
     exit 1
   fi
 done
+if [[ ! -x ${COUNTER_EXECUTABLE} ]]; then
+  echo "ERROR: input counter executable is missing or not executable: ${COUNTER_EXECUTABLE}" >&2
+  exit 1
+fi
 
 stop_process() {
   local pid="$1"
@@ -385,7 +390,7 @@ CURRENT_PHASE="waiting for graph detection publisher"
 discover_detection_topic
 
 CURRENT_PHASE="starting input counter"
-ros2 run gpu_ros_detection_validation count_ros_messages.py \
+"${COUNTER_EXECUTABLE}" \
   --topic "${IMAGE_TOPIC}" \
   --output-json "${OUTPUT_ROOT}/input_counter.json" \
   >"${OUTPUT_ROOT}/logs/input_counter.log" 2>&1 &
