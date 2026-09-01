@@ -25,15 +25,23 @@ from sensor_msgs.msg import Image
 class MessageCounter(Node):
     """Count sensor_msgs/Image messages without storing payloads."""
 
-    def __init__(self, topic: str):
+    def __init__(self, topic: str, stop_file: Path | None = None):
         super().__init__('phase2b_message_counter')
         self.topic = topic
+        self.stop_file = stop_file
         self.count = 0
         self.started_at = datetime.now(timezone.utc).isoformat()
         self.create_subscription(Image, topic, self._on_message, qos_profile_sensor_data)
+        self._stop_timer = None
+        if self.stop_file is not None:
+            self._stop_timer = self.create_timer(0.25, self._poll_stop_file)
 
     def _on_message(self, _message: Image) -> None:
         self.count += 1
+
+    def _poll_stop_file(self) -> None:
+        if self.stop_file is not None and self.stop_file.exists() and rclpy.ok():
+            rclpy.shutdown()
 
     def report(self, output_path: Path) -> None:
         report = {
@@ -53,6 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--topic', required=True)
     parser.add_argument('--output-json', required=True)
+    parser.add_argument('--stop-file')
     return parser.parse_args()
 
 
@@ -62,7 +71,8 @@ def main() -> int:
     if output_path.exists():
         raise RuntimeError(f'refusing to overwrite existing report: {output_path}')
     rclpy.init()
-    node = MessageCounter(args.topic)
+    stop_file = Path(args.stop_file) if args.stop_file else None
+    node = MessageCounter(args.topic, stop_file)
 
     def stop(_signum, _frame):
         if rclpy.ok():

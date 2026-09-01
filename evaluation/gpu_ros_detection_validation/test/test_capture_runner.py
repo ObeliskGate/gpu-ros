@@ -381,6 +381,8 @@ def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
     )
     assert '"${COUNTER_EXECUTABLE}" \\' in script
     assert 'ros2 run gpu_ros_detection_validation count_ros_messages.py' not in script
+    assert '--stop-file "${COUNTER_STOP_FILE}"' in script
+    assert ': >"${COUNTER_STOP_FILE}"' in script
     assert 'hip_managed_strict' in script
 
 

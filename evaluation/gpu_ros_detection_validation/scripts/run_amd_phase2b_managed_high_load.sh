@@ -59,6 +59,7 @@ WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
 RESULT_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b-high-load"
 OUTPUT_ROOT="${RESULT_ROOT}/${RUN_NAME}"
+COUNTER_STOP_FILE="${OUTPUT_ROOT}/input_counter.stop"
 INPUT_BAG="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
 IMAGE_TOPIC="${CAPTURE_IMAGE_TOPIC:-/camera_1/color/image_raw}"
 MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/${MODEL_RELATIVE_PATH}}"
@@ -189,6 +190,7 @@ GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}
 COUNTER_EXECUTABLE="${WORKSPACE_ROOT}/install/lib/gpu_ros_detection_validation/count_ros_messages.py"
 for target in \
   "${OUTPUT_ROOT}/input_counter.json" \
+  "${COUNTER_STOP_FILE}" \
   "${OUTPUT_ROOT}/detections" \
   "${BINDING_REPORT}" \
   "${OUTPUT_ROOT}/run_config.txt"; do
@@ -220,6 +222,14 @@ stop_process() {
     sleep 0.5
   done
   kill -TERM "${pid}" 2>/dev/null || true
+  for _ in {1..20}; do
+    if ! kill -0 "${pid}" 2>/dev/null; then
+      wait "${pid}" 2>/dev/null || true
+      return 0
+    fi
+    sleep 0.5
+  done
+  kill -KILL "${pid}" 2>/dev/null || true
   wait "${pid}" 2>/dev/null || true
 }
 
@@ -232,6 +242,9 @@ cleanup() {
   set +e
   stop_process "${PLAYBACK_PID}" "playback"
   stop_process "${RECORDER_PID}" "detection recorder"
+  if [[ -n ${COUNTER_PID:-} && -d ${OUTPUT_ROOT:-} ]]; then
+    : >"${COUNTER_STOP_FILE}"
+  fi
   stop_process "${COUNTER_PID}" "input counter"
   stop_process "${LAUNCH_PID}" "Managed HIP graph"
   exit "${status}"
@@ -393,6 +406,7 @@ CURRENT_PHASE="starting input counter"
 "${COUNTER_EXECUTABLE}" \
   --topic "${IMAGE_TOPIC}" \
   --output-json "${OUTPUT_ROOT}/input_counter.json" \
+  --stop-file "${COUNTER_STOP_FILE}" \
   >"${OUTPUT_ROOT}/logs/input_counter.log" 2>&1 &
 COUNTER_PID=$!
 CURRENT_PHASE="waiting for input counter subscription"
@@ -429,6 +443,7 @@ echo "Playback duration reached; draining for ${DRAIN_SECONDS}s..."
 sleep "${DRAIN_SECONDS}"
 stop_process "${RECORDER_PID}" "detection recorder"
 RECORDER_PID=""
+: >"${COUNTER_STOP_FILE}"
 stop_process "${COUNTER_PID}" "input counter"
 COUNTER_PID=""
 stop_process "${LAUNCH_PID}" "Managed HIP graph"
