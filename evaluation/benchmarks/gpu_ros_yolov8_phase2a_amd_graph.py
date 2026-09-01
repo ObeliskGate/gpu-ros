@@ -74,7 +74,8 @@ def model_path_for_test(test_class):
         raise RuntimeError(
             "YOLOv8 ONNX asset is missing:\n"
             f"{resolved_path}\n"
-            "Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8."
+            "Run phase2 assets import-model --profile yolov8 --source <path> "
+            "(the source may be OVG_YOLOV8_ONNX_SOURCE)."
         )
     return model_path
 

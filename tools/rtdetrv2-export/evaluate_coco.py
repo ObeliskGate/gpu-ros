@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Evaluate all 300 formal RT-DETRv2 candidates on COCO val2017."""
 
 from __future__ import annotations

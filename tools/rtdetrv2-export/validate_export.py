@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Compare the pinned PyTorch checkpoint and exported ONNX on CPU."""
 
 from __future__ import annotations

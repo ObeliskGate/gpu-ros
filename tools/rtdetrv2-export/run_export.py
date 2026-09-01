@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Seed the pinned upstream exporter without modifying upstream source."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Offline Phase 2 asset import, validation, and RT-DETRv2 export."""
 
 from __future__ import annotations

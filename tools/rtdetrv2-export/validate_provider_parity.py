@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Compare CPU and MIGraphX execution of the same formal RT-DETRv2 ONNX."""
 
 from __future__ import annotations

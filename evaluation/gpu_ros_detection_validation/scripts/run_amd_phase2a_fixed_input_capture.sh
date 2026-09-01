@@ -206,10 +206,12 @@ if [[ ! -s ${MODEL_PATH} ]]; then
   if [[ ${PIPELINE} == "yolov8" ]]; then
     echo "YOLOv8 ONNX asset is missing:" >&2
     echo "${MODEL_PATH}" >&2
-    echo "Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8." >&2
+    echo "Run phase2 assets import-model --profile yolov8 --source <path>" >&2
+    echo "(the source may be OVG_YOLOV8_ONNX_SOURCE)." >&2
   else
     echo "ERROR: RT-DETRv2 ONNX asset is missing or empty: ${MODEL_PATH}" >&2
-    echo "Run phase2 assets or set OVG_RTDETR_ONNX_SOURCE and run phase2 assets import-rtdetr." >&2
+    echo "Run phase2 assets --model-profile rtdetrv2_r50" >&2
+    echo "--execution-provider migraphx after importing or building the formal model." >&2
   fi
   exit 1
 fi

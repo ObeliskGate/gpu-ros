@@ -348,7 +348,7 @@ def test_amd_yolov8_capture_fails_before_ros_when_asset_is_missing(tmp_path):
     )
     assert result.returncode == 1
     assert 'YOLOv8 ONNX asset is missing:' in result.stderr
-    assert 'Provide OVG_YOLOV8_ONNX_SOURCE and run phase2 assets import-yolov8.' in result.stderr
+    assert 'Run phase2 assets import-model --profile yolov8 --source <path>' in result.stderr
 
 
 def test_transport_audit_runner_is_executable_and_has_valid_bash_syntax():
