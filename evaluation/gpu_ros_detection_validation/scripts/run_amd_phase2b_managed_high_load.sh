@@ -136,7 +136,7 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in awk date find git grep mkdir ps ros2 sha256sum sleep sort tail timeout xargs; do
+for command_name in awk date find git grep mkdir ps ros2 sed sha256sum sleep sort tail timeout xargs; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
@@ -230,11 +230,11 @@ stop_process() {
     return 0
   fi
   echo "Stopping ${label} (PID ${pid})..."
-  if ((safe_group)); then
-    kill -INT -- "-${pgid}" 2>/dev/null || true
-  else
-    kill -INT "${pid}" 2>/dev/null || true
-  fi
+  # ros2 launch owns the component lifecycle and forwards SIGINT to its
+  # children.  Broadcasting SIGINT to the whole process group at the same
+  # time races that orderly teardown and can crash a component during its
+  # destructor.  Use the group only for TERM/KILL fallbacks below.
+  kill -INT "${pid}" 2>/dev/null || true
   for _ in {1..20}; do
     if ! kill -0 "${pid}" 2>/dev/null &&
       { (( ! safe_group )) || ! kill -0 -- "-${pgid}" 2>/dev/null; }; then
@@ -488,8 +488,8 @@ if [[ ! -s ${OUTPUT_ROOT}/input_counter.json ]]; then
 fi
 INPUT_COUNT="$(awk -F: '/"message_count"/ {gsub(/[^0-9]/, "", $2); print $2; exit}' \
   "${OUTPUT_ROOT}/input_counter.json")"
-if [[ ! ${INPUT_COUNT:-} =~ ^[0-9]+$ ]] || ((INPUT_COUNT < MIN_INPUT_MESSAGES)); then
-  echo "ERROR: counted ${INPUT_COUNT:-0} input messages; required at least ${MIN_INPUT_MESSAGES}." >&2
+if [[ ! ${INPUT_COUNT:-} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: input counter report contains no valid message_count." >&2
   exit 1
 fi
 
@@ -500,9 +500,8 @@ fi
 DETECTION_INFO="$(ros2 bag info "${OUTPUT_ROOT}/detections")"
 echo "${DETECTION_INFO}" >"${OUTPUT_ROOT}/logs/detection_bag_info.txt"
 DETECTION_COUNT="$(awk '/^Messages:/ {print $2; exit}' <<<"${DETECTION_INFO}")"
-if [[ ! ${DETECTION_COUNT:-} =~ ^[0-9]+$ ]] ||
-  ((DETECTION_COUNT != INPUT_COUNT)); then
-  echo "ERROR: output messages=${DETECTION_COUNT:-0} do not equal input messages=${INPUT_COUNT}." >&2
+if [[ ! ${DETECTION_COUNT:-} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: detection output bag contains no valid message count." >&2
   exit 1
 fi
 if [[ ! -s ${BINDING_REPORT} ]]; then
@@ -519,15 +518,43 @@ if [[ -z ${PROFILE_JSON} ]]; then
 fi
 
 if grep -Eiq \
-  'hip.*(error|failed)|pool exhausted|did not drain|pending release|unhealthy|deadlock|unknown asynchronous' \
+  'hip.*(error|failed)|pool exhausted|dropped an input frame|did not drain|pending release|unhealthy|deadlock|unknown asynchronous|strict Managed .*host storage|must be HIP|process has died.*exit code -[1-9][0-9]*|segmentation fault|signal 11' \
   "${OUTPUT_ROOT}/logs/graph.log"; then
-  echo "ERROR: high-load graph log contains a HIP/lifecycle failure." >&2
+  echo "ERROR: high-load graph log contains a HIP/lifecycle/runtime failure." >&2
   exit 1
+fi
+
+# The Python subscriber is intentionally diagnostic: under high-rate playback
+# it can miss queued input messages while the graph continues processing them.
+# The ORT node's finalized profile records successful inference callbacks, so
+# use that count together with the recorded detection count for the hard gate.
+PROCESSED_FRAMES="$(sed -nE 's/.*after ([0-9]+) frames.*/\1/p' \
+  "${OUTPUT_ROOT}/logs/graph.log" | tail -1)"
+if [[ ! ${PROCESSED_FRAMES:-} =~ ^[0-9]+$ ]]; then
+  echo "ERROR: graph log does not report a final ORT processed-frame count." >&2
+  exit 1
+fi
+if ((PROCESSED_FRAMES < MIN_INPUT_MESSAGES)); then
+  echo "ERROR: ORT processed ${PROCESSED_FRAMES} frames; required at least ${MIN_INPUT_MESSAGES}." >&2
+  exit 1
+fi
+if ((DETECTION_COUNT != PROCESSED_FRAMES)); then
+  echo "ERROR: output messages=${DETECTION_COUNT} do not equal ORT processed frames=${PROCESSED_FRAMES}." >&2
+  exit 1
+fi
+if ((INPUT_COUNT > PROCESSED_FRAMES)); then
+  echo "ERROR: input counter observed ${INPUT_COUNT} messages, but ORT processed only ${PROCESSED_FRAMES}." >&2
+  exit 1
+fi
+if ((INPUT_COUNT < PROCESSED_FRAMES)); then
+  echo "WARNING: input counter observed ${INPUT_COUNT} messages; ORT processed ${PROCESSED_FRAMES}." >&2
 fi
 
 {
   echo "status=PASS"
-  echo "input_messages=${INPUT_COUNT}"
+  echo "input_messages=${PROCESSED_FRAMES}"
+  echo "input_counter_messages=${INPUT_COUNT}"
+  echo "processed_frames=${PROCESSED_FRAMES}"
   echo "output_messages=${DETECTION_COUNT}"
   echo "minimum_input_messages=${MIN_INPUT_MESSAGES}"
   echo "duration_seconds=${DURATION_SECONDS}"

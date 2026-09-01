@@ -384,8 +384,12 @@ def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
     assert '--stop-file "${COUNTER_STOP_FILE}"' in script
     assert ': >"${COUNTER_STOP_FILE}"' in script
     assert 'process_group_id()' in script
-    assert 'kill -INT -- "-${pgid}"' in script
+    assert 'kill -INT "${pid}"' in script
+    assert 'kill -INT -- "-${pgid}"' not in script
     assert 'LAUNCH_PGID=' in script
+    assert 'PROCESSED_FRAMES=' in script
+    assert 'DETECTION_COUNT != PROCESSED_FRAMES' in script
+    assert 'input_counter_messages=' in script
     assert 'hip_managed_strict' in script
 
 
