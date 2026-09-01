@@ -9,8 +9,6 @@ install(PROGRAMS
   scripts/run_rocprof_hip_copy_probe.sh
   scripts/run_amd_transport_audit.sh
   scripts/run_amd_phase2b_benchmark_matrix.sh
-  scripts/count_ros_messages.py
-  scripts/run_amd_phase2b_managed_high_load.sh
   scripts/run_nvidia_fixed_input_capture.sh
   scripts/run_nvidia_c_vs_d_copy_audit.sh
   scripts/run_nvidia_transport_audit.sh

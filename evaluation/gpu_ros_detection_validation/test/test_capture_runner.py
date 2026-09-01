@@ -37,9 +37,6 @@ UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
 AMD_MATRIX_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_benchmark_matrix.sh'
 )
-AMD_HIGH_LOAD_SCRIPT_PATH = (
-    Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_managed_high_load.sh'
-)
 AMD_PHASE2_LAUNCHER_PATH = Path(__file__).parents[3] / 'docker' / 'phase2-amd.sh'
 HIP_PREPROCESS_SOURCE_PATH = (
     Path(__file__).parents[3] / 'migrated_packages' /
@@ -366,39 +363,6 @@ def test_amd_phase2b_matrix_runner_has_rotating_independent_lanes():
     assert 'lane_order_round_2=staged,direct,std' in script
     assert 'lane_order_round_3=direct,std,staged' in script
     assert 'launch_test' in script
-
-
-def test_amd_phase2b_high_load_runner_enforces_the_hard_gate():
-    assert AMD_HIGH_LOAD_SCRIPT_PATH.stat().st_mode & 0o111
-    subprocess.run(['bash', '-n', str(AMD_HIGH_LOAD_SCRIPT_PATH)], check=True)
-    script = AMD_HIGH_LOAD_SCRIPT_PATH.read_text()
-    assert 'DURATION_SECONDS < 600' in script
-    assert 'MIN_INPUT_MESSAGES < 10000' in script
-    assert 'count_ros_messages.py' in script
-    assert (
-        'COUNTER_EXECUTABLE="${WORKSPACE_ROOT}/install/lib/'
-        'gpu_ros_detection_validation/count_ros_messages.py"' in script
-    )
-    assert '"${COUNTER_EXECUTABLE}" \\' in script
-    assert 'ros2 run gpu_ros_detection_validation count_ros_messages.py' not in script
-    assert '--stop-file "${COUNTER_STOP_FILE}"' in script
-    assert ': >"${COUNTER_STOP_FILE}"' in script
-    assert 'process_group_id()' in script
-    assert 'kill -INT "${pid}"' in script
-    assert 'kill -INT -- "-${pgid}"' not in script
-    assert 'LAUNCH_PGID=' in script
-    assert 'PROCESSED_FRAMES=' in script
-    assert 'DETECTION_COUNT != PROCESSED_FRAMES' in script
-    assert 'input_counter_messages=' in script
-    assert 'hip_managed_strict' in script
-
-
-def test_amd_phase2b_high_load_discovers_root_detection_topic():
-    script = AMD_HIGH_LOAD_SCRIPT_PATH.read_text()
-    assert 'DETECTION_CANDIDATES=(' in script
-    assert '/detections_output' in script
-    assert 'discover_detection_topic()' in script
-    assert 'resolved_detection_topic=' in script
 
 
 def test_unified_nvidia_audit_runner_is_executable_and_has_valid_bash_syntax():

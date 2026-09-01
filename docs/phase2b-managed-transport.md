@@ -369,14 +369,12 @@ ros2 run gpu_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
 ~~~
 
 The fixed-rate 10/30/60 Hz trials are part of each graph configuration. The
-separate high-load gate runs the production direct lane for at least ten
-minutes and 10,000 input images, and retains the input counter, detections bag,
-binding report, ORT profile, and lifecycle log:
-
-~~~bash
-ros2 run gpu_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
-  rtdetr rtdetr_managed_high_load_20260812
-~~~
+three-lane matrix is the formal AMD Phase 2B performance experiment. No
+separate high-load gate is defined: it has no NVIDIA counterpart, and comparing
+input and output message counts would incorrectly turn normal benchmark drops
+into a correctness failure. Any future long-running reliability study should
+use drop-aware lifecycle metrics and be reported separately from this
+performance comparison.
 
 Formal real-model comparison uses exact source-header-stamp FIFO pairing,
 greedy one-to-one matching of all detections by descending positive IoU,

@@ -159,19 +159,19 @@ tensor-sized inference-boundary copy fails the audit. This is not a claim that
 the complete pipeline, adapters, decoders, provider kernels, or serialization
 never copy.
 
-The real-model benchmark matrix and high-load gate are separate commands:
+The real-model benchmark matrix is the formal AMD Phase 2B performance command:
 
 ```bash
 ros2 run gpu_ros_detection_validation run_amd_phase2b_benchmark_matrix.sh \
   rtdetr rtdetr_phase2b_matrix_20260812
-
-ros2 run gpu_ros_detection_validation run_amd_phase2b_managed_high_load.sh \
-  rtdetr rtdetr_managed_high_load_20260812
 ```
 
-The matrix runs three rounds with rotating lane order. The high-load command
-enforces at least 600 seconds and 10,000 counted input images before writing a
-PASS summary.
+The matrix runs three rounds with rotating lane order. There is no separate
+high-load gate: it has no NVIDIA counterpart, and input/output message counts
+cannot serve as a correctness criterion when normal benchmark drops are
+allowed. Long-running reliability tests, if needed later, should be designed
+as a separate drop-aware experiment rather than part of the performance
+comparison.
 
 Before a formal audit on a new ROCm/MI350X environment, run the small HIP
 probe with the executable that actually exists in the sibling checkout. The

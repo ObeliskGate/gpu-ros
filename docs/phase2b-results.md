@@ -2,8 +2,8 @@
 
 This report keeps the historical archive and the current NVIDIA validation
 observation together. The revised AMD direct Managed HIP implementation is
-present, but no allocation-backed AMD real-model result is claimed until its
-required capture, contract, topology, and high-load gates complete. Procedures
+present, but AMD real-model results are only claimed after the required
+capture, contract, topology, and transport-audit gates complete. Procedures
 and interpretation rules are in phase2b-managed-transport.md.
 
 The 2026-08-26 NVIDIA campaign used the existing Isaac ROS 4.5 development
@@ -226,5 +226,5 @@ and are not an AMD Phase 2B result. AMD validation must first prove the direct
 topology and strict contract, then compare direct Managed with the standard and
 staged-control lanes. The production direct lane must not contain application
 TensorBundle staging; staged-control adapter copies are measured separately.
-MI350X model, memory-contract, high-load, and report-only comparison results
-remain to be archived after the allocation-backed validation run.
+MI350X model, memory-contract, and report-only comparison results remain to be
+archived after the allocation-backed validation run.
