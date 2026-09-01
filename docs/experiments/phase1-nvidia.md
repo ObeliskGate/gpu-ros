@@ -44,7 +44,10 @@ Record these values in the external archive for every run:
 | External benchmark | Use the revision pinned by `external/nvidia-isaac-ros.repos`. |
 | ORT | Record the selected 1.23.1 source/library identity. |
 
-Do not put image, host, driver, or deployment identifiers in this document.
+Do not put host, user, scheduler, device-instance, or deployment-path
+identifiers in this document. Runtime image, driver, and provider versions are
+scientific provenance and belong in the public result record when captured;
+they are not deployment secrets.
 
 ## Fresh runtime layout
 

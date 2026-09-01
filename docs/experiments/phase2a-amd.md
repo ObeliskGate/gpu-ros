@@ -11,28 +11,26 @@ and the model/checkpoint license evidence are in `config/model-profiles.json`.
 
 ## Environment and external ORT
 
-Run in the approved AMD runtime environment. Select Docker or Apptainer explicitly
-when the environment requires it, and provide the externally built ORT install:
+Use the public [AMD runtime contract](amd-runtime-contract.md). It defines the
+software versions, image recipe, stable mounts, device interfaces, and required
+variables; no private site contract is needed to reconstruct an equivalent
+runtime. Select Docker or Apptainer explicitly and provide the externally built
+ORT install:
 
 ```bash
 export OVG_RUNTIME=docker                 # or apptainer
 export GPU_ROS_MANAGED_DIR=/absolute/path/to/gpu_ros_managed
 export OVG_STATE_ROOT=/absolute/path/to/phase2-state
 export OVG_ORT_STATE_HOST=/absolute/path/to/phase2-state/ort
-export OVG_ORT_ROOT=/absolute/path/to/ovg-ort/install/<ort-fingerprint>
+export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<ort-fingerprint>
 export AMD_GPU_TARGETS=<runtime-target>    # use the target required by the runtime
-unset APPTAINERENV_HOME                   # avoid HOME override warning
+unset APPTAINERENV_HOME                   # Apptainer only; avoid HOME override warning
 ```
 
-Site-specific host paths, SIF names, external-ORT fingerprints, and allocation
-settings belong in `inner_docs/environment_conventions.md`, not in this
-platform-neutral runbook. A launcher must bind its site asset/result roots to
-the container paths represented by `OVG_ASSETS_ROOT` and `OVG_RESULTS_ROOT`.
-
-For Apptainer, also set `OVG_APPTAINER_SIF` and the site-provided scheduler
-variables. Slurm metadata mismatches warn by default; set
-`OVG_REQUIRE_SLURM=1` only for a strict allocation gate. `/dev/kfd` and
-`/dev/dri` are always required for an AMD GPU run.
+For Apptainer, set `OVG_APPTAINER_SIF` to the validated image of your choice.
+Scheduler variables are an optional site adapter: `OVG_REQUIRE_SLURM=1` makes
+the launcher's allocation check fatal, while the default only warns.
+`/dev/kfd` and `/dev/dri` are always required for an AMD GPU run.
 
 Build the external ORT separately from a pristine recursive checkout at the
 locked commit, then run the application environment gates:

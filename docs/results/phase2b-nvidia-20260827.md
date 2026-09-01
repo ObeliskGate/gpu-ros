@@ -11,14 +11,21 @@ boundary. It is not a rerun or redefinition of the Phase 1 A/B/C/D matrix.
 | --- | --- |
 | Runtime | Isaac ROS 4.5 / ROS 2 Jazzy |
 | Hardware model | NVIDIA A100-SXM4-40GB |
+| GPU architecture | `not-captured` |
+| Driver version | `not-captured` |
+| Container base/image identity | Isaac ROS 4.5-compatible; immutable digest `not-captured` |
 | ORT | Triton `libonnxruntime.so`, version 1.23.1 |
+| ORT source/build revision | `not-captured` in this checked-in historical record |
+| Application/Managed revisions | `not-captured` in this checked-in historical record |
 | Dataset | `r2bdataset2024_v1/r2b_robotarm`; hash `8eee68848ee1a95e21b1cd44d5d6ba71` |
 | Build/test state | Release incremental build; ONNX package CTest 17/17 passed |
 | Instrumentation | Core dumps, bridge timing, Nsight, and ORT profiling disabled |
 | Launch status | All four launch exit codes were zero; no benchmark process remained after teardown |
 
-Exact revisions, runtime-image digest, dirty-state hashes, and archive paths
-are retained in the access-controlled external result archive.
+Exact revisions, dirty-state hashes, and archive paths remain in the
+access-controlled external result archive. The software fields marked
+`not-captured` were not promoted from that historical archive; they must be
+captured in a new public baseline rather than inferred.
 
 ## Throughput
 

@@ -16,13 +16,20 @@ record; the clean rerun is recorded separately in
 | --- | --- |
 | Runtime | Isaac ROS 4.5 / ROS 2 Jazzy |
 | Hardware model | NVIDIA A100-SXM4-40GB |
+| GPU architecture | `not-captured` |
+| Driver version | `not-captured` |
+| Container base/image identity | Isaac ROS 4.5-compatible; immutable digest `not-captured` |
 | ORT | Triton `libonnxruntime.so`, version 1.23.1 |
+| ORT source/build revision | `not-captured` in this checked-in historical record |
+| Application/Managed revisions | `not-captured` in this checked-in historical record |
 | Dataset | `r2bdataset2024_v1/r2b_robotarm`; hash `8eee68848ee1a95e21b1cd44d5d6ba71` |
 | Capture policy | Same input, `CAPTURE_PLAYBACK_RATE=0.25`, stamp pairing |
 | Release status | `INCONCLUSIVE` pending teardown repair |
 
-Exact revisions, runtime-image digest, dirty-state hashes, and archive paths
-are retained in the access-controlled external result archive.
+Exact revisions, dirty-state hashes, and archive paths remain in the
+access-controlled external result archive. The software fields marked
+`not-captured` were not promoted from that historical archive; they must be
+captured in a new public baseline rather than inferred.
 
 ## Throughput observations
 

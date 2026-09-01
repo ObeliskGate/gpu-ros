@@ -1,12 +1,17 @@
 # Experiment runbooks
 
 These runbooks are for the current remediation tip. Run them in the appropriate
-runtime environment, not in the WSL source-only checkout. They are ordered so
-that a failed cheap gate does not waste a long benchmark allocation.
+runtime environment, not in the WSL source-only checkout. The public
+[AMD runtime contract](amd-runtime-contract.md) is the canonical definition of
+that environment; scheduler and deployment wrappers are optional adapters.
+The runbooks are ordered so that a failed cheap gate does not waste a long
+benchmark allocation.
 
 ## Run order
 
-1. Prepare external sources, assets, and the exact external ORT install.
+1. Read the [AMD runtime contract](amd-runtime-contract.md) when running an
+   AMD lane; prepare external sources, assets, and the exact external ORT
+   install.
 2. Run environment preflight, clean build, package tests, and static tests.
 3. Validate the formal RT-DETRv2 export and provider parity.
 4. Capture fixed-input outputs and complete numeric/provider/copy audits.
@@ -85,7 +90,9 @@ AMD formal work requires a pristine recursive ORT checkout at the exact commit
 in `config/onnxruntime.lock` and a completed install produced by
 `tools/build-phase2a-external-ort.sh`. Set `OVG_ORT_ROOT` to the resulting
 fingerprinted install before `phase2-amd.sh preflight`, `colcon`, capture, or
-benchmark commands.
+benchmark commands. The public runtime contract documents the mounts and
+device interfaces needed to make that install visible; a scheduler-specific
+environment file is not a prerequisite.
 
 The ORT build is intentionally separate from the application build. Record
 the install fingerprint and `build-info.txt` in the result archive.
@@ -138,3 +145,10 @@ For an incomplete profiler record, report `INCONCLUSIVE`; do not convert an
 unresolved copy record into a zero-copy claim. Mixed MIGraphX+CPU provider
 placement is allowed when MIGraphX kernels are present and the CPU node list,
 count, and share are reported.
+
+The result archive is expected to retain both sensitive deployment metadata
+(privately) and public scientific/software provenance. Public summaries must
+include the hardware model, GPU target, ROS/ROCm/MIGraphX/ORT identities,
+container recipe or image digest, model/data hashes, and application/sibling
+revisions. Hostnames, user names, scheduler IDs, and deployment paths remain
+private.

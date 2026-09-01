@@ -20,15 +20,13 @@ The adapters are not silently inserted into the production direct graph.
 
 ## Build and contract gates
 
-Use the same AMD environment and external ORT procedure as
-[Phase 2A](phase2a-amd.md). Build and source the application and sibling
-workspace once. Run the Managed sibling's lifecycle/event/device tests and the
-application package tests before any real-model benchmark:
-
-Source the site-specific environment contract before entering the runtime; it
-defines the external state, asset, and result roots. Keep those values in the
-local environment rather than copying them into this runbook. No `uv` command
-is needed in the AMD SIF.
+Use the public [AMD runtime contract](amd-runtime-contract.md) and the same
+external ORT procedure as [Phase 2A](phase2a-amd.md). Build and source the
+application and sibling workspace once. Run the Managed sibling's
+lifecycle/event/device tests and the application package tests before any
+real-model benchmark. The contract is complete without a private hostname,
+partition, SIF filename, or deployment path; those are optional site-adapter
+inputs. No `uv` command is needed in the AMD SIF.
 
 If the login shell exports `APPTAINERENV_HOME`, clear it before starting the
 Apptainer launcher:
@@ -134,6 +132,10 @@ state. Dirty state is evidence, not a run gate.
 Phase 2B is not closed by throughput alone. Both models require package/POL
 tests, direct and staged topology checks, strict Managed contract checks,
 fixed-input comparison, provider/copy audit, and the three-lane matrix. The
-removed high-load experiment is not an acceptance gate. Current AMD result
-reports remain historical until this sequence completes on the selected
+removed high-load experiment is not an acceptance gate. A matrix shell `PASS`
+only proves that the nine lane processes emitted JSON; promote a performance
+baseline only after publishing each lane's three peak reports, fixed 10/30/60
+rows, aggregation rule, and correctness comparison. Use the tolerance and
+status semantics in [`results/README.md`](../results/README.md). Current AMD
+result reports remain historical until this sequence completes on the selected
 sibling and application revisions.
