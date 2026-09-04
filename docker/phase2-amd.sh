@@ -20,7 +20,7 @@ if [[ -n "${OVG_APPTAINER_SIF:-}" ]]; then
   APPTAINER_SIF="${OVG_APPTAINER_SIF}"
   APPTAINER_SIF_EXPLICIT=1
 else
-  APPTAINER_SIF="${STATE_ROOT}phase2-amd-dev-<image-id>.sif"
+  APPTAINER_SIF="${STATE_ROOT}/images/phase2-amd.sif"
 fi
 if [[ "${APPTAINER_SIF}" != /* ]]; then
   APPTAINER_SIF="${ROOT_DIR}/${APPTAINER_SIF}"
@@ -136,7 +136,7 @@ Environment:
   OVG_ORT_ROOT=/workspaces/ovg-ort/install/<fingerprint>
                                       Exact external ORT install; required for AMD runs.
   OVG_ORT_STATE_HOST=/path            Host directory bound at /workspaces/ovg-ort.
-  OVG_APPTAINER_SIF=phase2-amd-dev-<image-id>.sif  SIF used by Apptainer.
+  OVG_APPTAINER_SIF=/path/image.sif  SIF used by Apptainer.
   OVG_APPTAINER_IMAGE_URI=...        Optional URI for one-time SIF pull.
   OVG_APPTAINER_INSTANCE=1           Opt into an Apptainer instance for up/stop.
   OVG_REQUIRE_SLURM=1|0               Make Slurm mismatches fatal (default 0/warn).
@@ -537,7 +537,7 @@ main() {
       start_runtime
       run_phase2 env
       if [[ "${OVG_PREPARE_ASSETS:-0}" == 1 ]]; then
-        run_phase2 assets \
+        run_phase2 assets prepare \
           --model-profile rtdetrv2_r50 \
           --execution-provider migraphx
       fi

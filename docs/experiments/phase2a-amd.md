@@ -59,7 +59,7 @@ below are the complete no-`uv` in-container asset gate:
 
 ```bash
 phase2 assets status
-phase2 assets \
+phase2 assets prepare \
   --model-profile rtdetrv2_r50 \
   --execution-provider migraphx
 ```
@@ -82,7 +82,7 @@ then validate the exact RT-DETR/R2B profile selected by the provider:
 
 ```bash
 phase2 assets status
-phase2 assets --model-profile rtdetrv2_r50 --execution-provider migraphx
+phase2 assets prepare --model-profile rtdetrv2_r50 --execution-provider migraphx
 ```
 
 For the YOLO lane, first import the user asset with profile `yolov8`, then run

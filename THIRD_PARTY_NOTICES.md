@@ -88,9 +88,13 @@ The following unchanged test image copies are from NVIDIA-ISAAC-ROS/isaac_ros_ob
 
 The fixture is distributed under Apache-2.0, with upstream attribution to NVIDIA CORPORATION & AFFILIATES. Image contents are unchanged. SHA-256: `84b21f989fca7b98ca4cfb902346401a0c2d917cff2fbf4f207bad98b30bbdd1`.
 
+Source and license: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection/blob/060ced887bd8a3a0be60b1fa454365942eefd128/isaac_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg and https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection/blob/060ced887bd8a3a0be60b1fa454365942eefd128/LICENSE .
+
 ## SyntheticaDETR external model
 
 SyntheticaDETR 1.0.0_onnx is an external asset whose published metadata points to the NVIDIA Deep Learning Models License (August 10, 2021); section 1.1 limits applications to systems with NVIDIA GPUs. This source release does not grant model rights or establish permission for historical ORT/AMD uses.
+
+Model metadata: https://api.ngc.nvidia.com/v2/models/nvidia/isaac/synthetica_detr/versions/1.0.0_onnx . Applicable published license: https://developer.download.nvidia.com/licenses/tao_toolkit_21-08_models_eula.pdf .
 
 ## ROS, CUDA, HIP, and external assets
 
