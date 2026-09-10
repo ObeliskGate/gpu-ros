@@ -86,7 +86,8 @@ cmake --build build/core --parallel
 ctest --test-dir build/core --output-on-failure
 ```
 
-Enable one or both backends when the matching SDK is installed:
+Enable one or both backends when the matching SDK is installed. HIP requires an
+installed ROCm HIP package when `GPU_ROS_MANAGED_HIP_REQUIRE_SDK=ON`:
 
 ```bash
 cmake -S . -B build/hip \
@@ -97,9 +98,35 @@ cmake --build build/hip --parallel
 ctest --test-dir build/hip --output-on-failure
 ```
 
-Replace the HIP options with `GPU_ROS_MANAGED_BUILD_CUDA=ON` to build the CUDA
-backend. GPU tests return CTest skip code 77 when no compatible device is
-available.
+For CUDA, enable the backend and disable HIP. There is no CUDA
+`REQUIRE_SDK` option. If CMake cannot find the CUDA Toolkit, it reports that
+the CUDA backend is unavailable and continues without that backend:
+
+```bash
+cmake -S . -B build/cuda \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=ON \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+cmake --build build/cuda --parallel
+ctest --test-dir build/cuda --output-on-failure
+```
+
+The CUDA and HIP device tests use CTest skip code 77 when no compatible
+device is available. A missing SDK can therefore leave the corresponding
+backend out of the build; it does not make the standalone configure fail
+unless the HIP `REQUIRE_SDK` option above is enabled.
+
+For a focused standalone run, invoke CTest from the matching build directory:
+
+```bash
+ctest --test-dir build/core -R gpu_ros_managed_core_test --output-on-failure
+ctest --test-dir build/cuda -R gpu_ros_managed_cuda_stream_test --output-on-failure
+ctest --test-dir build/hip -R 'gpu_ros_managed_(hip_copy|hip_dso_identity)_test' \
+  --output-on-failure
+```
+
+The backend tests require their SDK and a compatible device; the core test
+only requires the C++ build. CTest reports device-unavailable tests as
+skipped rather than passing them.
 
 ## Build in a ROS 2 workspace
 
@@ -247,9 +274,35 @@ Runtime MIGraphX.
 ## Contributing
 
 Changes should include tests for ownership, readiness, error, and shutdown
-behavior. Run the standalone CTest suite for core or backend changes and the
-relevant `colcon test` packages for ROS changes. Keep generated build trees,
-profiles, traces, and GPU artifacts out of commits.
+behavior. For standalone changes, configure and build the relevant tree, then
+run its tests from that build directory:
+
+```bash
+ctest --test-dir build/core --output-on-failure
+ctest --test-dir build/hip --output-on-failure
+ctest --test-dir build/cuda --output-on-failure
+```
+
+Only run the backend command for a tree configured with that backend. Those
+tests need the matching SDK, and the device tests skip with code 77 when no
+compatible device is available.
+
+For ROS package changes, source the ROS distribution and the workspace overlay
+from the workspace root, then run only the affected packages:
+
+```bash
+cd gpu_ros_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+colcon test --packages-select \
+  gpu_ros_managed_core gpu_ros_managed_ros gpu_ros_managed_tensor_bundle
+colcon test-result --verbose
+```
+
+The TensorBundle test also requires the separately provided
+`gpu_ros_tensor_bundle_msgs` package. `colcon test` runs from the workspace
+root after a successful `colcon build`; it does not require a merged install.
+Keep generated build trees, profiles, traces, and GPU artifacts out of commits.
 
 ## License and provenance
 
