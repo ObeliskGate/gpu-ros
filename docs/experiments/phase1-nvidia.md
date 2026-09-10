@@ -199,6 +199,54 @@ The C/D/Managed historical processes wrote valid JSON but later failed during
 teardown. Mark those rows `INCONCLUSIVE` for clean-release purposes. Do not
 turn valid JSON into a clean pass solely because throughput was measured.
 
+## Phase 0 published baseline
+
+These release-4.4 reference values are retained for historical comparison.
+They are not current AMD entry points. The local A100 run-through measured
+RT-DETR at 251.03 fps / 13.18 ms and Grounding DINO at 70.59 fps / 26.77 ms
+at 30 Hz. NVIDIA's published RTX 5090 and AGX Thor T5000 values were:
+
+| Graph | Input | RTX 5090 | AGX Thor T5000 |
+| --- | --- | --- | --- |
+| DetectNet (PeopleNet) | 544p | 227 fps / 18 ms | 143 fps / 18 ms |
+| RT-DETR (SyntheticaDETR) | 720p | 444 fps / 11 ms | 188 fps / 12 ms |
+| Grounding DINO | 544p | 130 fps / 15 ms | 23.4 fps / 50 ms |
+
+Phase 0 package and asset details are the NVIDIA benchmark inputs, not
+migrated package support. The release-4.4 apt packages were:
+
+```text
+ros-jazzy-isaac-ros-rtdetr-benchmark
+ros-jazzy-isaac-ros-grounding-dino-benchmark
+ros-jazzy-isaac-ros-detectnet-benchmark
+```
+
+The first two pulled `isaac_ros_tensor_rt`, `isaac_ros_dnn_image_encoder`,
+`isaac_ros_image_proc`, `isaac_ros_tensor_proc`, `isaac_ros_benchmark`,
+`NitrosPlaybackNode`, and the NITROS/GXF runtime. DetectNet used
+`isaac_ros_triton` rather than TensorRT.
+
+| Benchmark | Model asset | Dataset asset |
+| --- | --- | --- |
+| RT-DETR | `nvidia/isaac/synthetica_detr:1.0.0_onnx` -> `models/sdetr/sdetr_grasp.onnx` | `nvidia/isaac/r2bdataset2024:1` -> `datasets/r2b_dataset/r2b_robotarm` |
+| Grounding DINO | `nvidia/tao/grounding_dino:grounding_dino_swin_tiny_commercial_deployable_v1.0` -> `models/grounding_dino/grounding_dino_model.onnx` | `r2b_robotarm` |
+| DetectNet | `nvidia/tao/peoplenet` `deployable_quantized_onnx_v2.6.3`: `resnet34_peoplenet.onnx`, `resnet34_peoplenet_int8.txt`, `config.pbtxt`, `labels.txt` | `nvidia/isaac/r2bdataset2023:2` -> `datasets/r2b_dataset/r2b_hallway` |
+
+The local DetectNet run was not measured. The historical commands were:
+
+```bash
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_rtdetr_benchmark/scripts/isaac_ros_rtdetr_graph.py
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_detectnet_benchmark/scripts/isaac_ros_detectnet_graph.py
+launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_grounding_dino_benchmark/scripts/isaac_ros_grounding_dino_graph.py
+```
+
+The source was NVIDIA's [performance page](https://nvidia-isaac-ros.github.io/performance/index.html)
+and the [release-4.4 benchmark scripts](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/tree/release-4.4).
+Local result JSONs were not committed; the archived names were
+`rt-detr-baseline.json` and `grounding-dino-baseline.json`. The local machine
+was an NVIDIA A100-SXM4-40GB. These commands require the historical NVIDIA
+workspace and are not AMD build or launch instructions.
+
 ## Archive checklist
 
 For each lane archive the raw report, command line, exit/teardown status,

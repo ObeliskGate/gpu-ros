@@ -1,264 +1,155 @@
 # AGENTS.md
 
-## Project Overview
+## Project scope
 
-This project migrates NVIDIA Isaac ROS object detection packages from the NVIDIA-proprietary stack (TensorRT + NITROS + GXF) to a vendor-neutral runtime (ONNX Runtime) that supports both NVIDIA (CUDA EP) and AMD (ROCm/MIGraphX EP) GPUs.
+This repository contains the migrated ROS 2 object-detection application. The
+maintained implementations are RT-DETRv2 and YOLOv8 under
+`migrated_packages/`. Standard ROS 2 transport uses the project-owned
+`gpu_ros_tensor_bundle_msgs/msg/TensorBundle`; the managed device-buffer
+runtime is maintained in the sibling `gpu_ros_managed` repository.
 
-The active upstream source is `isaac_ros_object_detection` v4.5.0, which
-contains detection pipelines for YOLOv8, RT-DETR, Grounding DINO, and
-DetectNet. Phase 0 and Phase 1 measurements remain historical 4.4.0 results
-unless they are explicitly rerun and labeled as 4.5.0.
+The current validation target is ROS 2 Jazzy on Ubuntu 24.04 with ROCm 7.1.1,
+ONNX Runtime 1.23.1 at the revision in `config/onnxruntime.lock`, and the
+selected MIGraphX GPU target. Other ROS, ROCm, GPU, and ORT combinations are
+not verified. The upstream reference is
+[NVIDIA-ISAAC-ROS/isaac_ros_object_detection](https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_object_detection).
+Pinned external NVIDIA sources are described by
+`external/nvidia-isaac-ros.repos` and the reference manifests.
 
-## Optional Local Environment
+If `inner_docs/environment_conventions.md` exists, read it for machine-local
+paths, host roles, and operational commands. It is intentionally untracked
+and may refine environment details, but it does not override this document's
+architecture, security, scope, or quality rules.
 
-If `inner_docs/environment_conventions.md` exists, read it for machine-local paths,
-remote-host roles, and operational commands. The file is intentionally untracked.
-It may refine environment-specific details, but the architecture, security, scope,
-and quality requirements in this `AGENTS.md` remain authoritative.
+`gpu_ros_rtdetr` and `gpu_ros_yolov8` are implemented here. Grounding DINO and
+DetectNet remain deferred upstream scope; their names in historical Phase 0/1
+records do not mean that this repository can build or launch them.
 
-## Long-term Goals
+## Architecture and dependency boundaries
 
-0. **Phase 0 (completed)**: Reproduce NVIDIA's official benchmark numbers on our NVIDIA hardware to establish a verified baseline before making any code changes.
-1. **Phase 1 (completed)**: Replace `isaac_ros_tensor_rt` with an ONNX Runtime inference node using the project-owned `gpu_ros_tensor_bundle_msgs/msg/TensorBundle` interface. Remove NITROS dependency from decoder nodes. Validate on NVIDIA GPU and profile four complete configurations organized by inference backend and application-interface variant; this is not a strict additive two-factor measurement. The historical NVIDIA/reference lane may cross the old interface through `gpu_ros_nvidia_tensor_bundle_compat`:
-   - (A) TensorRT + NITROS (baseline)
-   - (B) TensorRT + standard ROS 2-compatible migrated interfaces
-   - (C) ONNX Runtime + NITROS (same NVIDIA/native pipeline side as A)
-   - (D) ONNX Runtime + standard ROS 2 migrated interfaces (target)
-2. **Phase 2A (completed)**: Validate the AMD standard ROS 2 paths for RT-DETR and YOLOv8 with ONNX Runtime MIGraphX EP. These paths are the accepted reference implementations for later managed-transport work.
-3. **Phase 2B (active, separate sibling repository)**: Build the reusable `gpu_ros_managed` device-buffer TensorBundle transport/runtime layer and integrate it through the owning `ITensorBundleIO` contract in this repository. Phase 2B uses the completed Phase 2A standard ROS 2 paths as its AMD reference.
-4. **Phase 3**: Extend the migrated AMD/std ROS 2 pattern to Grounding DINO and other deferred object detection pipelines.
+The canonical AMD standard path is:
 
-The final Phase 1 NVIDIA results, correctness checks, provider-placement audit,
-and interpretation limits are recorded in
-[`docs/experiments/phase1-nvidia.md`](docs/experiments/phase1-nvidia.md). The normalized machine-readable
-summary is
-[`migrated_packages/benchmark_results/phase1_final_summary_20260722.json`](migrated_packages/benchmark_results/phase1_final_summary_20260722.json).
-
-## Phase 0: Reproduce NVIDIA Official Benchmarks
-
-### Status
-
-**Completed for the two graphs in scope of Phase 1 migration.** Baseline reproduced on NVIDIA A100-SXM4-40GB:
-
-| Graph | Ours (A100) | NVIDIA published (RTX 5090) | Status |
-|-------|-------------|------------------------------|--------|
-| RT-DETR | 251.03 fps / 13.18 ms @ 30Hz | 444 fps / 11 ms @ 30Hz | ✅ Reproduced |
-| Grounding DINO | 70.59 fps / 26.77 ms @ 30Hz | 130 fps / 15 ms @ 30Hz | ✅ Reproduced |
-| DetectNet | Not measured | 227 fps / 18 ms @ 30Hz | ⏭️ Skipped (deferred from Phase 1, see Subpackage Status) |
-
-Result JSONs are saved locally (not committed; archived as `rt-detr-baseline.json` / `grounding-dino-baseline.json`).
-
-### Goal
-
-Run the official `isaac_ros_benchmark` test suite for the object detection graphs in Phase 1 migration scope and confirm our hardware produces numbers in the same ballpark as NVIDIA's published data.
-
-### NVIDIA Published Baseline (historical release-4.4)
-
-| Graph | Input | x86_64 + RTX 5090 | AGX Thor T5000 |
-|-------|-------|-------------------|----------------|
-| DetectNet (PeopleNet) | 544p | 227 fps / 18ms @ 30Hz | 143 fps / 18ms |
-| RT-DETR (SyntheticaDETR) | 720p | 444 fps / 11ms @ 30Hz | 188 fps / 12ms |
-| Grounding DINO | 544p | 130 fps / 15ms @ 30Hz | 23.4 fps / 50ms |
-
-Source: https://nvidia-isaac-ros.github.io/performance/index.html
-
-Benchmark scripts & result JSONs: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_benchmark/tree/release-4.4
-
-### Required Debian Packages (provided by Isaac ROS apt repo)
-
-```
-ros-jazzy-isaac-ros-rtdetr-benchmark           # RT-DETR benchmark + isaac_ros_rtdetr graph deps
-ros-jazzy-isaac-ros-grounding-dino-benchmark   # Grounding DINO benchmark + isaac_ros_grounding_dino graph deps
-ros-jazzy-isaac-ros-detectnet-benchmark        # DetectNet uses Triton, not TensorRT. Install only if running DetectNet.
+```text
+Image -> encoder/preprocessor -> TensorBundle -> ONNX Runtime/MIGraphX
+      -> TensorBundle -> decoder -> Detection2DArray
 ```
 
-Each `*-benchmark` package transitively pulls in the corresponding graph implementation
-(`isaac_ros_rtdetr` etc.), the inference backend (`isaac_ros_tensor_rt` for RT-DETR/GDino,
-`isaac_ros_triton` for DetectNet), preprocessing nodes (`isaac_ros_dnn_image_encoder`,
-`isaac_ros_image_proc`, `isaac_ros_tensor_proc`), the `isaac_ros_benchmark` framework with
-`NitrosPlaybackNode`, and the underlying NITROS / GXF runtime.
+The managed path runs the graph in one component process and passes owned HIP
+buffers through the sibling `gpu_ros_managed` transport. It does not promise
+that the complete ROS graph or model execution performs no copies.
 
-### Required Models & Datasets
+`gpu_ros_nvidia_tensor_bundle_compat` is the only package allowed to depend on
+`isaac_ros_tensor_list_interfaces`. It exists for NVIDIA/reference comparison
+and is excluded from AMD build profiles. Do not add NVIDIA TensorList or GXF
+fields to the project TensorBundle. AMD builds disable NITROS and CUDA and
+enable MIGraphX. The project-built ORT installation, selected for the target
+GPU, is required; `/opt/onnxruntime` in an image is legacy build content, not
+an AMD runtime fallback.
+The application owns provider selection, I/O binding, synchronization, and
+staging policy. The sibling transport does not own model logic, preprocessing,
+decoding, or provider policy. Phase 2A `transport=std` remains independently
+supported.
 
-| Benchmark | External model asset | External dataset asset |
-|-----------|-------------|---------------|
-| RT-DETR | `nvidia/isaac/synthetica_detr:1.0.0_onnx` → `models/sdetr/sdetr_grasp.onnx` (FP16 TRT engine generated on first run) | `nvidia/isaac/r2bdataset2024:1` → `datasets/r2b_dataset/r2b_robotarm` |
-| Grounding DINO | `nvidia/tao/grounding_dino:grounding_dino_swin_tiny_commercial_deployable_v1.0` → rename to `models/grounding_dino/grounding_dino_model.onnx` | (reuses `r2b_robotarm`) |
-| DetectNet | `nvidia/tao/peoplenet` (`deployable_quantized_onnx_v2.6.3`): `resnet34_peoplenet.onnx` + `resnet34_peoplenet_int8.txt` + `config.pbtxt` + `labels.txt` | `nvidia/isaac/r2bdataset2023:2` → `datasets/r2b_dataset/r2b_hallway` |
+Discover ORT through `ONNXRUNTIME_ROOT`, or set
+`ONNXRUNTIME_INCLUDE_DIR` and `ONNXRUNTIME_LIBRARY` explicitly. The canonical
+AMD configuration uses `-DBUILD_NITROS_TRANSPORT=OFF`,
+`-DORT_ENABLE_CUDA=OFF`, `-DORT_ENABLE_ROCM=OFF`,
+`-DORT_ENABLE_MIGRAPHX=ON`, and `-DBUILD_MIGRAPHX_POL_TEST=ON`. A MIGraphX
+request without `ORT_ENABLE_MIGRAPHX=ON` must fail clearly rather than fall
+back to CPU.
 
-### Reproduction Procedure
+The RT-DETRv2 R50 contract uses `images` and `orig_target_sizes` inputs and
+produces `labels`, `boxes`, and `scores`. Keep these names and the configured
+shape/type contract aligned with `config/model-profiles.json`.
 
-See [`docs/experiments/README.md`](docs/experiments/README.md)
-for the actual commands and gotchas.
 
-### Running Benchmarks
+When changing the owning `ITensorBundleIO` contract, update the sibling
+managed repository and this repository's callers together. Keep model-specific
+preprocessing and decoders here; do not move them into the transport layer.
+
+## Models and data
+
+The repository does not redistribute model weights, checkpoints, ONNX files,
+engines, datasets, bags, traces, profiles, logs, or SIF images. The asset tool
+works offline and imports user-held files:
 
 ```bash
-# RT-DETR benchmark
-launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_rtdetr_benchmark/scripts/isaac_ros_rtdetr_graph.py
-
-# DetectNet benchmark
-launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_detectnet_benchmark/scripts/isaac_ros_detectnet_graph.py
-
-# Grounding DINO benchmark
-launch_test src/isaac_ros_benchmark/benchmarks/isaac_ros_grounding_dino_benchmark/scripts/isaac_ros_grounding_dino_graph.py
+export OVG_ASSETS_ROOT=/absolute/path/to/external-assets
+./tools/phase2-assets status
+./tools/phase2-assets import-model --profile rtdetrv2_r50 \
+  --source /absolute/path/to/rtdetrv2_r50.onnx
 ```
 
-### Success Criteria
+Use the model contracts and hashes in `config/model-profiles.json` and
+[RT-DETRv2 validation](docs/experiments/rtdetrv2-validation.md). A hash is a
+compatibility check, not a license grant. Apache-2.0 applies to identified
+upstream source code, not automatically to checkpoint or ONNX bytes.
+SyntheticaDETR is a historical NVIDIA/reference profile and remains subject to
+its model terms. Do not add download or export steps for YOLOv8 weights.
 
-- Both in-scope benchmarks, RT-DETR and Grounding DINO, run to completion without errors
-- Measured FPS is within ±15% of NVIDIA's published numbers (accounting for GPU hardware differences)
-- Results JSON files are saved for future comparison against our ported pipeline
+## Phase history and runbooks
 
-### Notes
+Phase 0 ran the in-scope NVIDIA RT-DETR and Grounding DINO benchmarks and
+recorded a local A100 baseline. This is not a same-hardware reproduction of
+NVIDIA's published RTX 5090 performance. The historical measurements, package
+and asset tables, and commands are retained in
+[Phase 1 NVIDIA](docs/experiments/phase1-nvidia.md#phase-0-published-baseline).
+Use [the experiment runbooks](docs/experiments/README.md) for the current
+procedures. Private machine-readable
+result JSONs are not published with this repository.
 
-- NVIDIA does **not** publish YOLOv8 benchmark results. No official baseline exists for that pipeline.
-- The benchmark framework uses `NitrosPlaybackNode` to feed data and auto-tunes publisher rate to find peak throughput.
-- TRT engine files are generated on first run via `trtexec`; first run will be slow
-- Our hardware GPU model will differ from NVIDIA's test rigs; document the delta
+Phase 1's NVIDIA A/B/C/D matrix and detailed profiling remain historical
+reference work. Phase 2A measures AMD standard ROS 2 plus MIGraphX for RT-DETR
+and YOLOv8. Phase 2B covers managed transport in the sibling repository. Do
+not compare A100, RTX 5090, and MI350X values as if they isolate one backend;
+retain the hardware and software identities. A ±15% criterion applies only to
+same-hardware comparisons or to a documented normalization.
 
-## Phase 2A: AMD Standard ROS 2 Paths
+Use these entry points rather than duplicating historical tables here:
 
-### Scope
+- [Phase 2A AMD](docs/experiments/phase2a-amd.md)
+- [Phase 2B managed](docs/experiments/phase2b-managed.md)
+- [Phase 1 NVIDIA](docs/experiments/phase1-nvidia.md)
+- [Published result summaries](docs/results/)
 
-Phase 2A is complete in this repository. It covers two accepted AMD standard ROS 2 paths:
+## Development and verification
 
-RT-DETR:
+Keep external checkouts, assets, and result output outside the worktree. For
+AMD work, follow [the runtime contract](docs/experiments/amd-runtime-contract.md)
+and use the launcher or the explicit README build command. The direct build
+must retain explicit `--base-paths migrated_packages ../gpu_ros_managed` and
+select the AMD package set; do not include the NVIDIA compatibility package.
 
-```
-Image -> RtDetrImageEncoderNode (std ROS 2)
-      -> RtDetrPreprocessorNode (project-owned TensorBundle)
-      -> OnnxInferenceNode (transport=std, execution_provider=migraphx)
-      -> RtDetrDecoderNode (std ROS 2)
-      -> Detection2DArray
-```
+Before requesting hardware, use the static and Python checks in the experiment
+index. In a built ROS workspace, run the package-specific `colcon test` command
+and inspect it with `colcon test-result --all --verbose`. For an AMD provider
+run, verify MIGraphX kernel events and record the external ORT fingerprint. A
+MIGraphX run fails the provider audit only when no MIGraphX kernel events exist.
+Mixed MIGraphX/CPU placement is allowed, but the report must list CPU node
+names, counts, and proportions. The historical five-CPU-node RT-DETR result is
+an observation, not an allowlist, and YOLO is not required to have zero CPU
+nodes. Compare detections with
+`migrated_packages/gpu_ros_detection_validation/scripts/compare_detection2d_bags.py`.
 
-YOLOv8:
+Use stamp matching when source timestamps are preserved. Use index matching
+only when input order is confirmed and timestamps are not comparable. Do not
+silently fall back from MIGraphX to CPU. Never treat an incomplete profiler
+record as a zero-copy result; report it as `INCONCLUSIVE`.
 
-```
-Image -> YoloV8ImageEncoderNode (std ROS 2)
-      -> OnnxInferenceNode (transport=std, execution_provider=migraphx)
-      -> YoloV8DecoderNode (std ROS 2)
-      -> Detection2DArray
-```
+## Security and data handling
 
-Phase 2A does not reproduce the Phase 1 A/B/C/D matrix on AMD. AMD benchmarking measures the standard ROS 2 plus ONNX Runtime MIGraphX paths above. See [`docs/results/amd-phase2-campaign-20260901.md`](docs/results/amd-phase2-campaign-20260901.md) for the current implementation and results.
+Do not commit credentials, private paths, hostnames, scheduler identifiers,
+model bytes, bags, traces, or deployment metadata. Keep private result details
+outside Git and publish only the provenance needed to interpret a result.
+Read `CONTRIBUTING.md` and `SECURITY.md` for repository reporting and disclosure
+rules. Do not weaken provider checks, digest checks, permission checks, or
+asset-license boundaries to make a run pass.
 
-### Requirements
+## Pull requests and changes
 
-- Use `gpu_ros_tensor_bundle_msgs/msg/TensorBundle` on every canonical project
-  path. Do not add NVIDIA's `TensorShape`, rank, stride, or GXF enum fields to
-  the project message.
-- `gpu_ros_nvidia_tensor_bundle_compat` is the only project package allowed to
-  depend on `isaac_ros_tensor_list_interfaces`. It is an explicit NVIDIA-only
-  boundary and is excluded from AMD colcon profiles. NVIDIA reference launches
-  must show the adapter at the old/new message boundary; AMD launches must not
-  resolve it.
-- ONNX Runtime must be discoverable through `ONNXRUNTIME_ROOT`, or through explicit `ONNXRUNTIME_INCLUDE_DIR` and `ONNXRUNTIME_LIBRARY` CMake parameters.
-- Every AMD build, validation, capture, and benchmark run must use the project-built external ONNX Runtime for its selected GPU target. The SIF copy at `/opt/onnxruntime` is legacy build-only content and is never a formal AMD runtime fallback.
-- Build the AMD Phase 2A profile with `-DBUILD_NITROS_TRANSPORT=OFF`, `-DORT_ENABLE_CUDA=OFF`, `-DORT_ENABLE_ROCM=OFF`, `-DORT_ENABLE_MIGRAPHX=ON`, and `-DBUILD_MIGRAPHX_POL_TEST=ON`.
-- Build AMD/CPU standard ROS 2 paths with `-DBUILD_NITROS_TRANSPORT=OFF` when Isaac ROS NITROS/CUDA packages are not present. If `execution_provider:=migraphx` is requested without `-DORT_ENABLE_MIGRAPHX=ON`, the node must fail clearly instead of silently falling back to CPU.
-- The AMD RT-DETR default is the fixed-revision RT-DETRv2 R50 ONNX export documented in docs/experiments/phase2a-amd.md. Apache-2.0 describes the pinned upstream source code, not a grant for checkpoint or ONNX bytes. Those assets have separate applicable terms and are not distributed by this source release. SyntheticaDETR is retained only as a historical NVIDIA/reference profile, subject to its model terms.
-- The repository does not contain, download, or export YOLOv8 weights. YOLOv8 is an optional asset supplied by the user through the explicit local import command. Compatibility is determined by the canonical ONNX SHA-256 recorded in the runbook.
-
-### Benchmark And Validation
-
-- Run the RT-DETR and YOLOv8 Phase 2A AMD benchmark scripts for the standard ROS 2 plus MIGraphX graphs and archive JSON results outside Git.
-- Compare AMD `Detection2DArray` output against the corresponding NVIDIA reference bag using `migrated_packages/gpu_ros_detection_validation/scripts/compare_detection2d_bags.py`. Prefer stamp matching when source timestamps are preserved. Use index matching only when the input order is confirmed and timestamps are not comparable.
-- Audit ORT profiles for MIGraphX kernel events, CPU fallback placement, and the selected external ORT libraries. A MIGraphX run fails the provider audit only when no MIGraphX kernel events exist. Mixed MIGraphX/CPU placement is accepted and must report CPU node names, counts, and proportions.
-- The five CPU postprocessor nodes in one MI350X RT-DETR closure profile and the no-CPU YOLOv8 profile are observations for those tested ORT/model combinations, not correctness contracts or node allowlists.
-
-## Phase 2B: Managed Device TensorBundle Transport Runtime
-
-Phase 2B is the active follow-on phase and is implemented in the independent sibling `gpu_ros_managed` repository. This application consumes the manually selected sibling checkout through colcon and owns only ONNX Runtime provider, binding, synchronization, and staging policy. The sibling provides:
-
-- AMD device-buffer TensorBundle transport.
-- Same-process zero-copy transport for component containers.
-- Future cross-process transport once the device-memory ownership and synchronization contract is defined.
-- Component/container helper APIs for wiring AMD TensorBundle publishers and subscribers.
-
-Phase 2B does not contain object detection model logic, RT-DETR/YOLO/Grounding DINO decoders, detection postprocessing, model-specific preprocessing, or a GXF graph runtime replacement. The existing Phase 2A `transport=std` paths remain independently supported.
-
-## Architecture
-
-### Original pipeline (NVIDIA-only)
-```
-Image → dnn_image_encoder (NITROS) → TensorRTNode (NITROS) → DecoderNode (NITROS) → Detection2DArray
-```
-
-### Target pipeline (vendor-neutral)
-```
-Image → ImageEncoder (std ROS 2) → OnnxInferenceNode (std ROS 2 TensorBundle) → DecoderNode (std ROS 2 TensorBundle) → Detection2DArray
-```
-
-### Phase 2A AMD target pipelines
-
-RT-DETR:
-
-```
-Image → RtDetrImageEncoderNode → RtDetrPreprocessorNode → OnnxInferenceNode(transport=std, EP=MIGraphX) → RtDetrDecoderNode → Detection2DArray
-```
-
-YOLOv8:
-
-```
-Image → YoloV8ImageEncoderNode → OnnxInferenceNode(transport=std, EP=MIGraphX) → YoloV8DecoderNode → Detection2DArray
-```
-
-## Subpackage Status
-
-| Package | Status | Follow-on |
-|---------|----------------------|-------------------|
-| `gpu_ros_rtdetr` | AMD Phase 2A completed | Use as the standard ROS 2 reference for Phase 2B |
-| `gpu_ros_yolov8` | AMD Phase 2A completed | Use as the standard ROS 2 reference for Phase 2B |
-| `isaac_ros_grounding_dino` | Future extension | Reuse the AMD standard ROS 2 pattern after Phase 2B |
-| `isaac_ros_detectnet` | Deferred | Full GXF graph remains outside the current migration scope |
-| `gxf_isaac_detectnet` | Deferred | Pure GXF component remains outside the current migration scope |
-
-## Replacements Used by the Migrated Paths
-
-- `isaac_ros_nitros` / `isaac_ros_managed_nitros`: standard ROS 2 subscriber
-- `isaac_ros_nitros_tensor_list_type`: external NVIDIA/NITROS TensorList types,
-  used only by the NVIDIA reference lane and compatibility boundary
-- `isaac_ros_tensor_rt` (TensorRTNode): ONNX Runtime inference node
-- `isaac_ros_dnn_image_encoder` (NITROS-based): simple OpenCV-based image encoder node
-- `cudaMemcpyAsync` in decoders: host-memory tensor access (data already on host in std msg)
-- `gpu_ros_tensor_bundle_msgs/msg/TensorBundle`: canonical project message;
-  `gpu_ros_nvidia_tensor_bundle_compat` converts it to/from the external
-  NVIDIA `isaac_ros_tensor_list_interfaces/msg/TensorList` only at the
-  NVIDIA boundary.
-
-## Build System
-
-- ROS 2 (Humble or later)
-- `ament_cmake` build type
-- C++17
-- Dependencies: `onnxruntime`, `OpenCV`, `rclcpp`, `vision_msgs`, and
-  `gpu_ros_tensor_bundle_msgs`. The old NVIDIA interface is not a general
-  dependency; it is isolated to the compatibility package.
-
-## Development Notes
-
-- The upstream `isaac_ros_object_detection` repo is kept as-is in `./isaac_ros_object_detection/` for reference.
-- YOLOv8 model files are user-provided external assets. Do not instruct maintainers to download or export them. The canonical ONNX identity and SHA-256 are documented in `docs/experiments/phase2a-amd.md`.
-
-## Profiling Plan
-
-Phase 1 compares four complete configurations on the same NVIDIA GPU, arranged
-as a backend/interface matrix. The matrix is an organizing view, not a claim
-that each neighboring pair differs by one transport wire only:
-
-| Config | Inference Backend | Application/interface variant | Purpose |
-|--------|------------------|-----------|---------|
-| (A) | TensorRT | NITROS | Baseline: original performance |
-| (B) | TensorRT | Standard ROS 2 TensorBundle | Standard-compatible migrated TRT configuration |
-| (C) | ONNX Runtime (CUDA EP) | NITROS | NVIDIA/native ORT counterpart to A |
-| (D) | ONNX Runtime (CUDA EP) | Standard ROS 2 TensorBundle | Target vendor-neutral stack |
-
-Metrics:
-- End-to-end latency (image in → detections out)
-- Inference-only latency (tensor in → tensor out)
-- Throughput (FPS at sustained load)
-- GPU memory usage
-
-Phase 2A AMD profiling measured the RT-DETR and YOLOv8 target paths: ONNX Runtime MIGraphX plus standard ROS 2 TensorBundle. Report those results beside the historical Phase 1 NVIDIA configurations, with the hardware and backend differences stated explicitly. Do not interpret the cross-GPU numbers as a single-variable backend comparison, and do not create an AMD A/B/C/D matrix in this repository.
+Keep changes scoped to the package or runbook being updated. Preserve recorded
+experiment numbers and clearly label historical NVIDIA reference results.
+Document hardware, GPU target, ROS/ROCm/MIGraphX/ORT identities, model/data
+hashes, container identity, and application/sibling revisions in result
+archives. Do not claim support for Grounding DINO or DetectNet from historical
+references alone.

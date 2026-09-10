@@ -214,14 +214,27 @@ export COLCON_DEFAULTS_FILE="$(pwd)/docker/colcon-defaults-phase2a-amd.yaml"
 colcon build \
   --base-paths \
     migrated_packages \
-    ../gpu_ros_managed
+    ../gpu_ros_managed \
+  --packages-select \
+    gpu_ros_managed_core \
+    gpu_ros_managed_cuda \
+    gpu_ros_managed_hip \
+    gpu_ros_managed_ros \
+    gpu_ros_managed_tensor_bundle \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_detection_common \
+    gpu_ros_onnx_inference \
+    gpu_ros_rtdetr \
+    gpu_ros_yolov8 \
+    gpu_ros_detection_validation
 source install/setup.bash
 ```
-
-The AMD defaults disable NITROS and CUDA, require the HIP SDK, and enable the
-MIGraphX provider. If you create a custom build, do not request
-`execution_provider:=migraphx` unless `ORT_ENABLE_MIGRAPHX=ON` was used at
-configure time.
+The AMD defaults disable NITROS and CUDA execution, require the HIP SDK, and
+enable the MIGraphX provider. `gpu_ros_managed_cuda` remains in the selected
+set because `gpu_ros_onnx_inference` declares it as a build dependency; this
+does not enable the CUDA execution provider. If you create a custom build, do
+not request `execution_provider:=migraphx` unless `ORT_ENABLE_MIGRAPHX=ON` was
+used at configure time.
 
 ## Repository layout
 
