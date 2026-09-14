@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gpu_ros_managed_cuda</name>
+  <version>0.1.0</version>
+  <description>CUDA factories for gpu_ros_managed.</description>
+  <maintainer email="unnamets@gmail.com">Boshen Chen</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>gpu_ros_managed_core</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

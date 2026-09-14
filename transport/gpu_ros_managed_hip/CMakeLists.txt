@@ -1,0 +1,84 @@
+cmake_minimum_required(VERSION 3.22)
+project(gpu_ros_managed_hip LANGUAGES CXX)
+find_package(ament_cmake QUIET)
+find_package(hip CONFIG QUIET)
+
+option(GPU_ROS_MANAGED_HIP_REQUIRE_SDK
+  "Fail configuration when the HIP SDK is unavailable"
+  OFF)
+if(hip_FOUND)
+  if(NOT TARGET gpu_ros_managed_core)
+    find_package(gpu_ros_managed_core REQUIRED)
+  endif()
+  add_library(gpu_ros_managed_hip SHARED src/hip_backend.cpp)
+  add_library(gpu_ros_managed::hip ALIAS gpu_ros_managed_hip)
+  set_target_properties(gpu_ros_managed_hip PROPERTIES
+    EXPORT_NAME hip
+    POSITION_INDEPENDENT_CODE ON)
+  target_compile_features(gpu_ros_managed_hip PUBLIC cxx_std_17)
+  target_include_directories(gpu_ros_managed_hip PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+  target_link_libraries(gpu_ros_managed_hip PUBLIC gpu_ros_managed::core hip::host)
+  install(TARGETS gpu_ros_managed_hip EXPORT gpu_ros_managed_hipTargets
+    LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+  install(DIRECTORY include/ DESTINATION include)
+  install(EXPORT gpu_ros_managed_hipTargets
+    FILE gpu_ros_managed_hipTargets.cmake
+    NAMESPACE gpu_ros_managed::
+    DESTINATION share/gpu_ros_managed_hip/cmake)
+  if(ament_cmake_FOUND)
+    ament_export_targets(gpu_ros_managed_hipTargets HAS_LIBRARY_TARGET
+      NAMESPACE gpu_ros_managed::)
+    ament_export_dependencies(gpu_ros_managed_core)
+    ament_export_dependencies(hip)
+  endif()
+  include(CTest)
+  if(BUILD_TESTING)
+    add_executable(gpu_ros_managed_hip_copy_test test/hip_copy_test.cpp)
+    target_link_libraries(gpu_ros_managed_hip_copy_test PRIVATE gpu_ros_managed_hip)
+    target_compile_features(gpu_ros_managed_hip_copy_test PRIVATE cxx_std_17)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+      target_compile_options(gpu_ros_managed_hip_copy_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME gpu_ros_managed_hip_copy_test COMMAND gpu_ros_managed_hip_copy_test)
+    set_tests_properties(gpu_ros_managed_hip_copy_test PROPERTIES SKIP_RETURN_CODE 77)
+
+    add_library(gpu_ros_managed_hip_dso_producer SHARED test/hip_dso_producer.cpp)
+    target_link_libraries(gpu_ros_managed_hip_dso_producer PRIVATE gpu_ros_managed_hip)
+    target_compile_features(gpu_ros_managed_hip_dso_producer PRIVATE cxx_std_17)
+
+    add_library(gpu_ros_managed_hip_dso_consumer SHARED test/hip_dso_consumer.cpp)
+    target_link_libraries(gpu_ros_managed_hip_dso_consumer PRIVATE gpu_ros_managed_hip)
+    target_compile_features(gpu_ros_managed_hip_dso_consumer PRIVATE cxx_std_17)
+
+    add_executable(
+      gpu_ros_managed_hip_dso_identity_test
+      test/hip_dso_identity_test.cpp)
+    target_link_libraries(
+      gpu_ros_managed_hip_dso_identity_test
+      PRIVATE
+        gpu_ros_managed::core
+        gpu_ros_managed_hip_dso_producer
+        gpu_ros_managed_hip_dso_consumer)
+    target_compile_features(gpu_ros_managed_hip_dso_identity_test PRIVATE cxx_std_17)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+      target_compile_options(gpu_ros_managed_hip_dso_identity_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(
+      NAME gpu_ros_managed_hip_dso_identity_test
+      COMMAND gpu_ros_managed_hip_dso_identity_test)
+    set_tests_properties(
+      gpu_ros_managed_hip_dso_identity_test PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
+else()
+  if(GPU_ROS_MANAGED_HIP_REQUIRE_SDK)
+    message(FATAL_ERROR
+      "gpu_ros_managed_hip requires the HIP SDK, but find_package(hip CONFIG) "
+      "failed. Set hip_DIR to the actual ROCm HIP CMake package directory.")
+  endif()
+  message(STATUS "HIP SDK not found; gpu_ros_managed_hip target is unavailable")
+endif()
+if(ament_cmake_FOUND)
+  ament_package()
+endif()
