@@ -5,9 +5,11 @@ install
 log
 third_party
 inner_docs
-isaac_ros_benchmark
-isaac_ros_object_detection
-migrated_packages
+transport
+interfaces
+perception
+compat
+evaluation
 docs
 __pycache__
 *.pyc

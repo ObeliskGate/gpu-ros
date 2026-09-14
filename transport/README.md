@@ -2,10 +2,11 @@
 
 Managed GPU buffers and intra-process ROS 2 transport for CUDA and HIP.
 
-`gpu_ros_managed` provides a small C++17 ownership and synchronization layer
-for passing GPU-resident data between components. It keeps allocation,
-readiness, and lifetime rules independent of the GPU runtime, then supplies
-CUDA and HIP backends plus optional ROS 2 and TensorBundle adapters.
+`gpu_ros_managed` is the transport component of the GPU ROS monorepo. It
+provides a small C++17 ownership and synchronization layer for passing
+GPU-resident data between components. It keeps allocation, readiness, and
+lifetime rules independent of the GPU runtime, then supplies CUDA and HIP
+backends plus optional ROS 2 and TensorBundle adapters.
 
 The library is intended for composable ROS 2 nodes running in one process. It
 does not contain an inference engine, model code, or an inter-process GPU
@@ -64,8 +65,8 @@ Optional requirements depend on the packages being built:
 - ROCm with HIP for `gpu_ros_managed_hip`
 - ROS 2 and `rclcpp` for the ROS wrappers
 - `gpu_ros_tensor_bundle_msgs` for the TensorBundle adapter. The message
-  package currently lives in
-  [`amd_ros_object_detection`](https://github.com/ObeliskGate/amd_ros_object_detection).
+  package is in the same monorepo under
+  [`../interfaces/gpu_ros_tensor_bundle_msgs`](../interfaces/gpu_ros_tensor_bundle_msgs).
 
 ROS 2 Jazzy is the currently tested ROS distribution. CUDA, ROCm, and driver
 compatibility follows the toolchain used to build the application; this
@@ -73,12 +74,23 @@ repository does not ship prebuilt binaries.
 
 ## Build the standalone library
 
-The backend-neutral core has no ROS or GPU SDK dependency:
+The backend-neutral core has no ROS or GPU SDK dependency. From the monorepo
+root, the explicit source directory is `transport`:
 
 ```bash
-git clone https://github.com/ObeliskGate/gpu_ros_managed.git
-cd gpu_ros_managed
+cd /path/to/gpu-ros
+cmake -S transport -B build/transport-core \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+cmake --build build/transport-core --parallel
+ctest --test-dir build/transport-core --output-on-failure
+```
 
+The same standalone tree can be configured from its own directory. In that
+case the working directory is `transport/` and the source option is `.`:
+
+```bash
+cd /path/to/gpu-ros/transport
 cmake -S . -B build/core \
   -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
   -DGPU_ROS_MANAGED_BUILD_HIP=OFF
@@ -86,73 +98,78 @@ cmake --build build/core --parallel
 ctest --test-dir build/core --output-on-failure
 ```
 
-Enable one or both backends when the matching SDK is installed. HIP requires an
-installed ROCm HIP package when `GPU_ROS_MANAGED_HIP_REQUIRE_SDK=ON`:
+Enable one or both backends when the matching SDK is installed. From the
+monorepo root:
 
 ```bash
-cmake -S . -B build/hip \
+cd /path/to/gpu-ros
+cmake -S transport -B build/transport-hip \
   -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
   -DGPU_ROS_MANAGED_BUILD_HIP=ON \
   -DGPU_ROS_MANAGED_HIP_REQUIRE_SDK=ON
-cmake --build build/hip --parallel
-ctest --test-dir build/hip --output-on-failure
-```
+cmake --build build/transport-hip --parallel
+ctest --test-dir build/transport-hip --output-on-failure
 
-For CUDA, enable the backend and disable HIP. There is no CUDA
-`REQUIRE_SDK` option. If CMake cannot find the CUDA Toolkit, it reports that
-the CUDA backend is unavailable and continues without that backend:
-
-```bash
-cmake -S . -B build/cuda \
+cmake -S transport -B build/transport-cuda \
   -DGPU_ROS_MANAGED_BUILD_CUDA=ON \
   -DGPU_ROS_MANAGED_BUILD_HIP=OFF
-cmake --build build/cuda --parallel
-ctest --test-dir build/cuda --output-on-failure
+cmake --build build/transport-cuda --parallel
+ctest --test-dir build/transport-cuda --output-on-failure
 ```
-
-The CUDA and HIP device tests use CTest skip code 77 when no compatible
-device is available. A missing SDK can therefore leave the corresponding
-backend out of the build; it does not make the standalone configure fail
-unless the HIP `REQUIRE_SDK` option above is enabled.
 
 For a focused standalone run, invoke CTest from the matching build directory:
 
 ```bash
-ctest --test-dir build/core -R gpu_ros_managed_core_test --output-on-failure
-ctest --test-dir build/cuda -R gpu_ros_managed_cuda_stream_test --output-on-failure
-ctest --test-dir build/hip -R 'gpu_ros_managed_(hip_copy|hip_dso_identity)_test' \
+ctest --test-dir build/transport-core -R gpu_ros_managed_core_test --output-on-failure
+ctest --test-dir build/transport-cuda -R gpu_ros_managed_cuda_stream_test --output-on-failure
+ctest --test-dir build/transport-hip -R 'gpu_ros_managed_(hip_copy|hip_dso_identity)_test' \
   --output-on-failure
 ```
 
-The backend tests require their SDK and a compatible device; the core test
-only requires the C++ build. CTest reports device-unavailable tests as
-skipped rather than passing them.
+The CUDA and HIP device tests use CTest skip code 77 when no compatible device
+is available. A missing SDK can therefore leave the corresponding backend out
+of the build; it does not make standalone configure fail unless the HIP
+`GPU_ROS_MANAGED_HIP_REQUIRE_SDK` option above is enabled.
+
 
 ## Build in a ROS 2 workspace
 
-The complete ROS adapter build also needs `gpu_ros_tensor_bundle_msgs` from the
-application repository:
+The TensorBundle message package is part of this monorepo under `interfaces/`.
+From the monorepo root, build the transport and interface roots together:
 
 ```bash
-mkdir -p gpu_ros_ws/src
-cd gpu_ros_ws/src
-
-git clone https://github.com/ObeliskGate/gpu_ros_managed.git
-git clone https://github.com/ObeliskGate/amd_ros_object_detection.git
-
-cd ..
+cd /path/to/gpu-ros
 source /opt/ros/jazzy/setup.bash
 
 rosdep install \
   --from-paths \
-    src/gpu_ros_managed \
-    src/amd_ros_object_detection/migrated_packages/gpu_ros_tensor_bundle_msgs \
+    transport \
+    interfaces \
   --ignore-src \
   --rosdistro jazzy \
   -r -y
 
 colcon build \
   --symlink-install \
+  --base-paths \
+    transport \
+    interfaces \
+  --packages-select \
+    gpu_ros_managed_core \
+    gpu_ros_managed_hip \
+    gpu_ros_managed_ros \
+    gpu_ros_tensor_bundle_msgs \
+    gpu_ros_managed_tensor_bundle
+source install/setup.bash
+```
+
+When working from `transport/`, the corresponding interface root is
+`../interfaces`:
+
+```bash
+cd /path/to/gpu-ros/transport
+rosdep install --from-paths . ../interfaces --ignore-src --rosdistro jazzy -r -y
+colcon build --symlink-install --base-paths . ../interfaces \
   --packages-select \
     gpu_ros_managed_core \
     gpu_ros_managed_hip \
@@ -266,10 +283,9 @@ an arbitrary external kernel or inference runtime used the correct stream.
 - ABI compatibility across arbitrary ROS, CUDA, ROCm, and driver versions is
   not guaranteed.
 
-The main integration user is
-[`amd_ros_object_detection`](https://github.com/ObeliskGate/amd_ros_object_detection),
-which runs RT-DETR and YOLOv8 pipelines through the HIP backend and ONNX
-Runtime MIGraphX.
+The application packages in this monorepo use the HIP backend and ONNX Runtime
+MIGraphX for their AMD managed path. See the root README and
+`../docs/experiments/phase2b-managed.md` for the application runbook.
 
 ## Contributing
 
@@ -278,6 +294,7 @@ behavior. For standalone changes, configure and build the relevant tree, then
 run its tests from that build directory:
 
 ```bash
+cd /path/to/gpu-ros/transport
 ctest --test-dir build/core --output-on-failure
 ctest --test-dir build/hip --output-on-failure
 ctest --test-dir build/cuda --output-on-failure
@@ -288,20 +305,20 @@ tests need the matching SDK, and the device tests skip with code 77 when no
 compatible device is available.
 
 For ROS package changes, source the ROS distribution and the workspace overlay
-from the workspace root, then run only the affected packages:
+from the monorepo root, then run only the affected packages:
 
 ```bash
-cd gpu_ros_ws
+cd /path/to/gpu-ros
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-colcon test --packages-select \
+colcon test --base-paths transport interfaces --packages-select \
   gpu_ros_managed_core gpu_ros_managed_ros gpu_ros_managed_tensor_bundle
 colcon test-result --verbose
 ```
 
-The TensorBundle test also requires the separately provided
-`gpu_ros_tensor_bundle_msgs` package. `colcon test` runs from the workspace
-root after a successful `colcon build`; it does not require a merged install.
+The TensorBundle test uses the `gpu_ros_tensor_bundle_msgs` package under the
+same monorepo's `interfaces/` root. `colcon test` runs from the monorepo root
+after a successful `colcon build`; it does not require a merged install.
 Keep generated build trees, profiles, traces, and GPU artifacts out of commits.
 
 ## License and provenance

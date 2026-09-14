@@ -1,11 +1,16 @@
-# gpu_ros_managed agent guide
+# Transport agent guide
 
 ## Scope
 
-This repository provides C++17 managed GPU buffers with explicit CUDA and HIP
+`transport/` provides C++17 managed GPU buffers with explicit CUDA and HIP
 backends, plus optional ROS 2 wrappers and a TensorBundle adapter. The core
-headers are backend neutral. Do not describe the project as an inference
-engine or as an inter-process GPU transport.
+headers are backend neutral. Do not describe this component as an inference
+engine, model runtime, or inter-process GPU transport.
+
+This directory is part of the GPU ROS monorepo. Package directory basenames and
+ROS package names remain unchanged (`gpu_ros_managed_*`). The project-owned
+`gpu_ros_tensor_bundle_msgs` package is in the sibling monorepo root directory
+`../interfaces/`, not in another Git checkout.
 
 ## Buffer contract
 
@@ -36,41 +41,63 @@ The standalone CMake tree builds `gpu_ros_managed_core` without ROS or a GPU
 SDK. CUDA and HIP are optional subdirectories. HIP can require its SDK with
 `-DGPU_ROS_MANAGED_HIP_REQUIRE_SDK=ON`; CUDA has no corresponding require
 option and is omitted when its toolkit is unavailable. ROS builds use colcon.
-`gpu_ros_managed_tensor_bundle` additionally requires the separately provided
-Apache-2.0 `gpu_ros_tensor_bundle_msgs` package from
-<https://github.com/ObeliskGate/amd_ros_object_detection>. Do not confuse this
-message package with the historical `isaac_ros_tensor_list_interfaces`
-package, which has separate NVIDIA licensing and is not interchangeable.
+The `gpu_ros_managed_tensor_bundle` adapter consumes the project-owned
+`gpu_ros_tensor_bundle_msgs` package from `../interfaces/`.
 
-Typical focused checks, run only after configuring the matching tree:
+From the monorepo root, use `cmake -S transport`; from this directory, use
+`cmake -S .`. Keep build directories outside the source tree when possible:
 
 ```bash
-ctest --test-dir build/core --output-on-failure
-ctest --test-dir build/hip --output-on-failure
-ctest --test-dir build/cuda --output-on-failure
-colcon test --packages-select gpu_ros_managed_core gpu_ros_managed_ros gpu_ros_managed_tensor_bundle
+# Working directory: the monorepo root.
+cmake -S transport -B /tmp/gpu-ros-transport-core \
+  -DGPU_ROS_MANAGED_BUILD_TESTING=ON \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+cmake --build /tmp/gpu-ros-transport-core
+ctest --test-dir /tmp/gpu-ros-transport-core --output-on-failure
+
+# Working directory: transport/.
+cmake -S . -B /tmp/gpu-ros-transport-core \
+  -DGPU_ROS_MANAGED_BUILD_TESTING=ON \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+```
+
+ROS adapter builds run from the monorepo root with both `transport` and
+`interfaces` as colcon base paths, or from `transport/` with `.` and
+`../interfaces`. Source the ROS setup and the resulting overlay before running
+ROS tests. A merged install is not required.
+
+Typical focused checks, run only after configuring the matching tree, are:
+
+```bash
+ctest --test-dir build/transport-core --output-on-failure
+ctest --test-dir build/transport-hip --output-on-failure
+ctest --test-dir build/transport-cuda --output-on-failure
+colcon test --base-paths transport interfaces \
+  --packages-select gpu_ros_managed_core gpu_ros_managed_ros gpu_ros_managed_tensor_bundle
 colcon test-result --verbose
 ```
 
 Backend device tests use CTest skip code 77 when no compatible device exists.
-The ROS commands run from the workspace root after sourcing the ROS setup and
-workspace overlay; they do not require a merged install.
+Do not claim a device test passed when it was skipped.
 
 ## Verification matrix
 
 For buffer changes, cover core ownership/readiness/failure behavior and the
 relevant backend stream, event, copy, device, and pool paths. For ROS changes,
 cover the affected wrapper or adapter package and inspect `colcon test-result`.
-Run only the layer affected by a change, plus its direct dependencies. Do not
-claim a check passed unless it was actually run.
+Run only the layer affected by a change, plus its direct dependencies. Keep
+algorithm, provider, and application behavior in the owning `perception/`
+packages.
 
 ## License boundary
 
 The repository is Apache-2.0. Preserve file-level copyright and modification
 notices, and consult [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the
 [NITROS port map](docs/nitros-4.5-port-map.md) before changing ported code.
-`gpu_ros_tensor_bundle_msgs` is a separately provided Apache-2.0 message
-package. The historical `isaac_ros_tensor_list_interfaces` package retains
-separate NVIDIA licensing; neither package's license is changed by this
-adapter. Model, checkpoint, ONNX, engine, and other runtime assets have their
-own applicable terms and are not licensed by this source repository.
+`gpu_ros_tensor_bundle_msgs` is a project-owned Apache-2.0 message package.
+The historical `isaac_ros_tensor_list_interfaces` package retains separate
+NVIDIA licensing; neither package's license is changed by this adapter. Model,
+checkpoint, ONNX, engine, and other runtime assets have their own applicable
+terms and are not licensed by this source repository.

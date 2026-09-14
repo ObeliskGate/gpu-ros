@@ -8,7 +8,8 @@ EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d
 ORT_LOCK="${ROOT_DIR}/config/onnxruntime.lock"
 # shellcheck source=/dev/null
 source "${ORT_LOCK}"
-MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
+GPU_ROS_REPO_ROOT="${GPU_ROS_REPO_ROOT:-${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}/src/gpu-ros}"
+export GPU_ROS_REPO_ROOT
 EXPECTED_OBJECT_DETECTION_COMMIT="060ced887bd8a3a0be60b1fa454365942eefd128"
 EXPECTED_BENCHMARK_COMMIT="f46699e124262c5bfb6f00099061f6718f026b3f"
 
@@ -79,13 +80,8 @@ check_host() {
     echo "ERROR: external isaac_ros_benchmark is not at the manifest commit." >&2
     exit 1
   }
-  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || {
-    echo "ERROR: gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}" >&2
-    exit 1
-  }
-  report_repo_state "amd_ros_object_detection" "${ROOT_DIR}"
-  report_repo_state "gpu_ros_managed" "${MANAGED_DIR}"
-  echo "Sibling commits are recorded, not allowlisted; compatibility is decided by build/tests."
+  report_repo_state "gpu-ros" "${ROOT_DIR}"
+  echo "Monorepo commit is recorded; compatibility is decided by build/tests."
   echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${ORT_VERSION}"
 }
 

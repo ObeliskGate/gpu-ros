@@ -7,14 +7,21 @@ before a ROS installation or colcon workspace exists.
 
 from __future__ import annotations
 
-import os
 import sys
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATED = ROOT / "migrated_packages"
+PROJECT_ROOTS = tuple(ROOT / name for name in (
+    "transport",
+    "interfaces",
+    "perception",
+    "compat",
+    "evaluation",
+))
+BENCHMARKS_ROOT = ROOT / "evaluation" / "benchmarks"
+MANAGED_TRANSPORT_MANIFEST = ROOT / "transport" / "gpu_ros_managed_tensor_bundle" / "package.xml"
 COMPAT_PACKAGE = "gpu_ros_nvidia_tensor_bundle_compat"
 LEGACY_PACKAGES = {
     "isaac_ros_detection_common",
@@ -42,6 +49,19 @@ def text_files(root: Path):
             yield path
 
 
+def project_text_files():
+    for project_root in PROJECT_ROOTS:
+        yield from text_files(project_root)
+
+
+def project_package_files() -> list[Path]:
+    return sorted(
+        package_xml
+        for project_root in PROJECT_ROOTS
+        for package_xml in project_root.rglob("package.xml")
+    )
+
+
 def package_name(package_xml: Path) -> str:
     root = ElementTree.parse(package_xml).getroot()
     name = root.findtext("name")
@@ -60,9 +80,24 @@ def package_dependencies(package_xml: Path) -> set[str]:
     return dependencies
 
 
+def assert_project_roots() -> None:
+    missing = [
+        path.relative_to(ROOT).as_posix()
+        for path in PROJECT_ROOTS
+        if not path.is_dir()
+    ]
+    assert not missing, "required project roots are missing: " + ", ".join(missing)
+
+    benchmark_packages = sorted(BENCHMARKS_ROOT.rglob("package.xml"))
+    assert not benchmark_packages, (
+        "evaluation/benchmarks must remain a non-package directory:\n"
+        + "\n".join(str(path) for path in benchmark_packages)
+    )
+
+
 def assert_package_names() -> None:
-    package_files = sorted(MIGRATED.rglob("package.xml"))
-    assert package_files, "no migrated package manifests found"
+    package_files = project_package_files()
+    assert package_files, "no project package manifests found"
     found_legacy = []
     tensor_list_dependents = []
     for package_xml in package_files:
@@ -79,20 +114,24 @@ def assert_package_names() -> None:
         f"isaac_ros_tensor_list_interfaces; found {tensor_list_dependents}"
     )
 
-    sibling_root = Path(
-        os.environ.get("GPU_ROS_MANAGED_DIR", str(ROOT.parent / "gpu_ros_managed"))
+
+def assert_local_transport_manifest() -> None:
+    assert MANAGED_TRANSPORT_MANIFEST.is_file(), (
+        "required local managed transport manifest is missing: "
+        f"{MANAGED_TRANSPORT_MANIFEST}"
     )
-    sibling_manifest = sibling_root / "gpu_ros_managed_tensor_bundle" / "package.xml"
-    if sibling_manifest.is_file():
-        assert package_name(sibling_manifest) == "gpu_ros_managed_tensor_bundle"
-        assert not (sibling_root / "gpu_ros_managed_tensor_list").exists(), (
-            "old managed TensorList package directory remains"
-        )
+    assert package_name(MANAGED_TRANSPORT_MANIFEST) == MANAGED_TRANSPORT_MANIFEST.parent.name, (
+        "managed transport manifest/package directory mismatch: "
+        f"{MANAGED_TRANSPORT_MANIFEST}"
+    )
+    assert not (ROOT / "transport" / "gpu_ros_managed_tensor_list").exists(), (
+        "old managed TensorList package directory remains"
+    )
 
 
 def assert_legacy_namespaces_absent() -> None:
     failures = []
-    for path in text_files(MIGRATED):
+    for path in project_text_files():
         content = path.read_text(encoding="utf-8")
         for legacy in LEGACY_NAMESPACES:
             if legacy in content:
@@ -109,7 +148,7 @@ def assert_nvidia_namespace_allowlist() -> None:
         "nvidia::isaac_ros::yolov8::",
     )
     failures = []
-    for path in text_files(MIGRATED):
+    for path in project_text_files():
         relative = path.relative_to(ROOT).as_posix()
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if "nvidia::isaac_ros::" not in line:
@@ -133,17 +172,20 @@ def assert_amd_profile_excludes_compat() -> None:
         assert "isaac_ros_tensor_list_interfaces" not in content, (
             f"AMD profile resolves NVIDIA TensorList interface: {path}"
         )
-    profile = amd_files[0].read_text(encoding="utf-8")
-    assert "migrated_packages/gpu_ros_tensor_bundle_msgs" in profile
 
 
 def assert_no_old_project_directories() -> None:
-    for legacy in LEGACY_PACKAGES:
-        assert not (MIGRATED / legacy).exists(), f"old project directory remains: {legacy}"
+    for project_root in PROJECT_ROOTS:
+        for legacy in LEGACY_PACKAGES:
+            assert not (project_root / legacy).exists(), (
+                f"old project directory remains: {project_root / legacy}"
+            )
 
 
 def main() -> int:
+    assert_project_roots()
     assert_package_names()
+    assert_local_transport_manifest()
     assert_legacy_namespaces_absent()
     assert_nvidia_namespace_allowlist()
     assert_amd_profile_excludes_compat()

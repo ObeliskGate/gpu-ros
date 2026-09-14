@@ -63,7 +63,7 @@ if [[ ! ${OUTPUT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   exit 2
 fi
 
-WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
 INPUT_BAG="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
@@ -328,7 +328,6 @@ repo_diff_hash() {
 }
 
 ORT_LIBRARY_PATH="${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}"
-GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}"
 
 print_command() {
   printf '+'
@@ -676,10 +675,8 @@ fi
   echo "model_sha256=$(hash_path "${MODEL_PATH}")"
   echo "ort_root=${ONNXRUNTIME_ROOT:-}"
   echo "ort_library_sha256=$(hash_path "${ORT_LIBRARY_PATH}")"
-  echo "application_revision=$(repo_revision "${WORKSPACE_ROOT}")"
-  echo "application_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
-  echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
-  echo "gpu_ros_managed_worktree_diff_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
+  echo "monorepo_revision=$(repo_revision "${WORKSPACE_ROOT}")"
+  echo "monorepo_worktree_diff_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
   echo "graph_package=${GRAPH_PACKAGE}"
   echo "graph_launch_file=${GRAPH_LAUNCH_FILE}"
   echo "graph_namespace=${GRAPH_NAMESPACE}"

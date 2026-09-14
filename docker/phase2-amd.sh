@@ -4,7 +4,6 @@ trap 'echo "ERROR: phase2 AMD environment failed at line ${LINENO}: ${BASH_COMMA
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/docker-compose.phase2a-amd.yaml"
-MANAGED_DIR="${GPU_ROS_MANAGED_DIR:-${ROOT_DIR}/../gpu_ros_managed}"
 STATE_ROOT="${OVG_STATE_ROOT:-${ROOT_DIR}/.ovg}"
 if [[ "${STATE_ROOT}" != /* ]]; then
   STATE_ROOT="${ROOT_DIR}/${STATE_ROOT}"
@@ -29,28 +28,27 @@ APPTAINER_INSTANCE_NAME="${OVG_APPTAINER_INSTANCE_NAME:-ovg-phase2-amd}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ovg-phase2-amd}"
 
 export COMPOSE_PROJECT_NAME
-export OVG_WORKSPACE_ROOT="/workspaces/amd_ros_object_detection"
+export OVG_WORKSPACE_ROOT="/workspaces/gpu-ros"
+export GPU_ROS_REPO_ROOT="/workspaces/gpu-ros"
 export OVG_ASSETS_ROOT="/workspaces/ovg-assets"
 export OVG_CACHE_ROOT="/workspaces/ovg-cache"
 export OVG_RESULTS_ROOT="/workspaces/ovg-results"
 export OVG_ORT_STATE_ROOT="${ORT_CONTAINER_ROOT}"
 export OVG_IMAGE_NAME="${IMAGE_NAME}"
-CONTAINER_ENTRYPOINT="${OVG_WORKSPACE_ROOT}/docker/phase2a-amd-entrypoint.sh"
+CONTAINER_ENTRYPOINT="${GPU_ROS_REPO_ROOT}/docker/phase2a-amd-entrypoint.sh"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 require_explicit_apptainer_environment() {
   [[ "${RUNTIME}" == apptainer ]] || return 0
-
   local name
   for name in \
     OVG_RUNTIME \
     OVG_STATE_ROOT \
     OVG_ORT_STATE_HOST \
-    OVG_APPTAINER_SIF \
-    GPU_ROS_MANAGED_DIR; do
+    OVG_APPTAINER_SIF; do
     [[ -n "${!name:-}" ]] || die \
-      "${name} is required for Apptainer work; source the HPC environment contract before running this launcher"
+      "${name} is required for Apptainer work; set the public AMD runtime variables documented in docs/experiments/amd-runtime-contract.md"
   done
 
   [[ "${OVG_RUNTIME}" == apptainer ]] || die \
@@ -61,10 +59,7 @@ require_explicit_apptainer_environment() {
     "OVG_ORT_STATE_HOST does not exist or is not a directory: ${ORT_STATE_HOST}"
   [[ -f "${APPTAINER_SIF}" ]] || die \
     "Apptainer SIF is not available: ${APPTAINER_SIF}"
-  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || die \
-    "gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}"
 }
-
 require_slurm_compute_node() {
   [[ "${RUNTIME}" == apptainer ]] || return 0
 
@@ -151,28 +146,24 @@ EOF
 }
 
 repo_check() {
-  [[ -f "${ROOT_DIR}/AGENTS.md" ]] || die "application repository is incomplete: ${ROOT_DIR}"
-  [[ -f "${MANAGED_DIR}/gpu_ros_managed_core/package.xml" ]] || \
-    die "gpu_ros_managed sibling checkout is missing: ${MANAGED_DIR}"
-  local label path diff_hash untracked_hash
-  for label in amd_ros_object_detection gpu_ros_managed; do
-    if [[ "${label}" == amd_ros_object_detection ]]; then
-      path="${ROOT_DIR}"
-    else
-      path="${MANAGED_DIR}"
-    fi
-    diff_hash="$(git -C "${path}" diff HEAD --binary | sha256sum | awk '{print $1}')"
-    untracked_hash="$(
-      cd "${path}"
-      while IFS= read -r -d '' item; do
-        printf '%s\0' "${item}"
-        sha256sum -- "${item}"
-      done < <(git ls-files --others --exclude-standard -z | sort -z)
-    )"
-    untracked_hash="$(printf '%s' "${untracked_hash}" | sha256sum | awk '{print $1}')"
-    echo "${label}: HEAD=$(git -C "${path}" rev-parse HEAD) diff_head_binary_sha256=${diff_hash} untracked_content_sha256=${untracked_hash}"
-    git -C "${path}" ls-files --others --exclude-standard | sed "s|^|${label} untracked: |"
-  done
+  [[ -f "${ROOT_DIR}/AGENTS.md" ]] || die "gpu-ros repository is incomplete: ${ROOT_DIR}"
+  [[ -f "${ROOT_DIR}/transport/gpu_ros_managed_core/package.xml" ]] || \
+    die "transport package manifest is missing: ${ROOT_DIR}/transport/gpu_ros_managed_core/package.xml"
+  [[ -f "${ROOT_DIR}/interfaces/gpu_ros_tensor_bundle_msgs/package.xml" ]] || \
+    die "interface package manifest is missing: ${ROOT_DIR}/interfaces/gpu_ros_tensor_bundle_msgs/package.xml"
+
+  local diff_hash untracked_hash
+  diff_hash="$(git -C "${ROOT_DIR}" diff HEAD --binary | sha256sum | awk '{print $1}')"
+  untracked_hash="$(
+    cd "${ROOT_DIR}"
+    while IFS= read -r -d '' item; do
+      printf '%s\0' "${item}"
+      sha256sum -- "${item}"
+    done < <(git ls-files --others --exclude-standard -z | sort -z)
+  )"
+  untracked_hash="$(printf '%s' "${untracked_hash}" | sha256sum | awk '{print $1}')"
+  echo "gpu-ros: HEAD=$(git -C "${ROOT_DIR}" rev-parse HEAD) diff_head_binary_sha256=${diff_hash} untracked_content_sha256=${untracked_hash}"
+  git -C "${ROOT_DIR}" ls-files --others --exclude-standard | sed 's|^|gpu-ros untracked: |'
 }
 
 external_ort_install_complete() {
@@ -327,7 +318,6 @@ resolve_apptainer_sif() {
 compose_env() {
   local image_fingerprint="${1}"
   local workspace_fingerprint="${2}"
-  export GPU_ROS_MANAGED_DIR="${MANAGED_DIR}"
   export OVG_ASSETS_DIR="${STATE_ROOT}/assets"
   export OVG_CACHE_DIR="${STATE_ROOT}/cache"
   export OVG_RESULTS_DIR="${STATE_ROOT}/results"
@@ -417,7 +407,6 @@ apptainer_args() {
     --cleanenv
     --pwd "${OVG_WORKSPACE_ROOT}"
     --bind "${ROOT_DIR}:${OVG_WORKSPACE_ROOT}"
-    --bind "${MANAGED_DIR}:${OVG_WORKSPACE_ROOT}/src/gpu_ros_managed"
     --bind "${STATE_ROOT}/assets:${OVG_ASSETS_ROOT}"
     --bind "${STATE_ROOT}/cache:${OVG_CACHE_ROOT}"
     --bind "${STATE_ROOT}/results:${OVG_RESULTS_ROOT}"
@@ -428,6 +417,7 @@ apptainer_args() {
     --bind "${STATE_ROOT}/home:/home/ovg"
     --env "HOME=/home/ovg"
     --env "OVG_WORKSPACE_ROOT=${OVG_WORKSPACE_ROOT}"
+    --env "GPU_ROS_REPO_ROOT=${GPU_ROS_REPO_ROOT}"
     --env "OVG_ASSETS_ROOT=${OVG_ASSETS_ROOT}"
     --env "OVG_CACHE_ROOT=${OVG_CACHE_ROOT}"
     --env "OVG_RESULTS_ROOT=${OVG_RESULTS_ROOT}"

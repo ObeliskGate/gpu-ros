@@ -16,7 +16,7 @@ __pycache__/
 /.ovg/
 
 # Generated benchmark output is always out of tree.
-/migrated_packages/benchmark_results/
+/evaluation/benchmark_results/
 /ovg-results/
 /.phase1-results/
 

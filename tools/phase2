@@ -2,7 +2,7 @@
 set -euo pipefail
 trap 'echo "ERROR: phase2 command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
-WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}"
 CACHE_ROOT="${OVG_CACHE_ROOT:-/workspaces/ovg-cache}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
@@ -135,8 +135,7 @@ show_env() {
   echo "cache: ${ORT_MIGRAPHX_MODEL_CACHE_PATH:-${CACHE_ROOT}/migraphx}"
   echo "results: ${RESULTS_ROOT}"
   echo "image manifest: $(cat /opt/ovg/image-manifest.json 2>/dev/null || echo unavailable)"
-  echo "application commit: $(git -C "${WORKSPACE_ROOT}" rev-parse HEAD 2>/dev/null || echo unavailable)"
-  echo "managed commit: $(git -C "${WORKSPACE_ROOT}/src/gpu_ros_managed" rev-parse HEAD 2>/dev/null || echo unavailable)"
+  echo "monorepo commit: $(git -C "${WORKSPACE_ROOT}" rev-parse HEAD 2>/dev/null || echo unavailable)"
   echo "workspace build: $([[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]] && echo present || echo absent)"
   if command -v ros2 >/dev/null 2>&1; then
     echo "ROS packages:"

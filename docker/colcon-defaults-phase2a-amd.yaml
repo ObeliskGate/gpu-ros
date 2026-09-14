@@ -1,17 +1,17 @@
 build:
   merge-install: true
   base-paths:
-    - src/gpu_ros_managed/gpu_ros_managed_core
-    - src/gpu_ros_managed/gpu_ros_managed_cuda
-    - src/gpu_ros_managed/gpu_ros_managed_hip
-    - src/gpu_ros_managed/gpu_ros_managed_ros
-    - src/gpu_ros_managed/gpu_ros_managed_tensor_bundle
-    - migrated_packages/gpu_ros_tensor_bundle_msgs
-    - migrated_packages/gpu_ros_detection_common
-    - migrated_packages/gpu_ros_onnx_inference
-    - migrated_packages/gpu_ros_rtdetr
-    - migrated_packages/gpu_ros_yolov8
-    - migrated_packages/gpu_ros_detection_validation
+    - transport/gpu_ros_managed_core
+    - transport/gpu_ros_managed_cuda
+    - transport/gpu_ros_managed_hip
+    - transport/gpu_ros_managed_ros
+    - transport/gpu_ros_managed_tensor_bundle
+    - interfaces/gpu_ros_tensor_bundle_msgs
+    - perception/gpu_ros_detection_common
+    - perception/gpu_ros_onnx_inference
+    - perception/gpu_ros_rtdetr
+    - perception/gpu_ros_yolov8
+    - evaluation/gpu_ros_detection_validation
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
@@ -35,16 +35,16 @@ test:
     - -E
     - test_gpu_ros_std_yolov8_pol_test
   base-paths:
-    - src/gpu_ros_managed/gpu_ros_managed_core
-    - src/gpu_ros_managed/gpu_ros_managed_hip
-    - src/gpu_ros_managed/gpu_ros_managed_ros
-    - src/gpu_ros_managed/gpu_ros_managed_tensor_bundle
-    - migrated_packages/gpu_ros_tensor_bundle_msgs
-    - migrated_packages/gpu_ros_detection_common
-    - migrated_packages/gpu_ros_onnx_inference
-    - migrated_packages/gpu_ros_rtdetr
-    - migrated_packages/gpu_ros_yolov8
-    - migrated_packages/gpu_ros_detection_validation
+    - transport/gpu_ros_managed_core
+    - transport/gpu_ros_managed_hip
+    - transport/gpu_ros_managed_ros
+    - transport/gpu_ros_managed_tensor_bundle
+    - interfaces/gpu_ros_tensor_bundle_msgs
+    - perception/gpu_ros_detection_common
+    - perception/gpu_ros_onnx_inference
+    - perception/gpu_ros_rtdetr
+    - perception/gpu_ros_yolov8
+    - evaluation/gpu_ros_detection_validation
   packages-select:
     - gpu_ros_managed_core
     - gpu_ros_managed_hip

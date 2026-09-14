@@ -46,7 +46,7 @@ if [[ ! ${AUDIT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 
 WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
-APP_ROOT="${AMD_ROS_OBJECT_DETECTION_ROOT:-${WORKSPACE_ROOT}/src/amd_ros_object_detection}"
+APP_ROOT="${GPU_ROS_REPO_ROOT:-${WORKSPACE_ROOT}/src/gpu-ros}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
 AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${RESULTS_ROOT}/phase2b_audits}"
 AUDIT_ROOT="${AUDIT_PARENT}/${AUDIT_NAME}"

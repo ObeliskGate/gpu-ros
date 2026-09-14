@@ -40,7 +40,7 @@ if [[ ! ${AUDIT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   exit 2
 fi
 
-WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
 AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b_amd_audits}"
 AUDIT_ROOT="${AUDIT_PARENT}/${AUDIT_NAME}"

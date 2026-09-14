@@ -2,12 +2,13 @@
 
 ## Scope and topology
 
-Phase 2B validates the Managed HIP TensorBundle transport supplied by the
-`gpu_ros_managed` sibling. It has two AMD lanes per model:
+Phase 2B validates the managed HIP TensorBundle transport in the same GPU ROS
+monorepo as the application. The managed implementation lives under
+`transport/`; it is not a sibling checkout. There are two AMD lanes per model:
 
-- direct production: Managed HIP end to end around strict Managed ORT;
-- staged control: the explicit Managed-to-standard-to-Managed adapters around
-  ORT, with the standard decoder after ORT.
+- direct production: managed HIP end to end around strict managed ORT;
+- staged control: explicit managed-to-standard-to-managed adapters around ORT,
+  with the standard decoder after ORT.
 
 The actual staged topology is:
 
@@ -22,9 +23,8 @@ The adapters are not silently inserted into the production direct graph.
 
 Use the public [AMD runtime contract](amd-runtime-contract.md) and the same
 external ORT procedure as [Phase 2A](phase2a-amd.md). Build and source the
-application and sibling workspace once. Run the Managed sibling's
-lifecycle/event/device tests and the application package tests before any
-real-model benchmark. The contract is complete without a private hostname,
+transport, interfaces, and application packages from one checkout mounted at
+`/workspaces/gpu-ros`. The contract is complete without a private hostname,
 partition, SIF filename, or deployment path; those are optional site-adapter
 inputs. No `uv` command is needed in the AMD SIF.
 
@@ -35,12 +35,19 @@ Apptainer launcher:
 unset APPTAINERENV_HOME
 ```
 
+From the repository root, run:
+
 ```bash
 ./docker/phase2-amd.sh preflight
+./docker/phase2-amd.sh up
 ./docker/phase2-amd.sh colcon
 ./docker/phase2-amd.sh verify
 ./docker/phase2-amd.sh shell
+```
 
+Then run the affected package tests in `/workspaces/gpu-ros`:
+
+```bash
 colcon test \
   --packages-select \
     gpu_ros_managed_core \
@@ -56,10 +63,10 @@ colcon test \
 colcon test-result --all --verbose
 ```
 
-The gates must cover abandoned/incomplete `WriteHandle` behavior, event and
-device ownership, non-default devices, pool destruction, pending cleanup,
-staging single/totals/entry/overflow limits, and the standalone installed
-CMake consumer for `gpu_ros_managed_core`.
+The gates cover abandoned/incomplete `WriteHandle` behavior, event and device
+ownership, non-default devices, pool destruction, pending cleanup, staging
+single/totals/entry/overflow limits, and the standalone installed CMake
+consumer for `gpu_ros_managed_core`.
 
 ## Fixed-input direct and staged capture
 
@@ -95,24 +102,24 @@ ros2 run gpu_ros_detection_validation \
 containing `copy`, `memcpy`, or `blit` are diagnostic only. An unresolved or
 incomplete record is `INCONCLUSIVE`, not proof of zero-copy.
 
-Compare standard, direct Managed, and staged bags with strict class-aware
+Compare standard, direct managed, and staged bags with strict class-aware
 matching. Record all unmatched detections, IoU, score deltas, class equality,
 and frame-level pass rates.
 
 ## Graph proof and matrix
 
-Run the four graph-level checks before the matrix:
+Run the four graph-level checks before the matrix from the monorepo root:
 
 ```bash
-launch_test migrated_packages/benchmarks/gpu_ros_rtdetr_phase2b_amd_managed_graph.py
-launch_test migrated_packages/benchmarks/gpu_ros_yolov8_phase2b_amd_managed_graph.py
-launch_test migrated_packages/benchmarks/gpu_ros_rtdetr_phase2b_amd_staged_control_graph.py
-launch_test migrated_packages/benchmarks/gpu_ros_yolov8_phase2b_amd_staged_control_graph.py
+launch_test evaluation/benchmarks/gpu_ros_rtdetr_phase2b_amd_managed_graph.py
+launch_test evaluation/benchmarks/gpu_ros_yolov8_phase2b_amd_managed_graph.py
+launch_test evaluation/benchmarks/gpu_ros_rtdetr_phase2b_amd_staged_control_graph.py
+launch_test evaluation/benchmarks/gpu_ros_yolov8_phase2b_amd_staged_control_graph.py
 ```
 
 The matrix runner performs three independent rounds, rotates lane order, and
 executes fixed 10/30/60 Hz trials for standard, staged-control, and direct
-Managed lanes:
+managed lanes:
 
 ```bash
 ros2 run gpu_ros_detection_validation \
@@ -123,19 +130,19 @@ ros2 run gpu_ros_detection_validation \
   yolov8 "yolov8_phase2b_matrix_${RUN_ID}"
 ```
 
-The result manifest records application and sibling HEADs, staged and
-unstaged diff hashes, untracked paths/content hashes, asset hashes, and dirty
-state. Dirty state is evidence, not a run gate.
+A current matrix manifest is schema 3. It records one `monorepo_revision`,
+monorepo diff/untracked-path/content hashes, dirty state, asset hashes, and
+runtime identities; it does not record a separate transport revision. A matrix
+shell `PASS` only proves that the nine lane processes emitted JSON.
 
 ## Acceptance
 
 Phase 2B is not closed by throughput alone. Both models require package/POL
-tests, direct and staged topology checks, strict Managed contract checks,
-fixed-input comparison, provider/copy audit, and the three-lane matrix. The
-removed high-load experiment is not an acceptance gate. A matrix shell `PASS`
-only proves that the nine lane processes emitted JSON; promote a performance
-baseline only after publishing each lane's three peak reports, fixed 10/30/60
-rows, aggregation rule, and correctness comparison. Use the tolerance and
-status semantics in [`results/README.md`](../results/README.md). Current AMD
-result reports remain historical until this sequence completes on the selected
-sibling and application revisions.
+tests, direct and staged topology checks, managed contract checks, fixed-input
+comparison, provider/copy audit, and the three-lane matrix. The removed
+high-load experiment is not an acceptance gate. Promote a performance baseline
+only after publishing each lane's three peak reports, fixed 10/30/60 rows,
+aggregation rule, and correctness comparison. Use the tolerance and status
+semantics in [`../results/README.md`](../results/README.md). Historical result
+records remain historical until this sequence completes on the selected
+monorepo revision.

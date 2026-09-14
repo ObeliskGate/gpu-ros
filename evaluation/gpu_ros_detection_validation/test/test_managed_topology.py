@@ -5,8 +5,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[3]
-ONNX_LAUNCH = ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' / 'launch'
-BENCHMARKS = ROOT / 'migrated_packages' / 'benchmarks'
+ONNX_LAUNCH = ROOT / 'perception' / 'gpu_ros_onnx_inference' / 'launch'
+BENCHMARKS = ROOT / 'evaluation' / 'benchmarks'
 
 
 def test_production_managed_launches_have_no_staging_plugins():

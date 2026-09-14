@@ -60,11 +60,11 @@ logs are never overwritten.
 From the Isaac ROS workspace root:
 
 ```bash
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+./src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
   rtdetr-c \
   rtdetr_config_c_20260801
 
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+./src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
   rtdetr-managed \
   rtdetr_managed_20260801
 ```
@@ -81,11 +81,11 @@ either YOLOv8 or RT-DETR. Run it from the Isaac ROS workspace root after
 building and sourcing the workspace:
 
 ```bash
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
+./src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
   yolov8 \
   yolov8_transport_audit_20260808
 
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
+./src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_transport_audit.sh \
   rtdetr \
   rtdetr_transport_audit_20260808
 ```
@@ -93,7 +93,7 @@ building and sourcing the workspace:
 The historical YOLOv8 entry point remains compatible:
 
 ```bash
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_nvidia_yolov8_transport_audit.sh \
+./src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_yolov8_transport_audit.sh \
   yolov8_transport_audit_20260808
 ```
 
@@ -120,14 +120,14 @@ inconclusive.
 
 ## AMD Phase 2B transport audit
 
-Run the standard and Managed HIP lanes with the unified runner:
+Run the standard and Managed HIP lanes with the unified runner from the monorepo root:
 
 ```bash
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+./evaluation/gpu_ros_detection_validation/scripts/run_amd_transport_audit.sh \
   yolov8 \
   yolov8_amd_transport_audit_20260808
 
-./src/amd_ros_object_detection/migrated_packages/gpu_ros_detection_validation/scripts/run_amd_transport_audit.sh \
+./evaluation/gpu_ros_detection_validation/scripts/run_amd_transport_audit.sh \
   rtdetr \
   rtdetr_amd_transport_audit_20260808
 ```
@@ -174,9 +174,8 @@ as a separate drop-aware experiment rather than part of the performance
 comparison.
 
 Before a formal audit on a new ROCm/MI350X environment, run the small HIP
-probe with the executable that actually exists in the sibling checkout. The
-current sibling provides `gpu_ros_managed_hip_copy_test`, but the probe keeps
-the path explicit so it does not assume a target name or build layout:
+probe with the executable produced by the standalone transport build. The
+probe keeps the path explicit so it does not assume a target name or build layout:
 
 ```bash
 ros2 run gpu_ros_detection_validation run_rocprof_hip_copy_probe.sh \

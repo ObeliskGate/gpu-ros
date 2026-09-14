@@ -5,6 +5,31 @@ repository. The entries below identify file-level boundaries; they do not
 relicense an upstream repository, external checkout, model, dataset, container, or
 runtime.
 
+## NVIDIA Isaac ROS NITROS
+
+The following local files are derived from file-level Apache-2.0 source in
+NVIDIA Isaac ROS NITROS `v4.5-0`, commit
+`82310fce298d3d9db26945a3a988d5c471d14973`:
+
+- `transport/gpu_ros_managed_core/include/gpu_ros_managed_core/buffer.hpp`
+- `transport/gpu_ros_managed_core/src/buffer.cpp`
+- `transport/gpu_ros_managed_core/include/gpu_ros_managed_core/fixed_device_memory_pool.hpp`
+- `transport/gpu_ros_managed_core/src/fixed_device_memory_pool.cpp`
+- `transport/gpu_ros_managed_tensor_bundle/include/gpu_ros_managed_tensor_bundle/tensor_bundle.hpp`
+- `transport/gpu_ros_managed_tensor_bundle/src/tensor_bundle.cpp`
+- `transport/gpu_ros_managed_ros/include/gpu_ros_managed_ros/managed_pub_sub.hpp`
+
+The exact upstream file attribution is retained in each derived file, and the
+files contain a notice describing the local backend-neutral or GXF-free
+modification. NITROS repository/package metadata is not treated as a blanket
+Apache license for all of NITROS.
+
+The managed package uses the independent `gpu_ros_tensor_bundle_msgs` message
+package at `interfaces/gpu_ros_tensor_bundle_msgs` in this monorepo. Its
+TypeAdapter is project-authored and does not depend on NVIDIA's `TensorList`
+message package; the NVIDIA conversion boundary lives in the monorepo's
+`compat/gpu_ros_nvidia_tensor_bundle_compat` package.
+
 ## NVIDIA Isaac ROS object-detection sources
 
 The opt-in `external/nvidia-isaac-ros.repos` manifest records
@@ -17,9 +42,9 @@ parallel Boshen copyright for local original additions; benchmark composition
 files do not mechanically claim one:
 
 - RT-DETR decoder, decoder node, and preprocessor sources and headers under
-  `migrated_packages/gpu_ros_rtdetr/`;
+  `perception/gpu_ros_rtdetr/`;
 - YOLOv8 decoder and decoder-node sources and headers under
-  `migrated_packages/gpu_ros_yolov8/`.
+  `perception/gpu_ros_yolov8/`.
 
 The local image encoders, Managed HIP nodes, and ONNX Runtime integration were
 reviewed as project-original application code where no exact one-to-one
@@ -42,10 +67,17 @@ resolve this package. The external NVIDIA message package and its license
 remain authoritative for that side of the boundary; this project does not
 claim NVIDIA sponsorship or endorsement.
 
+## Project-original code
+
+The backend interface and implementations, host-buffer utilities, ROS
+TypeAdapter, tests, and build files are maintained as project-original code
+unless a source file says otherwise. They are distributed under the Apache
+License 2.0 in `LICENSE`.
+
 ## NVIDIA Isaac ROS benchmark sources
 
 The opt-in external manifest records `isaac_ros_benchmark` at commit
-`f46699e124262c5bfb6f00099061f6718f026b3f`. `migrated_packages/benchmarks/rtdetr_common.py`
+`f46699e124262c5bfb6f00099061f6718f026b3f`. `evaluation/benchmarks/rtdetr_common.py`
 and the RT-DETR benchmark compositions are adapted from the file-level
 Apache-2.0 RT-DETR benchmark graph at that commit. The local YOLOv8 benchmark
 composition has no exact upstream YOLOv8 benchmark counterpart in the pinned
@@ -83,8 +115,8 @@ license.
 
 The following unchanged test image copies are from NVIDIA-ISAAC-ROS/isaac_ros_object_detection, commit `060ced887bd8a3a0be60b1fa454365942eefd128`, upstream path `isaac_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`:
 
-- `migrated_packages/gpu_ros_onnx_inference/test/test_cases/single_detection/color_000000.jpg`
-- `migrated_packages/gpu_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`
+- `perception/gpu_ros_onnx_inference/test/test_cases/single_detection/color_000000.jpg`
+- `perception/gpu_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`
 
 The fixture is distributed under Apache-2.0, with upstream attribution to NVIDIA CORPORATION & AFFILIATES. Image contents are unchanged. SHA-256: `84b21f989fca7b98ca4cfb902346401a0c2d917cff2fbf4f207bad98b30bbdd1`.
 
@@ -98,5 +130,16 @@ Model metadata: https://api.ngc.nvidia.com/v2/models/nvidia/isaac/synthetica_det
 
 ## ROS, CUDA, HIP, and external assets
 
-ROS 2, OpenCV, CUDA, ROCm/HIP, MIGraphX, and their libraries are external
-dependencies under their own terms. Except for the Apache-2.0 test image fixture identified above, models, datasets, NGC downloads, user ONNX files, TensorRT/MIGraphX engines, bags, traces, profiles, logs, and SIF images are external runtime assets and are not distributed by this source tree. Source compatibility hashes do not grant asset redistribution rights.
+ROS 2 packages, OpenCV, CUDA, ROCm/HIP, MIGraphX, and their headers and
+libraries are external build/runtime dependencies. This repository does not
+vendor those SDKs or relicense them. Consumers must follow the license terms
+supplied by their chosen ROS distribution, CUDA toolkit, and ROCm installation.
+
+No model, dataset, bag, trace, profile, log, SIF image, or benchmark result is
+required or distributed by this source tree. Except for the Apache-2.0 test
+image fixture identified above, models, datasets, NGC downloads, user ONNX
+files, TensorRT/MIGraphX engines, bags, traces, profiles, logs, and SIF images
+are external runtime assets and are not distributed by this source tree. An
+application may use external assets subject to the asset provider's terms;
+source-code license and model or dataset license are separate questions.
+Source compatibility hashes do not grant asset redistribution rights.

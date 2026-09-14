@@ -37,49 +37,45 @@ UNIFIED_AMD_AUDIT_SCRIPT_PATH = (
 AMD_MATRIX_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_benchmark_matrix.sh'
 )
-AMD_PHASE2_LAUNCHER_PATH = Path(__file__).parents[3] / 'docker' / 'phase2-amd.sh'
+REPOSITORY_ROOT = Path(__file__).parents[3]
+AMD_PHASE2_LAUNCHER_PATH = REPOSITORY_ROOT / 'docker' / 'phase2-amd.sh'
 HIP_PREPROCESS_SOURCE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_detection_common' / 'src' / 'hip_preprocess.hip'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_detection_common' /
+    'src' / 'hip_preprocess.hip'
 )
 DETECTION_COMMON_CMAKE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_detection_common' / 'CMakeLists.txt'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_detection_common' /
+    'CMakeLists.txt'
 )
 YOLOV8_CMAKE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_yolov8' / 'CMakeLists.txt'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_yolov8' / 'CMakeLists.txt'
 )
 RTDETR_CMAKE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_rtdetr' / 'CMakeLists.txt'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_rtdetr' / 'CMakeLists.txt'
 )
 YOLOV8_MANAGED_HEADER_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_yolov8' / 'include' / 'gpu_ros_yolov8' /
-    'yolov8_managed_hip_nodes.hpp'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_yolov8' / 'include' /
+    'gpu_ros_yolov8' / 'yolov8_managed_hip_nodes.hpp'
 )
 RTDETR_MANAGED_HEADER_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_rtdetr' / 'include' / 'gpu_ros_rtdetr' /
-    'rtdetr_managed_hip_nodes.hpp'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_rtdetr' / 'include' /
+    'gpu_ros_rtdetr' / 'rtdetr_managed_hip_nodes.hpp'
 )
 ONNX_INFERENCE_CORE_SOURCE_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' /
-    'gpu_ros_onnx_inference' / 'src' / 'onnx_inference_core.cpp'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_onnx_inference' /
+    'src' / 'onnx_inference_core.cpp'
 )
 MANAGED_HIP_POL_PATH = (
-    Path(__file__).parents[3] / 'migrated_packages' / 'gpu_ros_onnx_inference' /
-    'test' / 'gpu_ros_onnx_managed_hip_pol_test.py'
+    REPOSITORY_ROOT / 'perception' / 'gpu_ros_onnx_inference' / 'test' /
+    'gpu_ros_onnx_managed_hip_pol_test.py'
 )
 ROCPROF_HIP_PROBE_SCRIPT_PATH = (
     Path(__file__).parents[1] / 'scripts' / 'run_rocprof_hip_copy_probe.sh'
 )
 AMD_COLCON_DEFAULTS_PATH = (
-    Path(__file__).parents[3] / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
+    REPOSITORY_ROOT / 'docker' / 'colcon-defaults-phase2a-amd.yaml'
 )
-BENCHMARKS_ROOT = Path(__file__).parents[3] / 'migrated_packages' / 'benchmarks'
-REPOSITORY_ROOT = Path(__file__).parents[3]
+BENCHMARKS_ROOT = REPOSITORY_ROOT / 'evaluation' / 'benchmarks'
 
 
 def test_staged_control_metadata_matches_component_topology():
@@ -96,15 +92,6 @@ def test_staged_control_metadata_matches_component_topology():
         assert 'std_to_managed_output =' not in source
 
 
-def test_benchmark_manifest_records_complete_dirty_repository_state():
-    source = AMD_MATRIX_SCRIPT_PATH.read_text()
-    assert 'git -C "${path}" diff HEAD --binary' in source
-    assert 'ls-files --others --exclude-standard' in source
-    assert 'application_untracked_paths=' in source
-    assert 'application_untracked_content_sha256=' in source
-    assert 'gpu_ros_managed_diff_head_binary_sha256=' in source
-    assert 'gpu_ros_managed_untracked_content_sha256=' in source
-    assert 'submodule_status' not in source
 
 
 def test_nvidia_sources_are_opt_in_external_checkouts():
@@ -128,7 +115,7 @@ def test_ort_lock_is_the_only_version_and_commit_source():
 
 def test_cpu_defaults_and_offline_asset_profiles_are_explicit():
     cmake = (
-        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        REPOSITORY_ROOT / 'perception' / 'gpu_ros_onnx_inference' /
         'CMakeLists.txt').read_text()
     assert 'option(ORT_ENABLE_CUDA "Enable CUDAExecutionProvider selection" OFF)' in cmake
     assert 'option(BUILD_NITROS_TRANSPORT' in cmake
@@ -141,12 +128,12 @@ def test_cpu_defaults_and_offline_asset_profiles_are_explicit():
 
 def test_nitros_conversion_callbacks_drop_exceptions():
     source = (
-        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        REPOSITORY_ROOT / 'perception' / 'gpu_ros_onnx_inference' /
         'src' / 'nitros_managed_tensor_bundle_nodes.cpp').read_text()
     assert source.count('catch (const std::exception & error)') >= 2
     assert source.count('catch (...)') >= 2
     io_source = (
-        REPOSITORY_ROOT / 'migrated_packages' / 'gpu_ros_onnx_inference' /
+        REPOSITORY_ROOT / 'perception' / 'gpu_ros_onnx_inference' /
         'src' / 'nitros_tensor_bundle_io.cpp').read_text()
     assert 'Dropping NITROS input frame' in io_source
     assert 'Dropping NITROS output frame' in io_source

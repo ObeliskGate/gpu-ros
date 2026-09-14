@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
-COLCON_DEFAULTS_FILE="${WORKSPACE_ROOT}/docker/colcon-defaults-phase2a-amd.yaml"
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
+REPO_ROOT="${GPU_ROS_REPO_ROOT:-${WORKSPACE_ROOT}}"
+COLCON_DEFAULTS_FILE="${REPO_ROOT}/docker/colcon-defaults-phase2a-amd.yaml"
 export OVG_WORKSPACE_ROOT="${WORKSPACE_ROOT}"
+export GPU_ROS_REPO_ROOT="${REPO_ROOT}"
 export COLCON_DEFAULTS_FILE
 
 if [[ ! -f "${COLCON_DEFAULTS_FILE}" ]]; then
-  if [[ "${BASH_SOURCE[0]}" == "${WORKSPACE_ROOT}/docker/phase2a-amd-entrypoint.sh" ]]; then
+  if [[ "${BASH_SOURCE[0]}" == "${REPO_ROOT}/docker/phase2a-amd-entrypoint.sh" ]]; then
     echo "ERROR: canonical AMD colcon defaults file is missing: ${COLCON_DEFAULTS_FILE}" >&2
     exit 1
   fi
@@ -94,7 +96,7 @@ if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
   source_setup /opt/ros2_benchmark/setup.bash
 fi
 
-export PATH="${WORKSPACE_ROOT}/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+export PATH="${REPO_ROOT}/tools:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
 mkdir -p "${OVG_ASSETS_ROOT:-/workspaces/ovg-assets}" \
   "${OVG_CACHE_ROOT:-/workspaces/ovg-cache}" \
@@ -107,8 +109,8 @@ elif [[ -n "${OVG_CACHE_ROOT:-}" ]]; then
   mkdir -p "${ORT_MIGRAPHX_MODEL_CACHE_PATH}"
 fi
 
-if [[ -f "${WORKSPACE_ROOT}/install/setup.bash" ]]; then
-  source_setup "${WORKSPACE_ROOT}/install/setup.bash"
+if [[ -f "${REPO_ROOT}/install/setup.bash" ]]; then
+  source_setup "${REPO_ROOT}/install/setup.bash"
 fi
 
 exec "$@"

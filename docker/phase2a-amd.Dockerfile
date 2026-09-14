@@ -95,11 +95,13 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV ROS_DISTRO=${ROS_DISTRO}
+ENV OVG_WORKSPACE_ROOT=/workspaces/gpu-ros
+ENV GPU_ROS_REPO_ROOT=/workspaces/gpu-ros
 ENV OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
 ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
 ENV ONNXRUNTIME_INCLUDE_DIR=/opt/onnxruntime/include
 ENV ONNXRUNTIME_LIBRARY=/opt/onnxruntime/lib/libonnxruntime.so
-ENV COLCON_DEFAULTS_FILE=/workspaces/amd_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml
+ENV COLCON_DEFAULTS_FILE=/workspaces/gpu-ros/docker/colcon-defaults-phase2a-amd.yaml
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -232,6 +234,6 @@ COPY docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2-amd-entrypoint.sh
 RUN chmod +x /usr/local/bin/phase2-amd-entrypoint.sh \
     && ln -s phase2-amd-entrypoint.sh /usr/local/bin/phase2a-amd-entrypoint.sh
 
-WORKDIR /workspaces/amd_ros_object_detection
+WORKDIR /workspaces/gpu-ros
 ENTRYPOINT ["/usr/local/bin/phase2-amd-entrypoint.sh"]
 CMD ["bash"]

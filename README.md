@@ -1,364 +1,263 @@
-# amd_ros_object_detection
+# GPU ROS
 
-ROS 2 object detection with ONNX Runtime on AMD and NVIDIA GPUs.
+GPU ROS is a ROS 2 monorepo for object-detection pipelines and explicit
+GPU-buffer transport. It contains RT-DETRv2 and YOLOv8 application packages,
+the project-owned TensorBundle message, the managed CUDA/HIP transport, and the
+runbooks used to compare standard ROS 2 message boundaries with same-process
+managed buffers.
 
-This repository contains composable RT-DETRv2 and YOLOv8 pipelines, a
-project-owned TensorBundle message, and the tools used to compare standard ROS 2
-transport with same-process GPU buffer transport. The primary runtime is AMD
-ROCm with the ONNX Runtime MIGraphX execution provider. CPU and NVIDIA
-reference configurations are also available where noted.
-
-The project started as a migration study of NVIDIA Isaac ROS object detection.
-The application code under `migrated_packages/` now has its own package names
-and interfaces. The external NVIDIA TensorList message dependency is confined to the optional compatibility package. Other CUDA/NITROS reference components retain their own external dependencies and license requirements.
+The primary supported experiment target is ROS 2 Jazzy on Ubuntu 24.04 with
+ROCm 7.1.1, a target reported by the AMD device, and the project-built ONNX
+Runtime 1.23.1/MIGraphX installation selected by [`config/onnxruntime.lock`](config/onnxruntime.lock).
+The NVIDIA lane uses the pinned Isaac ROS 4.5-compatible environment described
+in the NVIDIA runbooks. Other combinations may work, but are not the current
+compatibility target.
 
 > [!IMPORTANT]
-> The packages are versioned `0.1.0`, and their APIs may still change. The
-> project supports the pipelines listed below; it is not a drop-in replacement
-> for every Isaac ROS object detection package.
+> The packages are versioned `0.1.0` and remain pre-release. This repository
+> does not claim support for every Isaac ROS object-detection package. Grounding
+> DINO and DetectNet are historical reference workloads, not migrated packages.
 
-## What is included
+## Architecture
 
-- RT-DETRv2 R50 and YOLOv8 image-to-detection pipelines
-- ONNX Runtime inference with CPU and AMD MIGraphX, plus CUDA/NITROS reference
-  configurations
-- Standard ROS 2 transport using
-  `gpu_ros_tensor_bundle_msgs/msg/TensorBundle`
-- Direct Managed HIP pipelines that retain intermediate tensors in device
-  memory inside one component container
-- Launch files, fixed-input validation, provider-placement checks, transport
-  audits, and benchmark graphs
-- An explicit NVIDIA TensorList compatibility boundary for historical
-  comparison runs
+Top-level directories classify components; they do not rename or split ROS
+packages. Package directory basenames and ROS package names remain `gpu_ros_*`.
 
-Grounding DINO and DetectNet are not implemented by the migrated application
-packages.
+| Directory | Contents and boundary |
+| --- | --- |
+| [`transport/`](transport/) | Standalone C++17 managed buffers, optional CUDA/HIP backends, and intra-process ROS adapters. The core has no ROS or GPU-SDK dependency. |
+| [`interfaces/`](interfaces/) | Project-owned `gpu_ros_tensor_bundle_msgs` message definitions. |
+| [`perception/`](perception/) | Shared detection utilities, ONNX Runtime integration, RT-DETRv2, and YOLOv8 packages. |
+| [`compat/`](compat/) | Optional NVIDIA TensorList compatibility package. It is not part of the AMD profile and is the only project package allowed to depend on NVIDIA TensorList interfaces. |
+| [`evaluation/`](evaluation/) | Fixed-input capture, comparison, provider/copy audits, and benchmark graph definitions. `evaluation/benchmarks/` is a non-package directory. |
+| [`docker/`](docker/) and [`apptainer/`](apptainer/) | AMD and NVIDIA runtime entry points and pinned build profiles. |
+| [`config/`](config/) | ONNX Runtime and model-profile identities used by the runbooks. |
+| [`external/`](external/) | Pinned NVIDIA external-source manifest; external checkouts remain outside this repository's package tree. |
+| [`docs/`](docs/) | Public experiment and result runbooks. |
+| [`skills/gpu-ros-experiments/SKILL.md`](skills/gpu-ros-experiments/SKILL.md) | Optional concise instructions for agents. The project works without installing this skill. |
 
-## Pipeline overview
-
-The standard path uses ordinary ROS messages between the preprocessing,
-inference, and decoder components:
+The standard ROS path uses ordinary TensorBundle messages:
 
 ```text
 sensor_msgs/Image
         |
         v
- image encoder -> TensorBundle -> ONNX Runtime -> TensorBundle -> decoder
+image encoder -> TensorBundle -> ONNX Runtime -> TensorBundle -> decoder
                                                                   |
                                                                   v
                                               vision_msgs/Detection2DArray
 ```
 
-The AMD managed path runs the components in one process and passes owned HIP
-device buffers through
-[`gpu_ros_managed`](https://github.com/ObeliskGate/gpu_ros_managed):
+The managed path keeps the graph in one component process and passes owned
+CUDA or HIP buffers through the transport packages:
 
 ```text
-Image -> Managed HIP preprocessing -> ORT/MIGraphX -> Managed HIP decoder
-                                                               |
-                                                               v
-                                           Detection2DArray on the CPU
+Image -> managed preprocessing -> ORT/provider -> managed decoder
+                                                        |
+                                                        v
+                                    Detection2DArray on the CPU
 ```
 
-This managed path avoids application-level TensorBundle materialization at
-the inference boundary. It does not claim that model execution or the complete
-ROS graph performs no copies.
+Managed transport is an intra-process ownership and synchronization contract.
+Crossing a ROS serialization boundary materializes device tensors in host
+memory, and neither the complete ROS graph nor model execution is promised to
+be copy-free.
 
-## Support matrix
+## Requirements and external inputs
 
-| Lane | Models | Status |
-| --- | --- | --- |
-| AMD standard ROS 2 + MIGraphX | RT-DETRv2 R50, YOLOv8 | Supported |
-| AMD Managed HIP + MIGraphX | RT-DETRv2 R50, YOLOv8 | Supported in one component process |
-| CPU standard ROS 2 | RT-DETRv2 R50, YOLOv8 | Development and validation |
-| NVIDIA CUDA, TensorRT, and NITROS | SyntheticaDETR, YOLOv8 | Reference and historical comparison |
-| Grounding DINO and DetectNet | None | Not migrated |
+For an AMD run, provide:
 
-The actively tested environment is ROS 2 Jazzy, Ubuntu 24.04, ROCm 7.1.1,
-and ONNX Runtime 1.23.1 at the commit recorded in
-[`config/onnxruntime.lock`](config/onnxruntime.lock). NVIDIA reference runs use
-an Isaac ROS 4.5-compatible environment. Other version combinations may work,
-but they are not the compatibility target of the current experiment.
+- an AMD GPU with `/dev/kfd` and `/dev/dri` access and the target reported by
+  `rocminfo`;
+- Docker Compose or Apptainer;
+- the ROS/ROCm environment specified by
+  [`amd-runtime-contract.md`](docs/experiments/amd-runtime-contract.md);
+- an external ORT install built from the locked source revision and selected by
+  `OVG_ORT_ROOT`; the image's `/opt/onnxruntime` copy is build-only content;
+- model, R2B, and (when applicable) dataset assets imported into an external
+  asset root.
 
-## Requirements
+For NVIDIA, use the pinned image and external sources selected by
+[`external/nvidia-isaac-ros.repos`](external/nvidia-isaac-ros.repos). External
+checkouts belong under `/workspaces/isaac_ros-dev/src/nvidia_external`, not in
+the repository checkout. The compatibility package is an opt-in NVIDIA lane;
+AMD profiles do not build it.
 
-For the primary AMD path you need:
+Models, checkpoints, ONNX files, engines, datasets, bags, traces, profiles,
+logs, SIF images, caches, and benchmark output are not redistributed. A
+SHA-256 value verifies compatibility; it does not grant a model or dataset
+license. Do not add download or export steps for user-owned YOLOv8 weights.
 
-- An AMD GPU supported by the selected ROCm release
-- `/dev/kfd` and `/dev/dri` access
-- Docker with Compose, or Apptainer
-- ROS 2 Jazzy and ROCm 7.1.1 in the runtime environment
-- A project-built ONNX Runtime with MIGraphX from the locked source revision
-- A sibling checkout of `gpu_ros_managed`. The current package manifests use
-  its shared types in both standard and managed builds.
-- A compatible ONNX model and, for validation or benchmarks, an input bag or
-  dataset
+## Checkout and AMD workflow
 
-The supplied Dockerfile and launcher set up the application environment. ONNX
-Runtime is built separately because its MIGraphX build is tied to the target
-GPU and is treated as a recorded experiment input.
-
-## Getting started on AMD
-
-### 1. Check out both repositories
-
-Keep the application and managed transport repositories next to each other:
+Clone one repository. The transport and application sources are already in the
+same worktree; no sibling checkout or second source bind is required.
 
 ```bash
-git clone https://github.com/ObeliskGate/amd_ros_object_detection.git
-git clone https://github.com/ObeliskGate/gpu_ros_managed.git
-cd amd_ros_object_detection
+git clone https://github.com/gpu-ros/gpu-ros.git
+cd gpu-ros
 ```
 
-### 2. Prepare the runtime and ONNX Runtime
-
-Choose the container runtime and persistent state directory. Replace
-`gfx942` with the target reported for your GPU by `rocminfo`:
+The AMD launcher uses `/workspaces/gpu-ros` inside Docker or Apptainer for both
+the checkout and `GPU_ROS_REPO_ROOT`/`OVG_WORKSPACE_ROOT`. Keep persistent state,
+assets, cache, results, ORT, and build/install/log directories on their separate
+mounts. Choose a fresh state root for a migration-specific run:
 
 ```bash
-export OVG_RUNTIME=docker
-export GPU_ROS_MANAGED_DIR="$(realpath ../gpu_ros_managed)"
-export OVG_STATE_ROOT="$(pwd)/.ovg"
+export OVG_RUNTIME=docker                 # or apptainer
+export OVG_STATE_ROOT=/absolute/path/to/gpu-ros-state
 export OVG_ORT_STATE_HOST="${OVG_STATE_ROOT}/ort"
-export AMD_GPU_TARGETS=gfx942
-
-./docker/phase2-amd.sh build
-```
-
-Build the locked ONNX Runtime revision into `OVG_ORT_STATE_HOST`, then set
-`OVG_ORT_ROOT` to the fingerprinted install path. The exact checkout, patch,
-and build procedure is in the
-[`AMD runtime contract`](docs/experiments/amd-runtime-contract.md). This step
-is required; the image's `/opt/onnxruntime` content is not a supported runtime
-fallback.
-
-For subsequent commands, the value is the path as seen inside the container:
-
-```bash
 export OVG_ORT_ROOT=/workspaces/ovg-ort/install/<ort-fingerprint>
+export AMD_GPU_TARGETS=<target-reported-by-rocminfo>
+# Apptainer only:
+# export OVG_APPTAINER_SIF=/absolute/path/to/validated-runtime.sif
 
+# Build the image/SIF only when a usable dependency runtime is not available.
+./docker/phase2-amd.sh build
 ./docker/phase2-amd.sh preflight
-./docker/phase2-amd.sh bootstrap
+./docker/phase2-amd.sh up
 ./docker/phase2-amd.sh colcon
 ./docker/phase2-amd.sh verify
 ./docker/phase2-amd.sh shell
 ```
 
-The launcher can also use Apptainer. See the runtime contract for the required
-SIF and bind-mount variables.
-
-### 3. Import a model
-
-The asset helper works offline. It validates or imports files that you already
-have; it does not download weights.
-
-From the repository root on the host:
+Inside the runtime shell, use the existing helper and selected external assets:
 
 ```bash
-export OVG_ASSETS_ROOT="${OVG_STATE_ROOT}/assets"
-
-./tools/phase2-assets import-model \
-  --profile rtdetrv2_r50 \
-  --source /absolute/path/to/rtdetrv2_r50.onnx
-
-./tools/phase2-assets status
+phase2 env --verify
+phase2 assets status
+phase2 assets prepare \
+  --model-profile rtdetrv2_r50 \
+  --execution-provider migraphx
 ```
 
-The formal RT-DETRv2 export recipe and expected digest are documented in
-[`rtdetrv2-validation.md`](docs/experiments/rtdetrv2-validation.md). For
-YOLOv8, import a compatible user-owned model with `--profile yolov8` instead.
-
-### 4. Run a pipeline
-
-Inside the prepared runtime shell, source the workspace and launch the standard
-RT-DETR path:
+The helper is offline. Import user-held files from the repository root with
+`./tools/phase2-assets import-model` or `import-r2b`; the exact model and
+checkpoint gates are in [`rtdetrv2-validation.md`](docs/experiments/rtdetrv2-validation.md).
+Run a fixed-input capture only after the asset and provider gates pass:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source install/setup.bash
-
-ros2 launch gpu_ros_rtdetr rtdetr_ort_std_image.launch.py \
-  model_profile:=rtdetrv2_r50 \
-  model_assets_root:="${OVG_ASSETS_ROOT}" \
-  execution_provider:=migraphx \
-  image_topic:=/image
+CAPTURE_EXECUTION_PROVIDER=migraphx \
+CAPTURE_TRANSPORT=managed \
+CAPTURE_MIN_MESSAGES=20 \
+ros2 run gpu_ros_detection_validation \
+  run_amd_phase2a_fixed_input_capture.sh \
+  "monorepo_rtdetr_managed_<run-id>"
 ```
 
-Publish `sensor_msgs/msg/Image` messages on `/image`. Detections are published
-as `vision_msgs/msg/Detection2DArray` on `/rtdetr/detections_output`.
+Use the existing `yolov8` profile only when compatible user-owned YOLOv8
+assets are available. Do not label a different model as RT-DETRv2. The
+capture, bag comparator, audit, and matrix entry points are documented under
+[`evaluation/`](evaluation/) and the [experiment index](docs/experiments/README.md).
+A benchmark matrix is explicit work, not a default smoke command.
 
-Run the direct Managed HIP graph with:
+## NVIDIA workflow
+
+NVIDIA retains an outer Isaac ROS workspace and a repository checkout below it:
+
+```text
+/workspaces/isaac_ros-dev/                 outer colcon workspace
+/workspaces/isaac_ros-dev/src/gpu-ros/     this repository
+/workspaces/isaac_ros-dev/src/nvidia_external/  pinned external checkouts
+```
+
+The Compose file mounts the monorepo once at `src/gpu-ros` and keeps the outer
+workspace as the working directory. From the checked-out repository path,
+resolve the Compose configuration and run the existing launcher:
 
 ```bash
-ros2 launch gpu_ros_onnx_inference rtdetr_ort_managed_amd.launch.py \
-  model_profile:=rtdetrv2_r50 \
-  model_assets_root:="${OVG_ASSETS_ROOT}" \
-  image_topic:=/image
+cd /workspaces/isaac_ros-dev/src/gpu-ros
+docker compose -f docker-compose.yaml config
+./docker/phase1-nvidia.sh up
+./docker/phase1-nvidia.sh colcon
+./docker/phase1-nvidia.sh verify
+./docker/phase1-nvidia.sh shell
 ```
 
-For YOLOv8, use `yolov8_ort_std_image.launch.py` from `gpu_ros_yolov8` or
-`yolov8_ort_managed_amd.launch.py` from `gpu_ros_onnx_inference` and pass
-`model_file_path:=/absolute/path/to/yolov8s.onnx` when the default asset path
-is not used.
-
-## Build without the container launcher
-
-A prepared ROS 2 workspace can build the package set directly. Starting from
-the application repository root, with `gpu_ros_managed` checked out next to it:
+Inside the runtime shell, the workspace is `/workspaces/isaac_ros-dev` and the
+fresh install is sourced from there. A managed capture keeps its repository-
+relative path under `src/gpu-ros`:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-export ONNXRUNTIME_ROOT=/absolute/path/to/onnxruntime/install
-export COLCON_DEFAULTS_FILE="$(pwd)/docker/colcon-defaults-phase2a-amd.yaml"
-
-colcon build \
-  --base-paths \
-    migrated_packages \
-    ../gpu_ros_managed \
-  --packages-select \
-    gpu_ros_managed_core \
-    gpu_ros_managed_cuda \
-    gpu_ros_managed_hip \
-    gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_bundle \
-    gpu_ros_tensor_bundle_msgs \
-    gpu_ros_detection_common \
-    gpu_ros_onnx_inference \
-    gpu_ros_rtdetr \
-    gpu_ros_yolov8 \
-    gpu_ros_detection_validation
-source install/setup.bash
+src/gpu-ros/evaluation/gpu_ros_detection_validation/scripts/run_nvidia_fixed_input_capture.sh \
+  yolov8-managed "monorepo_yolov8_managed_<run-id>"
 ```
-The AMD defaults disable NITROS and CUDA execution, require the HIP SDK, and
-enable the MIGraphX provider. `gpu_ros_managed_cuda` remains in the selected
-set because `gpu_ros_onnx_inference` declares it as a build dependency; this
-does not enable the CUDA execution provider. If you create a custom build, do
-not request `execution_provider:=migraphx` unless `ORT_ENABLE_MIGRAPHX=ON` was
-used at configure time.
 
-## Repository layout
+Use `rtdetr-managed` only when the licensed NVIDIA RT-DETR assets are present.
+Do not change the external source pins, image boundary, or NVIDIA runtime
+hooks to make another environment resemble AMD.
 
-| Path | Contents |
-| --- | --- |
-| `migrated_packages/gpu_ros_detection_common` | Shared image preprocessing and geometry |
-| `migrated_packages/gpu_ros_onnx_inference` | ONNX Runtime sessions, providers, I/O binding, and transport selection |
-| `migrated_packages/gpu_ros_rtdetr` | RT-DETR image encoder, preprocessor, and decoder |
-| `migrated_packages/gpu_ros_yolov8` | YOLOv8 image encoder and decoder |
-| `migrated_packages/gpu_ros_tensor_bundle_msgs` | Project-owned TensorBundle ROS messages |
-| `migrated_packages/gpu_ros_nvidia_tensor_bundle_compat` | Optional NVIDIA TensorList adapter |
-| `migrated_packages/gpu_ros_detection_validation` | Bag comparison, profiling, and audit tools |
-| `migrated_packages/benchmarks` | Benchmark graph definitions |
-| `docker` and `apptainer` | Reproducible AMD and NVIDIA runtime entry points |
-| `docs/experiments` | Build, validation, and benchmark runbooks |
-| `docs/results` | Published result summaries and their interpretation |
+## Standalone transport build
 
-## Models and data
-
-No model weights or datasets are redistributed by this repository.
-
-`model_profile=auto` selects `rtdetrv2_r50` for CPU, ROCm, and MIGraphX, and
-the historical `nvidia_synthetica` profile for CUDA. A selected asset must
-exist and pass its configured digest check. The code never falls back to a
-different model silently.
-
-Available RT-DETR profiles and their expected paths, input contracts, source
-revisions, and hashes live in
-[`config/model-profiles.json`](config/model-profiles.json). The RT-DETRv2 R50
-pipeline expects `images` and `orig_target_sizes` inputs and produces `labels`,
-`boxes`, and `scores`. A generic Transformers RT-DETR export is not
-interchangeable with this contract.
-
-Users are responsible for the licenses and redistribution terms of their model
-and dataset files. A recorded SHA-256 value is a compatibility check, not a
-license grant.
-
-## Tests
-
-Run the package tests in a built workspace:
+The backend-neutral core builds without ROS or a GPU SDK. From the monorepo
+root, use an out-of-tree build directory:
 
 ```bash
-colcon test \
-  --base-paths \
-    migrated_packages \
-    ../gpu_ros_managed \
-  --packages-select \
-    gpu_ros_managed_core \
-    gpu_ros_managed_hip \
-    gpu_ros_managed_ros \
-    gpu_ros_managed_tensor_bundle \
-    gpu_ros_tensor_bundle_msgs \
-    gpu_ros_detection_common \
-    gpu_ros_onnx_inference \
-    gpu_ros_rtdetr \
-    gpu_ros_yolov8 \
-    gpu_ros_detection_validation \
-  --event-handlers console_direct+
-
-colcon test-result --all --verbose
+cmake -S transport -B /tmp/gpu-ros-transport-core \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_DISABLE_FIND_PACKAGE_ament_cmake=TRUE \
+  -DGPU_ROS_MANAGED_BUILD_TESTING=ON \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+cmake --build /tmp/gpu-ros-transport-core
+ctest --test-dir /tmp/gpu-ros-transport-core --output-on-failure
 ```
 
-Source-level checks that do not need a ROS installation or GPU are also
-available:
+The same standalone tree can be configured from its own directory. The
+working directory matters:
 
 ```bash
-git diff --check
-
-uv run --with pytest --no-project python -m pytest -q \
-  migrated_packages/gpu_ros_detection_validation/test/test_capture_runner.py \
-  migrated_packages/gpu_ros_detection_validation/test/test_managed_topology.py
-
-uv run --isolated --no-project python -B \
-  tools/test_open_source_namespace_boundaries.py
+cd transport
+cmake -S . -B /tmp/gpu-ros-transport-core \
+  -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+  -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+cmake --build /tmp/gpu-ros-transport-core
+ctest --test-dir /tmp/gpu-ros-transport-core --output-on-failure
 ```
 
-Real-model, provider-placement, and transport checks require the matching GPU
-runtime and external assets. Follow the runbook for the lane being tested.
+Enable CUDA or HIP only when the matching SDK and device are available. ROS
+adapters are built with colcon from a ROS workspace using the package roots
+`transport` and `interfaces`; see [`transport/README.md`](transport/README.md).
 
-## Benchmarks and results
+## Development and verification
 
-Benchmark scripts cover the standard, staged-control, and direct managed
-graphs. Raw bags, JSON, profiles, traces, and logs must be written outside the
-source tree through `OVG_RESULTS_ROOT`.
+Keep changes within their owning top-level category and preserve package names,
+public CMake targets, message schemas, include namespaces, plugins, model
+contracts, external pins, and provider settings. Use the runbook for the lane
+being changed:
 
-- [Experiment index](docs/experiments/README.md)
-- [AMD standard path runbook](docs/experiments/phase2a-amd.md)
-- [AMD managed path runbook](docs/experiments/phase2b-managed.md)
-- [NVIDIA reference runbook](docs/experiments/phase1-nvidia.md)
-- [Published result summaries](docs/results/README.md)
+- [AMD runtime contract](docs/experiments/amd-runtime-contract.md)
+- [Phase 2A AMD standard path](docs/experiments/phase2a-amd.md)
+- [Phase 2B managed HIP](docs/experiments/phase2b-managed.md)
+- [Phase 1 NVIDIA reference](docs/experiments/phase1-nvidia.md)
+- [Phase 2B NVIDIA managed comparison](docs/experiments/phase2b-nvidia.md)
+- [RT-DETRv2 validation](docs/experiments/rtdetrv2-validation.md)
+- [Result and provenance rules](docs/results/README.md)
 
-Performance numbers from different GPU models or software stacks are reported
-as separate observations. They are not presented as a single-variable backend
-comparison.
+Use `./tools/phase2` only for its existing `env`, `assets`, `cache`, and
+`build` groups. It does not provide `phase2 test`, `phase2 smoke`, or
+`phase2 benchmark` subcommands. Capture and matrix scripts retain their
+existing arguments and thresholds.
 
-## Known limitations
+New run records use one monorepo identity. Matrix manifests use schema 3;
+fixed-input capture logs and promoted summaries remain unversioned and use
+`monorepo_revision` fields. Legacy records are interpreted according to the
+separate rules in [`docs/results/README.md`](docs/results/README.md), and
+historical archives are not rewritten.
 
-- RT-DETR and YOLOv8 use model-specific tensor contracts and 640 by 640 model
-  inputs.
-- Some RT-DETR operations may be placed on the CPU by ONNX Runtime. Provider
-  placement is reported per tested model and runtime rather than enforced with
-  a permanent node allowlist.
-- The NVIDIA compatibility lane needs external Isaac ROS packages and source
-  checkouts. It is excluded from AMD builds.
-- Grounding DINO and DetectNet have not been migrated.
+Run focused checks for the layer you changed, keep generated state outside Git,
+and report the actual command, revision, runtime/provider, model/data identity,
+and result location. Do not claim performance or correctness from a smoke run.
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Do not commit
-models, datasets, ROS bags, profiles, runtime images, credentials, or generated
-benchmark output.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before submitting a change and
+[`SECURITY.md`](SECURITY.md) before reporting a vulnerability. Do not commit
+credentials, private deployment paths, scheduler identifiers, runtime images,
+model/data bytes, bags, traces, caches, or generated results.
 
-Report security issues using the private contact in
-[SECURITY.md](SECURITY.md), not a public issue.
-
-## License and third-party code
-
-Project-authored source is licensed under the
-[Apache License 2.0](LICENSE). Some files were derived from file-level
-Apache-2.0 NVIDIA Isaac ROS sources and retain their original copyright and
-modification notices. External checkouts and model files keep their own terms.
-
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for component-level
-details. This is an independent project and is not affiliated with or endorsed
-by NVIDIA or AMD.
-
-Maintainer: Boshen Chen ([@ObeliskGate](https://github.com/ObeliskGate))
+Project-authored code is Apache-2.0. File-level notices and external component
+terms remain authoritative; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+and [`transport/THIRD_PARTY_NOTICES.md`](transport/THIRD_PARTY_NOTICES.md).
+This is an independent project and is not affiliated with or endorsed by
+NVIDIA or AMD.

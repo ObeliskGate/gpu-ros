@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TREEISH="${1:-HEAD}"
-OUTPUT="${2:-${REPOSITORY_ROOT}/release/amd_ros_object_detection-source.tar.gz}"
+OUTPUT="${2:-${REPOSITORY_ROOT}/release/gpu-ros-source.tar.gz}"
 
 die() {
   echo "ERROR: $*" >&2
@@ -39,9 +39,9 @@ fi
 mkdir -p "$(dirname "${OUTPUT}")"
 git -C "${REPOSITORY_ROOT}" archive \
   --format=tar.gz \
-  --prefix=amd_ros_object_detection/ \
+  --prefix=gpu-ros/ \
   --output="${OUTPUT}" \
   "${TREEISH}"
 sha256sum "${OUTPUT}"
 echo "tracked source snapshot created: ${OUTPUT}"
-echo "NOTE: Git history is excluded; history sanitization and final license review remain mandatory."
+echo "NOTE: Git history is excluded from this source snapshot."

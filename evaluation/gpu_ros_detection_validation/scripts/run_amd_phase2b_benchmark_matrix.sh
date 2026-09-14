@@ -49,12 +49,11 @@ if [[ ! ${MATRIX_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   exit 2
 fi
 
-WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/amd_ros_object_detection}"
+WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
 RESULT_PARENT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b-benchmark-matrix"
 OUTPUT_ROOT="${RESULT_PARENT}/${MATRIX_NAME}"
-BENCHMARK_ROOT="${WORKSPACE_ROOT}/migrated_packages/benchmarks"
-GPU_MANAGED_ROOT="${GPU_ROS_MANAGED_ROOT:-${WORKSPACE_ROOT}/src/gpu_ros_managed}"
+BENCHMARK_ROOT="${WORKSPACE_ROOT}/evaluation/benchmarks"
 if [[ ${MODEL} == yolov8 ]]; then
   MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
 else
@@ -194,7 +193,7 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 {
-  echo "schema_version=2"
+  echo "schema_version=3"
   echo "model=${MODEL}"
   echo "matrix_name=${MATRIX_NAME}"
   echo "started_at=$(date --iso-8601=seconds)"
@@ -206,16 +205,11 @@ trap 'exit 130' INT TERM
   echo "dataset_tree_sha256=$(hash_path "${DATASET_PATH}")"
   echo "ort_root=${ONNXRUNTIME_ROOT:-}"
   echo "ort_library_sha256=$(hash_path "${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}")"
-  echo "application_revision=$(git -C "${WORKSPACE_ROOT}" rev-parse HEAD)"
-  echo "application_diff_head_binary_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
-  echo "application_untracked_paths=$(repo_untracked_paths "${WORKSPACE_ROOT}")"
-  echo "application_untracked_content_sha256=$(repo_untracked_content_hash "${WORKSPACE_ROOT}")"
-  echo "application_dirty=$(repo_dirty "${WORKSPACE_ROOT}")"
-  echo "gpu_ros_managed_revision=$(repo_revision "${GPU_MANAGED_ROOT}")"
-  echo "gpu_ros_managed_diff_head_binary_sha256=$(repo_diff_hash "${GPU_MANAGED_ROOT}")"
-  echo "gpu_ros_managed_untracked_paths=$(repo_untracked_paths "${GPU_MANAGED_ROOT}")"
-  echo "gpu_ros_managed_untracked_content_sha256=$(repo_untracked_content_hash "${GPU_MANAGED_ROOT}")"
-  echo "gpu_ros_managed_dirty=$(repo_dirty "${GPU_MANAGED_ROOT}")"
+  echo "monorepo_revision=$(git -C "${WORKSPACE_ROOT}" rev-parse HEAD)"
+  echo "monorepo_diff_head_binary_sha256=$(repo_diff_hash "${WORKSPACE_ROOT}")"
+  echo "monorepo_untracked_paths=$(repo_untracked_paths "${WORKSPACE_ROOT}")"
+  echo "monorepo_untracked_content_sha256=$(repo_untracked_content_hash "${WORKSPACE_ROOT}")"
+  echo "monorepo_dirty=$(repo_dirty "${WORKSPACE_ROOT}")"
   echo "fixed_rates_hz=10,30,60"
   echo "round_count=3"
   echo "lane_order_round_1=std,staged,direct"

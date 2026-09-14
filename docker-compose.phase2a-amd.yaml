@@ -31,23 +31,23 @@ services:
       ONNXRUNTIME_ROOT: /opt/onnxruntime
       ONNXRUNTIME_INCLUDE_DIR: /opt/onnxruntime/include
       ONNXRUNTIME_LIBRARY: /opt/onnxruntime/lib/libonnxruntime.so
-      OVG_WORKSPACE_ROOT: /workspaces/amd_ros_object_detection
+      OVG_WORKSPACE_ROOT: /workspaces/gpu-ros
+      GPU_ROS_REPO_ROOT: /workspaces/gpu-ros
       OVG_ASSETS_ROOT: /workspaces/ovg-assets
       OVG_CACHE_ROOT: /workspaces/ovg-cache
       OVG_RESULTS_ROOT: /workspaces/ovg-results
-      COLCON_DEFAULTS_FILE: /workspaces/amd_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml
+      COLCON_DEFAULTS_FILE: /workspaces/gpu-ros/docker/colcon-defaults-phase2a-amd.yaml
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/ovg-assets
       OVG_IMAGE_FINGERPRINT: ${OVG_IMAGE_FINGERPRINT:-unresolved}
       OVG_RUNTIME_EFFECTIVE: ${OVG_RUNTIME_EFFECTIVE:-docker}
     volumes:
-      - .:/workspaces/amd_ros_object_detection
-      - ${GPU_ROS_MANAGED_DIR:-../gpu_ros_managed}:/workspaces/amd_ros_object_detection/src/gpu_ros_managed
+      - .:/workspaces/gpu-ros
       - ${OVG_ASSETS_DIR:-.ovg/assets}:/workspaces/ovg-assets
       - ${OVG_CACHE_DIR:-.ovg/cache}:/workspaces/ovg-cache
       - ${OVG_RESULTS_DIR:-.ovg/results}:/workspaces/ovg-results
-      - ${OVG_BUILD_DIR:-.ovg/build/unresolved}:/workspaces/amd_ros_object_detection/build
-      - ${OVG_INSTALL_DIR:-.ovg/install/unresolved}:/workspaces/amd_ros_object_detection/install
-      - ${OVG_LOG_DIR:-.ovg/log/unresolved}:/workspaces/amd_ros_object_detection/log
+      - ${OVG_BUILD_DIR:-.ovg/build/unresolved}:/workspaces/gpu-ros/build
+      - ${OVG_INSTALL_DIR:-.ovg/install/unresolved}:/workspaces/gpu-ros/install
+      - ${OVG_LOG_DIR:-.ovg/log/unresolved}:/workspaces/gpu-ros/log
       - ${OVG_ORT_DIR:-.ovg/ort}:/workspaces/ovg-ort
       - ${OVG_HOME_DIR:-.ovg/home}:/home/ovg
-    working_dir: /workspaces/amd_ros_object_detection
+    working_dir: /workspaces/gpu-ros
