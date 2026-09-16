@@ -64,7 +64,8 @@ except ModuleNotFoundError:  # Direct source-tree imports used by pytest.
 def parse_args() -> argparse.Namespace:
     """Parse paired or self-report arguments."""
     parser = argparse.ArgumentParser(
-        description='Parse official ROCprofiler-v3 JSON activity sections.')
+        description='Parse official ROCprofiler-v3 JSON activity sections.'
+    )
     parser.add_argument('--std-trace', action='append', type=Path)
     parser.add_argument('--managed-trace', action='append', type=Path)
     parser.add_argument('--trace', action='append', type=Path)
@@ -75,12 +76,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--frame-count', type=int)
     parser.add_argument('--payload-size', action='append', default=[], type=int)
     parser.add_argument(
-        '--expected-adapter-direction', action='append', default=[],
+        '--expected-adapter-direction',
+        action='append',
+        default=[],
         choices=['H2D', 'D2H', 'D2D', 'H2H', 'unknown'],
-        help='Direction expected from Managed adapter staging; not proof by itself')
+        help='Direction expected from Managed adapter staging; not proof by itself',
+    )
     parser.add_argument(
-        '--require-adapter-directions', action='store_true',
-        help='Require every expected adapter direction (staged-control lane only)')
+        '--require-adapter-directions',
+        action='store_true',
+        help='Require every expected adapter direction (staged-control lane only)',
+    )
     parser.add_argument('--boundary-evidence', type=Path)
     parser.add_argument('--std-binding-report', type=Path)
     parser.add_argument('--managed-binding-report', type=Path)
@@ -91,8 +97,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--std-csv', action='append', type=Path)
     parser.add_argument('--managed-csv', action='append', type=Path)
     parser.add_argument(
-        '--kernel-payload-risk', action='append', default=[],
-        help='Managed-only kernel name that cannot be ruled out as payload movement')
+        '--kernel-payload-risk',
+        action='append',
+        default=[],
+        help='Managed-only kernel name that cannot be ruled out as payload movement',
+    )
     parser.add_argument('--output-json', required=True, type=Path)
     return parser.parse_args()
 
@@ -108,9 +117,8 @@ def load_events(paths: Sequence[Path]) -> List[Mapping[str, Any]]:
 
 
 def summarize(
-        events: Iterable[Mapping[str, Any]],
-        payload_sizes: Iterable[int],
-        frames: Optional[int] = None) -> Dict[str, Any]:
+    events: Iterable[Mapping[str, Any]], payload_sizes: Iterable[int], frames: Optional[int] = None
+) -> Dict[str, Any]:
     """Summarize canonical events, primarily for offline tests/notebooks."""
     # ROCprof-specific enum and metadata handling has already happened in the
     # dedicated loader.  The common summarizer sees ordinary canonical events.
@@ -131,8 +139,8 @@ def load_boundary_evidence(path: Optional[Path]) -> Optional[Mapping[str, Any]]:
 
 
 def load_binding_reports(
-        std_path: Optional[Path],
-        managed_path: Optional[Path]) -> Optional[Dict[str, Any]]:
+    std_path: Optional[Path], managed_path: Optional[Path]
+) -> Optional[Dict[str, Any]]:
     """Load first-frame pointer/lifetime reports for both AMD lanes."""
     if std_path is None and managed_path is None:
         return None
@@ -156,9 +164,7 @@ def _serialize_counter(counter: Counter) -> List[Dict[str, Any]]:
     ]
 
 
-def _kernel_summary(
-        events: Iterable[Mapping[str, Any]],
-        frames: Optional[int]) -> Dict[str, Any]:
+def _kernel_summary(events: Iterable[Mapping[str, Any]], frames: Optional[int]) -> Dict[str, Any]:
     summary = summarize_events(events, set(), platform='generic', frame_count=frames)
     kernels = summary['kernels']
     return {
@@ -166,20 +172,20 @@ def _kernel_summary(
         'unique_count': len(kernels),
         'counts': _serialize_counter(kernels),
         'per_frame': {
-            name: (count / frames if frames else None)
-            for name, count in sorted(kernels.items())
+            name: (count / frames if frames else None) for name, count in sorted(kernels.items())
         },
         'frame_count': frames,
     }
 
 
 def _kernel_evidence(
-        std_events: Iterable[Mapping[str, Any]],
-        managed_events: Iterable[Mapping[str, Any]],
-        std_frames: Optional[int],
-        managed_frames: Optional[int],
-        boundary_evidence: Optional[Mapping[str, Any]],
-        managed_only_risk_names: Iterable[str]) -> Dict[str, Any]:
+    std_events: Iterable[Mapping[str, Any]],
+    managed_events: Iterable[Mapping[str, Any]],
+    std_frames: Optional[int],
+    managed_frames: Optional[int],
+    boundary_evidence: Optional[Mapping[str, Any]],
+    managed_only_risk_names: Iterable[str],
+) -> Dict[str, Any]:
     """Build AMD-only kernel evidence without turning names into copy facts."""
     std_events = list(std_events)
     managed_events = list(managed_events)
@@ -194,24 +200,26 @@ def _kernel_evidence(
     for name in sorted(std_names | managed_names):
         std_count = std_counts[name]
         managed_count = managed_counts[name]
-        count_deltas.append({
-            'name': name,
-            'std_count': std_count,
-            'managed_count': managed_count,
-            'count_delta': managed_count - std_count,
-            'std_per_frame': std_count / std_frames if std_frames else None,
-            'managed_per_frame': managed_count / managed_frames if managed_frames else None,
-            'rate_delta': (
-                managed_count / managed_frames - std_count / std_frames
-                if std_frames and managed_frames else None),
-            'classification': 'shared_kernel_rate_diagnostic' if name in shared_names
-            else 'kernel_set_diagnostic',
-        })
+        count_deltas.append(
+            {
+                'name': name,
+                'std_count': std_count,
+                'managed_count': managed_count,
+                'count_delta': managed_count - std_count,
+                'std_per_frame': std_count / std_frames if std_frames else None,
+                'managed_per_frame': managed_count / managed_frames if managed_frames else None,
+                'rate_delta': (
+                    managed_count / managed_frames - std_count / std_frames
+                    if std_frames and managed_frames
+                    else None
+                ),
+                'classification': 'shared_kernel_rate_diagnostic'
+                if name in shared_names
+                else 'kernel_set_diagnostic',
+            }
+        )
 
-    copy_buffer = [
-        item for item in count_deltas
-        if '__amd_rocclr_copyBuffer' in item['name']
-    ]
+    copy_buffer = [item for item in count_deltas if '__amd_rocclr_copyBuffer' in item['name']]
 
     # A trace/correlation artifact may explicitly explain a kernel's relation
     # to the inference boundary.  Without that artifact, a shared
@@ -226,30 +234,34 @@ def _kernel_evidence(
     unresolved: List[Dict[str, Any]] = []
     for item in copy_buffer:
         if item['count_delta'] and item['name'] not in resolved_names:
-            unresolved.append({
-                'name': item['name'],
-                'reason': (
-                    'shared AMD copyBuffer kernel rate differs and the available '
-                    'trace/correlation does not establish its relation to the '
-                    'inference boundary'
-                ),
-                'std_count': item['std_count'],
-                'managed_count': item['managed_count'],
-                'rate_delta': item['rate_delta'],
-                'classification': 'unresolved_kernel_evidence',
-            })
+            unresolved.append(
+                {
+                    'name': item['name'],
+                    'reason': (
+                        'shared AMD copyBuffer kernel rate differs and the available '
+                        'trace/correlation does not establish its relation to the '
+                        'inference boundary'
+                    ),
+                    'std_count': item['std_count'],
+                    'managed_count': item['managed_count'],
+                    'rate_delta': item['rate_delta'],
+                    'classification': 'unresolved_kernel_evidence',
+                }
+            )
     for name in sorted(set(managed_only_risk_names)):
         if name in managed_names and name not in resolved_names:
-            unresolved.append({
-                'name': name,
-                'reason': (
-                    'explicitly supplied Managed-only kernel payload risk has no '
-                    'boundary correlation'
-                ),
-                'std_count': std_counts[name],
-                'managed_count': managed_counts[name],
-                'classification': 'unresolved_kernel_evidence',
-            })
+            unresolved.append(
+                {
+                    'name': name,
+                    'reason': (
+                        'explicitly supplied Managed-only kernel payload risk has no '
+                        'boundary correlation'
+                    ),
+                    'std_count': std_counts[name],
+                    'managed_count': managed_counts[name],
+                    'classification': 'unresolved_kernel_evidence',
+                }
+            )
     return {
         'std': std_summary,
         'managed': managed_summary,
@@ -265,8 +277,8 @@ def _kernel_evidence(
 
 
 def _capture_details(
-        capture: Optional[RocprofCapture],
-        manifest: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    capture: Optional[RocprofCapture], manifest: Optional[Mapping[str, Any]]
+) -> Dict[str, Any]:
     if capture is None:
         return {
             'memory_copy': {'domain': MEMORY_COPY_DOMAIN, 'status': 'not_checked'},
@@ -280,8 +292,7 @@ def _capture_details(
 
 
 def _capture_profiler_complete(details: Mapping[str, Any]) -> bool:
-    return bool(details.get('memory_copy_complete')) and not details.get(
-        'parser_diagnostics')
+    return bool(details.get('memory_copy_complete')) and not details.get('parser_diagnostics')
 
 
 def _add_amd_classifications(result: Dict[str, Any]) -> None:
@@ -290,7 +301,8 @@ def _add_amd_classifications(result: Dict[str, Any]) -> None:
         item['classification'] = 'staging_shaped_evidence'
         item['interpretation'] = (
             'Direction/bytes identify host-device-shaped staging, but do not '
-            'prove that this record belongs to the Managed adapter.')
+            'prove that this record belongs to the Managed adapter.'
+        )
     for item in result.get('memory_copy', {}).get('memory_total_deltas', []):
         if item.get('classification') == 'expected_managed_adapter':
             item['classification'] = 'staging_shaped_evidence'
@@ -303,40 +315,47 @@ def format_unresolved_kernel(item: Mapping[str, Any]) -> str:
     return (
         f"lane={item.get('lane', 'unknown')} "
         f"classification={item.get('classification', 'unresolved_kernel_evidence')} "
-        f"reason={item.get('reason', 'unspecified')}")
+        f"reason={item.get('reason', 'unspecified')}"
+    )
 
 
 def compare(
-        std_events: Iterable[Mapping[str, Any]],
-        managed_events: Iterable[Mapping[str, Any]],
-        payload_sizes: Iterable[int],
-        std_frames: Optional[int] = None,
-        managed_frames: Optional[int] = None,
-        adapter_directions: Iterable[str] = ('H2D', 'D2H'),
-        require_adapter_directions: bool = False,
-        boundary_evidence: Optional[Mapping[str, Any]] = None,
-        profiler_complete: bool = True,
-        kernel_payload_risk_names: Optional[Iterable[str]] = None,
-        binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
-        std_capture: Optional[RocprofCapture] = None,
-        managed_capture: Optional[RocprofCapture] = None,
-        std_manifest: Optional[Mapping[str, Any]] = None,
-        managed_manifest: Optional[Mapping[str, Any]] = None,
-        std_csv: Optional[Sequence[Path]] = None,
-        managed_csv: Optional[Sequence[Path]] = None,
-        ) -> Dict[str, Any]:
+    std_events: Iterable[Mapping[str, Any]],
+    managed_events: Iterable[Mapping[str, Any]],
+    payload_sizes: Iterable[int],
+    std_frames: Optional[int] = None,
+    managed_frames: Optional[int] = None,
+    adapter_directions: Iterable[str] = ('H2D', 'D2H'),
+    require_adapter_directions: bool = False,
+    boundary_evidence: Optional[Mapping[str, Any]] = None,
+    profiler_complete: bool = True,
+    kernel_payload_risk_names: Optional[Iterable[str]] = None,
+    binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    std_capture: Optional[RocprofCapture] = None,
+    managed_capture: Optional[RocprofCapture] = None,
+    std_manifest: Optional[Mapping[str, Any]] = None,
+    managed_manifest: Optional[Mapping[str, Any]] = None,
+    std_csv: Optional[Sequence[Path]] = None,
+    managed_csv: Optional[Sequence[Path]] = None,
+) -> Dict[str, Any]:
     """Build an AMD report while keeping common NVIDIA criteria unchanged."""
     std_events = list(std_events)
     managed_events = list(managed_events)
     std_details = _capture_details(std_capture, std_manifest)
     managed_details = _capture_details(managed_capture, managed_manifest)
     complete = (
-        profiler_complete and
-        _capture_profiler_complete(std_details) and
-        _capture_profiler_complete(managed_details))
+        profiler_complete
+        and _capture_profiler_complete(std_details)
+        and _capture_profiler_complete(managed_details)
+    )
     kernel_evidence = _kernel_evidence(
-        std_events, managed_events, std_frames, managed_frames,
-        boundary_evidence, kernel_payload_risk_names or ())
+        std_events,
+        managed_events,
+        std_frames,
+        managed_frames,
+        boundary_evidence,
+        kernel_payload_risk_names or (),
+    )
     result = build_pair_report(
         std_events,
         managed_events,
@@ -365,20 +384,24 @@ def compare(
     for lane, details in (('std', std_details), ('managed', managed_details)):
         kernel_status = details['kernel']['status']
         if kernel_status not in {'complete', 'not_checked'}:
-            unresolved_kernel_evidence.append({
-                'lane': lane,
-                'reason': (
-                    f'ROCprofiler kernel domain is {kernel_status}; kernel trace '
-                    'is auxiliary evidence and cannot explain the AMD boundary'),
-                'classification': 'unresolved_kernel_evidence',
-            })
+            unresolved_kernel_evidence.append(
+                {
+                    'lane': lane,
+                    'reason': (
+                        f'ROCprofiler kernel domain is {kernel_status}; kernel trace '
+                        'is auxiliary evidence and cannot explain the AMD boundary'
+                    ),
+                    'classification': 'unresolved_kernel_evidence',
+                }
+            )
     result['unresolved_kernel_evidence'] = unresolved_kernel_evidence
     result['staging_policy'] = {
         'managed_adapter_directions': sorted(set(adapter_directions)),
         'description': (
             'Managed-only H2D/D2H records are reported as staging-shaped '
             'evidence. Direction and bytes alone do not prove adapter ownership; '
-            'explicit boundary correlation is required for a boundary FAIL.'),
+            'explicit boundary correlation is required for a boundary FAIL.'
+        ),
     }
     _add_amd_classifications(result)
 
@@ -389,8 +412,10 @@ def compare(
         csv_checks['managed'] = cross_check_csv(managed_capture, managed_csv)
     if csv_checks:
         result['csv_cross_check'] = csv_checks
-        if any(item['status'] != 'PASS' for item in csv_checks.values()) and \
-                result['status'] != 'FAIL':
+        if (
+            any(item['status'] != 'PASS' for item in csv_checks.values())
+            and result['status'] != 'FAIL'
+        ):
             result['status'] = 'INCONCLUSIVE'
             result['final_status'] = 'INCONCLUSIVE'
             result['pass'] = False
@@ -400,24 +425,26 @@ def compare(
         result['final_status'] = 'INCONCLUSIVE'
         result['pass'] = False
     result['criteria']['amd_kernel_evidence_resolved'] = not bool(
-        result['unresolved_kernel_evidence'])
-    result['criteria']['memory_copy_manifest_complete'] = (
-        std_details['memory_copy']['status'] in {'complete', 'not_checked'} and
-        managed_details['memory_copy']['status'] in {'complete', 'not_checked'})
+        result['unresolved_kernel_evidence']
+    )
+    result['criteria']['memory_copy_manifest_complete'] = std_details['memory_copy']['status'] in {
+        'complete',
+        'not_checked',
+    } and managed_details['memory_copy']['status'] in {'complete', 'not_checked'}
     result['criteria']['kernel_manifest_is_auxiliary'] = True
     return result
 
 
 def self_report(
-        events: Iterable[Mapping[str, Any]],
-        lane: str,
-        payload_sizes: Iterable[int],
-        frames: Optional[int] = None,
-        profiler_complete: bool = True,
-        capture: Optional[RocprofCapture] = None,
-        manifest: Optional[Mapping[str, Any]] = None,
-        csv_paths: Optional[Sequence[Path]] = None,
-        ) -> Dict[str, Any]:
+    events: Iterable[Mapping[str, Any]],
+    lane: str,
+    payload_sizes: Iterable[int],
+    frames: Optional[int] = None,
+    profiler_complete: bool = True,
+    capture: Optional[RocprofCapture] = None,
+    manifest: Optional[Mapping[str, Any]] = None,
+    csv_paths: Optional[Sequence[Path]] = None,
+) -> Dict[str, Any]:
     """Return one lane's canonical report."""
     events = list(events)
     details = _capture_details(capture, manifest)
@@ -426,8 +453,7 @@ def self_report(
     report = self_report_from_summary(summary, lane, 'rocprof', frames, effective_complete)
     report['platform'] = 'rocprof'
     report['capture_completeness'] = details
-    report['kernel_evidence'] = _kernel_evidence(
-        [], events, None, frames, None, ())['managed']
+    report['kernel_evidence'] = _kernel_evidence([], events, None, frames, None, ())['managed']
     if capture is not None:
         report['parser_diagnostics'] = capture.diagnostics
         if csv_paths:
@@ -448,10 +474,13 @@ def main() -> int:
                 raise RocprofJsonError('--self-report requires at least one --trace')
             if args.std_trace or args.managed_trace:
                 raise RocprofJsonError(
-                    '--self-report cannot be combined with paired trace arguments')
+                    '--self-report cannot be combined with paired trace arguments'
+                )
             capture = load_capture(args.trace)
             result = self_report(
-                capture.events, args.lane, set(args.payload_size),
+                capture.events,
+                args.lane,
+                set(args.payload_size),
                 frames=args.frame_count,
                 capture=capture,
                 manifest=_load_manifest_optional(args.manifest),
@@ -459,8 +488,7 @@ def main() -> int:
             )
         else:
             if not args.std_trace or not args.managed_trace:
-                raise RocprofJsonError(
-                    'paired comparison requires --std-trace and --managed-trace')
+                raise RocprofJsonError('paired comparison requires --std-trace and --managed-trace')
             std_capture = load_capture(args.std_trace)
             managed_capture = load_capture(args.managed_trace)
             result = compare(
@@ -474,7 +502,8 @@ def main() -> int:
                 boundary_evidence=load_boundary_evidence(args.boundary_evidence),
                 kernel_payload_risk_names=args.kernel_payload_risk,
                 binding_reports=load_binding_reports(
-                    args.std_binding_report, args.managed_binding_report),
+                    args.std_binding_report, args.managed_binding_report
+                ),
                 std_capture=std_capture,
                 managed_capture=managed_capture,
                 std_manifest=_load_manifest_optional(args.std_manifest),
@@ -482,8 +511,14 @@ def main() -> int:
                 std_csv=args.std_csv,
                 managed_csv=args.managed_csv,
             )
-    except (OSError, TypeError, ValueError, json.JSONDecodeError,
-            RocprofJsonError, RocprofManifestError) as exc:
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        RocprofJsonError,
+        RocprofManifestError,
+    ) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
         return 2
 
@@ -504,13 +539,15 @@ def main() -> int:
             'Unresolved memory-copy record: '
             f"lane={item['lane']} operation={item['operation']} "
             f"direction={item['direction']} bytes={item['bytes']} "
-            f"reason={item['reason']}")
+            f"reason={item['reason']}"
+        )
     for item in result.get('unresolved_kernel_evidence', []):
         print('Unresolved AMD kernel evidence: ' + format_unresolved_kernel(item))
     for item in result.get('adapter_copy_evidence', []):
         print(
             'Staging-shaped Managed copy evidence: '
-            f"{item['direction']} {item['bytes']} bytes x{item['count']}")
+            f"{item['direction']} {item['bytes']} bytes x{item['count']}"
+        )
     return 0 if result['status'] == 'PASS' else 1
 
 

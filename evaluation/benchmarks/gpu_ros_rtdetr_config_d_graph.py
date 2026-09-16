@@ -42,9 +42,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='NvidiaTensorListToTensorBundle',
         namespace=ns,
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'tensor_bundle_input'),
@@ -56,7 +54,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        remappings=[('encoded_tensor', 'tensor_bundle_input')]
+        remappings=[('encoded_tensor', 'tensor_bundle_input')],
     )
 
     onnx_node = ComposableNode(
@@ -64,14 +62,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosRtDetrConfigD.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'std',
-        }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosRtDetrConfigD.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'std',
+            }
+        ],
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')],
     )
 
     decoder_node = ComposableNode(
@@ -92,7 +92,10 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            tensor_list_adapter_node, preprocessor_node, onnx_node, decoder_node,
+            tensor_list_adapter_node,
+            preprocessor_node,
+            onnx_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -118,7 +121,7 @@ class TestGpuRosRtDetrConfigD(ROS2BenchmarkTest):
             'data_resolution': common.IMAGE_RESOLUTION,
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
-        }
+        },
     )
 
     def test_benchmark(self):

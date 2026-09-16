@@ -32,15 +32,20 @@ def write_profile(path, events):
 def test_reports_accelerator_without_cpu_fallback(tmp_path):
     """A profile with only MIGraphX kernels has no CPU provider entry."""
     profile_path = tmp_path / 'migraphx.json'
-    write_profile(profile_path, [{
-        'cat': 'Node',
-        'name': 'fused_kernel_time',
-        'dur': 12.5,
-        'args': {
-            'provider': 'MIGraphXExecutionProvider',
-            'op_name': 'MIGraphX',
-        },
-    }])
+    write_profile(
+        profile_path,
+        [
+            {
+                'cat': 'Node',
+                'name': 'fused_kernel_time',
+                'dur': 12.5,
+                'args': {
+                    'provider': 'MIGraphXExecutionProvider',
+                    'op_name': 'MIGraphX',
+                },
+            }
+        ],
+    )
 
     report = PROFILE_SUMMARY.summarize_profile(profile_path)
 
@@ -53,15 +58,20 @@ def test_reports_accelerator_without_cpu_fallback(tmp_path):
 def test_reports_cpu_node_names(tmp_path):
     """CPU provider kernel events retain node and operator names."""
     profile_path = tmp_path / 'mixed.json'
-    write_profile(profile_path, [{
-        'cat': 'Node',
-        'name': 'shape_kernel_time',
-        'dur': 2.0,
-        'args': {
-            'provider': 'CPUExecutionProvider',
-            'op_name': 'Shape',
-        },
-    }])
+    write_profile(
+        profile_path,
+        [
+            {
+                'cat': 'Node',
+                'name': 'shape_kernel_time',
+                'dur': 2.0,
+                'args': {
+                    'provider': 'CPUExecutionProvider',
+                    'op_name': 'Shape',
+                },
+            }
+        ],
+    )
 
     report = PROFILE_SUMMARY.summarize_profile(profile_path)
     cpu_data = report['providers'][PROFILE_SUMMARY.CPU_PROVIDER]
@@ -74,16 +84,19 @@ def test_reports_cpu_node_names(tmp_path):
 
 def test_mixed_migraphx_cpu_profile_reports_share_without_failing_provider_audit(tmp_path):
     profile_path = tmp_path / 'mixed-migraphx.json'
-    write_profile(profile_path, [
-        {
-            'name': 'fused_kernel_time',
-            'args': {'provider': 'MIGraphXExecutionProvider', 'op_name': 'MIGraphX'},
-        },
-        {
-            'name': 'shape_kernel_time',
-            'args': {'provider': 'CPUExecutionProvider', 'op_name': 'Shape'},
-        },
-    ])
+    write_profile(
+        profile_path,
+        [
+            {
+                'name': 'fused_kernel_time',
+                'args': {'provider': 'MIGraphXExecutionProvider', 'op_name': 'MIGraphX'},
+            },
+            {
+                'name': 'shape_kernel_time',
+                'args': {'provider': 'CPUExecutionProvider', 'op_name': 'Shape'},
+            },
+        ],
+    )
 
     report = PROFILE_SUMMARY.summarize_profile(profile_path)
 
@@ -95,12 +108,17 @@ def test_mixed_migraphx_cpu_profile_reports_share_without_failing_provider_audit
 def test_ignores_non_provider_events(tmp_path):
     """Session-level timing events are not mistaken for graph nodes."""
     profile_path = tmp_path / 'session-only.json'
-    write_profile(profile_path, [{
-        'cat': 'Session',
-        'name': 'session_initialization',
-        'dur': 100.0,
-        'args': {},
-    }])
+    write_profile(
+        profile_path,
+        [
+            {
+                'cat': 'Session',
+                'name': 'session_initialization',
+                'dur': 100.0,
+                'args': {},
+            }
+        ],
+    )
 
     report = PROFILE_SUMMARY.summarize_profile(profile_path)
 
@@ -124,10 +142,12 @@ def test_provider_layout_comparison_ignores_event_counts(tmp_path):
     write_profile(first, [cuda_event])
     write_profile(second, [cuda_event, cuda_event])
 
-    comparison = PROFILE_SUMMARY.compare_provider_layouts([
-        PROFILE_SUMMARY.summarize_profile(first),
-        PROFILE_SUMMARY.summarize_profile(second),
-    ])
+    comparison = PROFILE_SUMMARY.compare_provider_layouts(
+        [
+            PROFILE_SUMMARY.summarize_profile(first),
+            PROFILE_SUMMARY.summarize_profile(second),
+        ]
+    )
 
     assert comparison['match'] is True
     assert comparison['differences'] == []
@@ -158,10 +178,12 @@ def test_provider_layout_comparison_reports_extra_cpu_node(tmp_path):
     write_profile(first, [cuda_event])
     write_profile(second, [cuda_event, cpu_event])
 
-    comparison = PROFILE_SUMMARY.compare_provider_layouts([
-        PROFILE_SUMMARY.summarize_profile(first),
-        PROFILE_SUMMARY.summarize_profile(second),
-    ])
+    comparison = PROFILE_SUMMARY.compare_provider_layouts(
+        [
+            PROFILE_SUMMARY.summarize_profile(first),
+            PROFILE_SUMMARY.summarize_profile(second),
+        ]
+    )
 
     assert comparison['match'] is False
     assert comparison['differences'][0]['extra_in_candidate'] == {
@@ -194,5 +216,4 @@ def test_cpu_layout_difference_can_be_ignored_for_closure(tmp_path):
     )
 
     assert comparison['match'] is True
-    assert PROFILE_SUMMARY.CPU_PROVIDER in (
-        PROFILE_SUMMARY.summarize_profile(second)['providers'])
+    assert PROFILE_SUMMARY.CPU_PROVIDER in (PROFILE_SUMMARY.summarize_profile(second)['providers'])

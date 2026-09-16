@@ -244,11 +244,11 @@ for handshake_file in \
 done
 
 TARGET_PATHS=(
-  "${LAUNCH_LOG}" \
-  "${RECORD_LOG}" \
-  "${PLAYBACK_LOG}" \
-  "${WARMUP_LOG}" \
-  "${WARMUP_OUTPUT}" \
+  "${LAUNCH_LOG}"
+  "${RECORD_LOG}"
+  "${PLAYBACK_LOG}"
+  "${WARMUP_LOG}"
+  "${WARMUP_OUTPUT}"
   "${COMMAND_LOG}"
 )
 if [[ -n ${BINDING_REPORT_PATH} ]]; then
@@ -268,7 +268,8 @@ if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   existing_profiles=()
   mapfile -t existing_profiles < <(
     find "$(dirname -- "${ORT_PROFILE_PREFIX}")" -maxdepth 1 -type f \
-      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print)
+      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print
+  )
   if [[ ${#existing_profiles[@]} -ne 0 ]]; then
     echo "ERROR: refusing to overwrite existing ORT profile output for prefix: ${ORT_PROFILE_PREFIX}" >&2
     exit 1
@@ -341,8 +342,8 @@ RECORD_PID=""
 
 child_pids() {
   local parent_pid="$1"
-  ps -eo pid=,ppid= \
-    | awk -v parent="${parent_pid}" '$2 == parent {print $1}'
+  ps -eo pid=,ppid= |
+    awk -v parent="${parent_pid}" '$2 == parent {print $1}'
 }
 
 collect_descendants() {
@@ -358,7 +359,9 @@ collect_descendants() {
 find_component_container_pid() {
   local candidate
   local command_line
-  for candidate in "${LAUNCH_PID}" $(collect_descendants "${LAUNCH_PID}"); do
+  local descendants=()
+  mapfile -t descendants < <(collect_descendants "${LAUNCH_PID}")
+  for candidate in "${LAUNCH_PID}" "${descendants[@]}"; do
     [[ -n ${candidate} ]] || continue
     command_line="$(ps -o args= -p "${candidate}" 2>/dev/null || true)"
     if [[ ${command_line} == *component_container_mt* ]]; then
@@ -527,9 +530,9 @@ wait_for_no_publishers() {
 
   echo "WARNING: publisher remains on ${topic} after capture cleanup." >&2
   ros2 topic info "${topic}" >&2 || true
-  ps -eo pid=,ppid=,pgid=,stat=,args= \
-    | awk '/ros2 launch gpu_ros_rtdetr|ros2 launch gpu_ros_yolov8|rtdetr_ort_managed_amd|yolov8_ort_managed_amd|component_container_mt|ros2 bag play/ {print}' \
-    >&2 || true
+  ps -eo pid=,ppid=,pgid=,stat=,args= |
+    awk '/ros2 launch gpu_ros_rtdetr|ros2 launch gpu_ros_yolov8|rtdetr_ort_managed_amd|yolov8_ort_managed_amd|component_container_mt|ros2 bag play/ {print}' \
+      >&2 || true
   return 1
 }
 
@@ -834,8 +837,8 @@ if [[ ${RECORD_OUTPUT} == 0 ]]; then
         -type f \
         -name "${PROFILE_BASENAME}*.json" \
         -size +0c \
-        -print \
-        | head -n 1
+        -print |
+        head -n 1
     )"
     if [[ -z ${PROFILE_JSON} ]]; then
       echo "ERROR: ORT profile was requested but no non-empty profile was produced." >&2

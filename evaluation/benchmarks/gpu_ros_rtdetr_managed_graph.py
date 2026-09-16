@@ -19,39 +19,72 @@ from ros2_benchmark import ROS2BenchmarkConfig, ROS2BenchmarkTest  # noqa: E402
 def launch_setup(container_prefix, container_sigterm_timeout):
     ns = TestGpuRosRtDetrManaged.generate_namespace()
     preprocessor = ComposableNode(
-        name='RtdetrPreprocessor', namespace=ns, package='isaac_ros_rtdetr',
+        name='RtdetrPreprocessor',
+        namespace=ns,
+        package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
         parameters=[{'image_size': common.NETWORK_RESOLUTION['width']}],
-        remappings=[('encoded_tensor', 'reshaped_tensor')])
+        remappings=[('encoded_tensor', 'reshaped_tensor')],
+    )
     nitros_to_managed = ComposableNode(
-        name='NitrosToManaged', namespace=ns, package='gpu_ros_onnx_inference',
+        name='NitrosToManaged',
+        namespace=ns,
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')])
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')],
+    )
     onnx = ComposableNode(
-        name='OnnxInference', namespace=ns, package='gpu_ros_onnx_inference',
+        name='OnnxInference',
+        namespace=ns,
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosRtDetrManaged.get_assets_root_path(), 'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda', 'transport': 'managed'}],
-        remappings=[('tensor_input', 'managed_tensor_input'),
-                    ('tensor_output', 'managed_tensor_output')])
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosRtDetrManaged.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'managed',
+            }
+        ],
+        remappings=[
+            ('tensor_input', 'managed_tensor_input'),
+            ('tensor_output', 'managed_tensor_output'),
+        ],
+    )
     managed_to_nitros = ComposableNode(
-        name='ManagedToNitros', namespace=ns, package='gpu_ros_onnx_inference',
+        name='ManagedToNitros',
+        namespace=ns,
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
-        remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')])
+        remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')],
+    )
     decoder = ComposableNode(
-        name='RtdetrDecoder', namespace=ns, package='isaac_ros_rtdetr',
-        plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode')
+        name='RtdetrDecoder',
+        namespace=ns,
+        package='isaac_ros_rtdetr',
+        plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
+    )
     container = ComposableNodeContainer(
-        name='container', namespace=ns, package='rclcpp_components',
-        executable='component_container_mt', prefix=container_prefix,
+        name='container',
+        namespace=ns,
+        package='rclcpp_components',
+        executable='component_container_mt',
+        prefix=container_prefix,
         sigterm_timeout=container_sigterm_timeout,
         composable_node_descriptions=[
-            common.make_data_loader_node(ns), common.make_playback_node(ns),
-            *common.make_preprocessing_nodes(ns), preprocessor, nitros_to_managed,
-            onnx, managed_to_nitros, decoder, common.make_monitor_node(ns)],
-        output='screen')
+            common.make_data_loader_node(ns),
+            common.make_playback_node(ns),
+            *common.make_preprocessing_nodes(ns),
+            preprocessor,
+            nitros_to_managed,
+            onnx,
+            managed_to_nitros,
+            decoder,
+            common.make_monitor_node(ns),
+        ],
+        output='screen',
+    )
     return [container]
 
 
@@ -74,7 +107,8 @@ class TestGpuRosRtDetrManaged(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
             'payload_copies': 0,
-        })
+        },
+    )
 
     def test_benchmark(self):
         self.run_benchmark()

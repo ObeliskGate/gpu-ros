@@ -49,27 +49,29 @@ namespace nitros = nvidia::isaac_ros::nitros;
 
 void CheckCuda(cudaError_t result, const char * operation)
 {
-  if (result == cudaSuccess) {return;}
+  if (result == cudaSuccess) {
+    return;
+  }
   std::ostringstream message;
-  message << operation << ": " << cudaGetErrorName(result) << " (" <<
-    cudaGetErrorString(result) << ")";
+  message << operation << ": " << cudaGetErrorName(result) << " (" << cudaGetErrorString(result)
+          << ")";
   throw std::runtime_error(message.str());
 }
 
 struct AsyncStreamState
 {
-  explicit AsyncStreamState(int device_id)
-  : device_id(device_id)
+  explicit AsyncStreamState(int device_id) : device_id(device_id)
   {
     CheckCuda(cudaSetDevice(device_id), "bridge cudaSetDevice");
-    CheckCuda(
-      cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking),
+    CheckCuda(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking),
       "bridge cudaStreamCreateWithFlags");
   }
 
   ~AsyncStreamState()
   {
-    if (stream == nullptr) {return;}
+    if (stream == nullptr) {
+      return;
+    }
     static_cast<void>(cudaSetDevice(device_id));
     static_cast<void>(cudaStreamSynchronize(stream));
     static_cast<void>(cudaStreamDestroy(stream));
@@ -79,17 +81,16 @@ struct AsyncStreamState
   int device_id;
   cudaStream_t stream{nullptr};
 };
-}  // namespace
+} // namespace
 
 // Subscribes via the configured input transport and republishes over NITROS.
 class TensorBundleBridgeNode : public rclcpp::Node
 {
 public:
   explicit TensorBundleBridgeNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("tensor_bundle_bridge_node", options)
+      : rclcpp::Node("tensor_bundle_bridge_node", options)
   {
-    const std::string input_transport =
-      declare_parameter<std::string>("input_transport", "std");
+    const std::string input_transport = declare_parameter<std::string>("input_transport", "std");
     enable_timing_ = declare_parameter<bool>("enable_timing", false);
     timing_log_every_ = declare_parameter<int>("timing_log_every", 500);
     gpu_device_id_ = declare_parameter<int>("gpu_device_id", 0);
@@ -99,17 +100,14 @@ public:
     staging_stream_ = std::make_shared<AsyncStreamState>(gpu_device_id_);
 
     pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-      this, "tensor_output",
-      nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
+      this, "tensor_output", nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
 
     // The bridge owns its NITROS output publisher. The transport IO is input
     // only; creating its normal tensor_output publisher would collide with
     // the remapped NITROS output topic.
     input_io_ = CreateTensorBundleIO(this, input_transport, false);
     input_io_->Subscribe(
-      [this](gpu_ros_managed::ManagedTensorBundleView tensors) {
-        Forward(std::move(tensors));
-      });
+      [this](gpu_ros_managed::ManagedTensorBundleView tensors) { Forward(std::move(tensors)); });
   }
 
   ~TensorBundleBridgeNode() override
@@ -126,11 +124,9 @@ private:
       ForwardOrThrow(std::move(input));
     } catch (const std::exception & error) {
       RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Dropping TensorBundle bridge frame: %s", error.what());
+        get_logger(), *get_clock(), 5000, "Dropping TensorBundle bridge frame: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "Dropping TensorBundle bridge frame after unknown conversion failure");
     }
   }
@@ -157,38 +153,36 @@ private:
     for (const auto & tensor : input.tensors()) {
       const auto * host = std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage());
       if (host == nullptr) {
-        throw std::invalid_argument(
-                "TensorBundleBridge only supports standard host-memory input");
+        throw std::invalid_argument("TensorBundleBridge only supports standard host-memory input");
       }
 
       void * pointer = nullptr;
-      CheckCuda(
-        cudaMallocAsync(&pointer, tensor.byte_size(), stream_state->stream),
+      CheckCuda(cudaMallocAsync(&pointer, tensor.byte_size(), stream_state->stream),
         "bridge cudaMallocAsync");
       auto owner = std::shared_ptr<void>(pointer, [stream_state](void * value) {
-            if (value == nullptr) {return;}
-            if (cudaSetDevice(stream_state->device_id) != cudaSuccess) {return;}
-            static_cast<void>(cudaFreeAsync(value, stream_state->stream));
-          });
-      CheckCuda(
-        cudaMemcpyAsync(
-          pointer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice,
-          stream_state->stream),
+        if (value == nullptr) {
+          return;
+        }
+        if (cudaSetDevice(stream_state->device_id) != cudaSuccess) {
+          return;
+        }
+        static_cast<void>(cudaFreeAsync(value, stream_state->stream));
+      });
+      CheckCuda(cudaMemcpyAsync(pointer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice,
+                  stream_state->stream),
         "bridge cudaMemcpyAsync H2D");
       pending.push_back(PendingAllocation{pointer, tensor.byte_size(), std::move(owner)});
     }
-    CheckCuda(
-      cudaStreamSynchronize(stream_state->stream), "bridge cudaStreamSynchronize");
+    CheckCuda(cudaStreamSynchronize(stream_state->stream), "bridge cudaStreamSynchronize");
     for (size_t index = 0; index < input.tensors().size(); ++index) {
       const auto & tensor = input.tensors().at(index);
-      auto device = gpu_ros_managed::cuda::adopt_synchronized_external(
-        pending.at(index).pointer, pending.at(index).bytes, gpu_device_id_,
-        std::move(pending.at(index).owner));
+      auto device = gpu_ros_managed::cuda::adopt_synchronized_external(pending.at(index).pointer,
+        pending.at(index).bytes, gpu_device_id_, std::move(pending.at(index).owner));
       tensors.emplace_back(
         tensor.name(), tensor.data_type(), tensor.shape(), std::move(device), tensor.strides());
     }
-    auto bundle = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
-      input.header(), std::move(tensors));
+    auto bundle =
+      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input.header(), std::move(tensors));
     pub_->publish(BuildNitrosTensorBundle(
       gpu_ros_managed::ManagedTensorBundleView(std::move(bundle)), gpu_device_id_));
 
@@ -203,9 +197,7 @@ private:
   void RecordTiming(double elapsed_ms)
   {
     timings_ms_.push_back(elapsed_ms);
-    if (timing_log_every_ <= 0 ||
-      static_cast<int>(timings_ms_.size()) < timing_log_every_)
-    {
+    if (timing_log_every_ <= 0 || static_cast<int>(timings_ms_.size()) < timing_log_every_) {
       return;
     }
 
@@ -213,14 +205,11 @@ private:
     std::sort(sorted.begin(), sorted.end());
     const double sum = std::accumulate(sorted.begin(), sorted.end(), 0.0);
     const double mean = sum / static_cast<double>(sorted.size());
-    const double p95 = sorted.at(
-      std::min(
-        sorted.size() - 1,
-        static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1))));
+    const double p95 = sorted.at(std::min(
+      sorted.size() - 1, static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1))));
     const double max = sorted.back();
 
-    RCLCPP_INFO(
-      get_logger(),
+    RCLCPP_INFO(get_logger(),
       "TensorBundleBridge timing over %zu frames: mean=%.3f ms p95=%.3f ms max=%.3f ms",
       sorted.size(), mean, p95, max);
     timings_ms_.clear();
@@ -235,6 +224,6 @@ private:
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> pub_;
 };
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::TensorBundleBridgeNode)

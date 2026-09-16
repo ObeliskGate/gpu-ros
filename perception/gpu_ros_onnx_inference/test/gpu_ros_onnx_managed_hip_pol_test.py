@@ -33,8 +33,7 @@ from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray
 
 
-TEST_ARTIFACT_ROOT = pathlib.Path(
-    f'/tmp/gpu_ros_onnx_managed_hip_pol_{os.getpid()}')
+TEST_ARTIFACT_ROOT = pathlib.Path(f'/tmp/gpu_ros_onnx_managed_hip_pol_{os.getpid()}')
 YOLO_MODEL_PATH = TEST_ARTIFACT_ROOT / 'yolov8.onnx'
 RTDETR_MODEL_PATH = TEST_ARTIFACT_ROOT / 'rtdetr.onnx'
 MIGRAPHX_CACHE_PATH = TEST_ARTIFACT_ROOT / 'migraphx_cache'
@@ -66,8 +65,10 @@ def _write_yolov8_model():
         ],
     )
     model = helper.make_model(
-        graph, opset_imports=[helper.make_opsetid('', 17)],
-        producer_name='gpu_ros_onnx_inference_managed_hip_test')
+        graph,
+        opset_imports=[helper.make_opsetid('', 17)],
+        producer_name='gpu_ros_onnx_inference_managed_hip_test',
+    )
     model.ir_version = 9
     onnx.checker.check_model(model)
     onnx.save(model, YOLO_MODEL_PATH)
@@ -110,8 +111,10 @@ def _write_rtdetr_model():
         ],
     )
     model = helper.make_model(
-        graph, opset_imports=[helper.make_opsetid('', 17)],
-        producer_name='gpu_ros_onnx_inference_managed_hip_test')
+        graph,
+        opset_imports=[helper.make_opsetid('', 17)],
+        producer_name='gpu_ros_onnx_inference_managed_hip_test',
+    )
     model.ir_version = 9
     onnx.checker.check_model(model)
     onnx.save(model, RTDETR_MODEL_PATH)
@@ -122,32 +125,38 @@ def _yolov8_nodes():
     return [
         ComposableNode(
             package='gpu_ros_yolov8',
-            plugin=(
-                'gpu_ros::yolov8::'
-                'YoloV8ManagedHipImageEncoderNode'),
-            name='image_encoder', namespace=namespace,
-            parameters=[{
-                'tensor_name': 'images', 'output_width': 640, 'output_height': 640,
-                'gpu_device_id': 0,
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
-            }],
+            plugin=('gpu_ros::yolov8::YoloV8ManagedHipImageEncoderNode'),
+            name='image_encoder',
+            namespace=namespace,
+            parameters=[
+                {
+                    'tensor_name': 'images',
+                    'output_width': 640,
+                    'output_height': 640,
+                    'gpu_device_id': 0,
+                    'managed_pool_capacity': 16,
+                    'managed_pool_wait_timeout_ms': 100,
+                }
+            ],
         ),
         ComposableNode(
             package='gpu_ros_onnx_inference',
             plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-            name='inference', namespace=namespace,
-            parameters=[{
-                'model_file_path': str(YOLO_MODEL_PATH),
-                'execution_provider': 'migraphx',
-                'gpu_device_id': 0,
-                'transport': 'managed',
-                'managed_io_contract': 'hip_managed_strict',
-                'managed_input_contracts': ['images=float32[1,3,640,640]'],
-                'managed_output_contracts': ['output0=float32[1,84,8400]'],
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
-            }],
+            name='inference',
+            namespace=namespace,
+            parameters=[
+                {
+                    'model_file_path': str(YOLO_MODEL_PATH),
+                    'execution_provider': 'migraphx',
+                    'gpu_device_id': 0,
+                    'transport': 'managed',
+                    'managed_io_contract': 'hip_managed_strict',
+                    'managed_input_contracts': ['images=float32[1,3,640,640]'],
+                    'managed_output_contracts': ['output0=float32[1,84,8400]'],
+                    'managed_pool_capacity': 16,
+                    'managed_pool_wait_timeout_ms': 100,
+                }
+            ],
             remappings=[
                 ('tensor_input', 'managed_tensor_output'),
                 ('tensor_output', 'managed_output'),
@@ -155,17 +164,18 @@ def _yolov8_nodes():
         ),
         ComposableNode(
             package='gpu_ros_yolov8',
-            plugin=(
-                'gpu_ros::yolov8::'
-                'YoloV8ManagedHipDecoderNode'),
-            name='decoder', namespace=namespace,
-            parameters=[{
-                'tensor_name': 'output0',
-                'gpu_device_id': 0,
-                'confidence_threshold': 0.25,
-                'nms_threshold': 0.45,
-                'num_classes': 80,
-            }],
+            plugin=('gpu_ros::yolov8::YoloV8ManagedHipDecoderNode'),
+            name='decoder',
+            namespace=namespace,
+            parameters=[
+                {
+                    'tensor_name': 'output0',
+                    'gpu_device_id': 0,
+                    'confidence_threshold': 0.25,
+                    'nms_threshold': 0.45,
+                    'num_classes': 80,
+                }
+            ],
             remappings=[('managed_tensor_input', 'managed_output')],
         ),
     ]
@@ -176,57 +186,64 @@ def _rtdetr_nodes():
     return [
         ComposableNode(
             package='gpu_ros_rtdetr',
-            plugin=(
-                'gpu_ros::rtdetr::'
-                'RtDetrManagedHipImageEncoderNode'),
-            name='image_encoder', namespace=namespace,
-            parameters=[{
-                'tensor_name': 'input_tensor', 'output_width': 640, 'output_height': 640,
-                'gpu_device_id': 0,
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
-            }],
+            plugin=('gpu_ros::rtdetr::RtDetrManagedHipImageEncoderNode'),
+            name='image_encoder',
+            namespace=namespace,
+            parameters=[
+                {
+                    'tensor_name': 'input_tensor',
+                    'output_width': 640,
+                    'output_height': 640,
+                    'gpu_device_id': 0,
+                    'managed_pool_capacity': 16,
+                    'managed_pool_wait_timeout_ms': 100,
+                }
+            ],
             remappings=[('managed_tensor_output', 'managed_tensor_image')],
         ),
         ComposableNode(
             package='gpu_ros_rtdetr',
-            plugin=(
-                'gpu_ros::rtdetr::'
-                'RtDetrManagedHipPreprocessorNode'),
-            name='preprocessor', namespace=namespace,
-            parameters=[{
-                'image_width': 640,
-                'image_height': 640,
-                'model_input_width': 640,
-                'model_input_height': 640,
-                'gpu_device_id': 0,
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
-            }],
+            plugin=('gpu_ros::rtdetr::RtDetrManagedHipPreprocessorNode'),
+            name='preprocessor',
+            namespace=namespace,
+            parameters=[
+                {
+                    'image_width': 640,
+                    'image_height': 640,
+                    'model_input_width': 640,
+                    'model_input_height': 640,
+                    'gpu_device_id': 0,
+                    'managed_pool_capacity': 16,
+                    'managed_pool_wait_timeout_ms': 100,
+                }
+            ],
             remappings=[('managed_tensor_input', 'managed_tensor_image')],
         ),
         ComposableNode(
             package='gpu_ros_onnx_inference',
             plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-            name='inference', namespace=namespace,
-            parameters=[{
-                'model_file_path': str(RTDETR_MODEL_PATH),
-                'execution_provider': 'migraphx',
-                'gpu_device_id': 0,
-                'transport': 'managed',
-                'managed_io_contract': 'hip_managed_strict',
-                'managed_input_contracts': [
-                    'images=float32[1,3,640,640]',
-                    'orig_target_sizes=int64[1,2]',
-                ],
-                'managed_output_contracts': [
-                    'labels=int64[1,300]',
-                    'boxes=float32[1,300,4]',
-                    'scores=float32[1,300]',
-                ],
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
-            }],
+            name='inference',
+            namespace=namespace,
+            parameters=[
+                {
+                    'model_file_path': str(RTDETR_MODEL_PATH),
+                    'execution_provider': 'migraphx',
+                    'gpu_device_id': 0,
+                    'transport': 'managed',
+                    'managed_io_contract': 'hip_managed_strict',
+                    'managed_input_contracts': [
+                        'images=float32[1,3,640,640]',
+                        'orig_target_sizes=int64[1,2]',
+                    ],
+                    'managed_output_contracts': [
+                        'labels=int64[1,300]',
+                        'boxes=float32[1,300,4]',
+                        'scores=float32[1,300]',
+                    ],
+                    'managed_pool_capacity': 16,
+                    'managed_pool_wait_timeout_ms': 100,
+                }
+            ],
             remappings=[
                 ('tensor_input', 'managed_tensor_output'),
                 ('tensor_output', 'managed_output'),
@@ -234,14 +251,15 @@ def _rtdetr_nodes():
         ),
         ComposableNode(
             package='gpu_ros_rtdetr',
-            plugin=(
-                'gpu_ros::rtdetr::'
-                'RtDetrManagedHipDecoderNode'),
-            name='decoder', namespace=namespace,
-            parameters=[{
-                'gpu_device_id': 0,
-                'confidence_threshold': 0.5,
-            }],
+            plugin=('gpu_ros::rtdetr::RtDetrManagedHipDecoderNode'),
+            name='decoder',
+            namespace=namespace,
+            parameters=[
+                {
+                    'gpu_device_id': 0,
+                    'confidence_threshold': 0.5,
+                }
+            ],
             remappings=[('managed_tensor_input', 'managed_output')],
         ),
     ]
@@ -269,10 +287,12 @@ def generate_test_description():
             'ORT_MIGRAPHX_INT8_ENABLE': '0',
         },
     )
-    return launch.LaunchDescription([
-        container,
-        launch_testing.actions.ReadyToTest(),
-    ])
+    return launch.LaunchDescription(
+        [
+            container,
+            launch_testing.actions.ReadyToTest(),
+        ]
+    )
 
 
 class TestManagedHipProofOfLife(unittest.TestCase):

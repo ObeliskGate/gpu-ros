@@ -37,9 +37,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='NvidiaTensorListToTensorBundle',
         namespace=ns,
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'tensor_bundle_input'),
@@ -51,15 +49,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosYoloV8ConfigD.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'std',
-        }],
-        remappings=[('tensor_input', 'tensor_bundle_input'),
-                    ('tensor_output', 'tensor_sub')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosYoloV8ConfigD.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'std',
+            }
+        ],
+        remappings=[('tensor_input', 'tensor_bundle_input'), ('tensor_output', 'tensor_sub')],
     )
 
     decoder_node = ComposableNode(
@@ -67,12 +66,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }]
+        parameters=[
+            {
+                'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -86,7 +87,9 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.ORT_INPUT_TENSOR_NAME),
-            tensor_list_adapter_node, onnx_node, decoder_node,
+            tensor_list_adapter_node,
+            onnx_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -113,7 +116,7 @@ class TestGpuRosYoloV8ConfigD(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
             'inference_precision': 'FP32',
-        }
+        },
     )
 
     def test_benchmark(self):

@@ -34,14 +34,13 @@ namespace gpu_ros::onnx_inference
 namespace
 {
 
-std::string ResolveModelProfile(
-  const std::string & requested_profile,
-  const std::string & execution_provider,
-  const std::string & assets_root)
+std::string ResolveModelProfile(const std::string & requested_profile,
+  const std::string & execution_provider, const std::string & assets_root)
 {
-  const std::string profile = requested_profile == "auto" ?
-    (execution_provider == "cuda" ? "nvidia_synthetica" : "rtdetrv2_r50") :
-    requested_profile;
+  const std::string profile =
+    requested_profile == "auto"
+      ? (execution_provider == "cuda" ? "nvidia_synthetica" : "rtdetrv2_r50")
+      : requested_profile;
   std::filesystem::path relative;
   if (profile == "nvidia_synthetica") {
     relative = "models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx";
@@ -50,63 +49,47 @@ std::string ResolveModelProfile(
   } else if (profile == "xanylabeling_rtdetrv2_r50") {
     relative = "models/xanylabeling_rtdetrv2_r50/rtdetrv2_r50vd_6x_coco.onnx";
   } else {
-    throw std::invalid_argument(
-            "model_profile must be auto, nvidia_synthetica, rtdetrv2_r50, or "
-            "xanylabeling_rtdetrv2_r50");
+    throw std::invalid_argument("model_profile must be auto, nvidia_synthetica, rtdetrv2_r50, or "
+                                "xanylabeling_rtdetrv2_r50");
   }
   const auto path = std::filesystem::path(assets_root) / relative;
   if (!std::filesystem::is_regular_file(path)) {
-    throw std::runtime_error(
-            "selected model_profile=" + profile + " is missing at " + path.string() +
-            "; automatic model fallback is disabled");
+    throw std::runtime_error("selected model_profile=" + profile + " is missing at " +
+                             path.string() + "; automatic model fallback is disabled");
   }
   return path.string();
 }
 
-}  // namespace
+} // namespace
 
 OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
-: rclcpp::Node("onnx_inference_node", options)
+    : rclcpp::Node("onnx_inference_node", options)
 {
-  std::string model_file_path =
-    declare_parameter<std::string>("model_file_path", "");
-  const std::string ep_str =
-    declare_parameter<std::string>("execution_provider", "cuda");
-  const std::string model_profile =
-    declare_parameter<std::string>("model_profile", "");
+  std::string model_file_path = declare_parameter<std::string>("model_file_path", "");
+  const std::string ep_str = declare_parameter<std::string>("execution_provider", "cuda");
+  const std::string model_profile = declare_parameter<std::string>("model_profile", "");
   const char * assets_root_environment = std::getenv("OVG_ASSETS_ROOT");
-  const std::string model_assets_root = declare_parameter<std::string>(
-    "model_assets_root",
+  const std::string model_assets_root = declare_parameter<std::string>("model_assets_root",
     assets_root_environment == nullptr ? "/workspaces/ovg-assets" : assets_root_environment);
-  const int gpu_device_id =
-    declare_parameter<int>("gpu_device_id", 0);
-  const std::string ort_profile_prefix =
-    declare_parameter<std::string>("ort_profile_prefix", "");
-  const int64_t ort_profile_frames =
-    declare_parameter<int64_t>("ort_profile_frames", 0);
-  const std::string binding_report_path =
-    declare_parameter<std::string>("binding_report_path", "");
-  const std::string transport =
-    declare_parameter<std::string>("transport", "std");
-  const std::string managed_io_contract =
-    declare_parameter<std::string>("managed_io_contract", "");
-  const auto managed_input_contracts =
-    declare_parameter<std::vector<std::string>>(
-      "managed_input_contracts", std::vector<std::string>{});
-  const auto managed_output_contracts =
-    declare_parameter<std::vector<std::string>>(
-      "managed_output_contracts", std::vector<std::string>{});
-  const int64_t managed_pool_capacity =
-    declare_parameter<int64_t>("managed_pool_capacity", 16);
+  const int gpu_device_id = declare_parameter<int>("gpu_device_id", 0);
+  const std::string ort_profile_prefix = declare_parameter<std::string>("ort_profile_prefix", "");
+  const int64_t ort_profile_frames = declare_parameter<int64_t>("ort_profile_frames", 0);
+  const std::string binding_report_path = declare_parameter<std::string>("binding_report_path", "");
+  const std::string transport = declare_parameter<std::string>("transport", "std");
+  const std::string managed_io_contract = declare_parameter<std::string>("managed_io_contract", "");
+  const auto managed_input_contracts = declare_parameter<std::vector<std::string>>(
+    "managed_input_contracts", std::vector<std::string>{});
+  const auto managed_output_contracts = declare_parameter<std::vector<std::string>>(
+    "managed_output_contracts", std::vector<std::string>{});
+  const int64_t managed_pool_capacity = declare_parameter<int64_t>("managed_pool_capacity", 16);
   const int64_t managed_pool_wait_timeout_ms =
     declare_parameter<int64_t>("managed_pool_wait_timeout_ms", 100);
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
 
   if (!model_profile.empty()) {
     if (!model_file_path.empty()) {
-      RCLCPP_WARN(
-        get_logger(),
-        "model_file_path explicitly overrides model_profile=%s", model_profile.c_str());
+      RCLCPP_WARN(get_logger(), "model_file_path explicitly overrides model_profile=%s",
+        model_profile.c_str());
     } else {
       model_file_path = ResolveModelProfile(model_profile, ep_str, model_assets_root);
     }
@@ -116,16 +99,15 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument("ort_profile_frames must be non-negative");
   }
   if (ort_profile_frames > 0 && ort_profile_prefix.empty()) {
-    throw std::invalid_argument(
-            "ort_profile_frames requires a non-empty ort_profile_prefix");
+    throw std::invalid_argument("ort_profile_frames requires a non-empty ort_profile_prefix");
   }
   if (gpu_device_id < 0 || managed_pool_capacity <= 0 ||
-    static_cast<uint64_t>(managed_pool_capacity) > std::numeric_limits<size_t>::max() ||
-    managed_pool_wait_timeout_ms < 0)
+      static_cast<uint64_t>(managed_pool_capacity) > std::numeric_limits<size_t>::max() ||
+      managed_pool_wait_timeout_ms < 0)
   {
     throw std::invalid_argument(
-            "gpu_device_id must be non-negative, managed_pool_capacity must be positive, "
-            "and managed_pool_wait_timeout_ms must be non-negative");
+      "gpu_device_id must be non-negative, managed_pool_capacity must be positive, "
+      "and managed_pool_wait_timeout_ms must be non-negative");
   }
   ort_profile_frames_ = static_cast<size_t>(ort_profile_frames);
 
@@ -133,42 +115,39 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument("transport=nitros requires execution_provider=cuda");
   }
   if (!managed_io_contract.empty() && managed_io_contract != "hip_managed_strict") {
-    throw std::invalid_argument(
-            "managed_io_contract must be empty or hip_managed_strict");
+    throw std::invalid_argument("managed_io_contract must be empty or hip_managed_strict");
   }
   if (managed_io_contract == "hip_managed_strict" && model_file_path.empty()) {
-    throw std::invalid_argument(
-            "hip_managed_strict requires a non-empty model_file_path");
+    throw std::invalid_argument("hip_managed_strict requires a non-empty model_file_path");
   }
 
   callback_state_ = std::make_shared<CallbackState>();
   callback_state_->node = this;
   io_ = CreateTensorBundleIO(this, transport);
-  io_->Subscribe(
-    [state = callback_state_](gpu_ros_managed::ManagedTensorBundleView inputs) {
-      OnnxInferenceNode * node = nullptr;
-      {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        if (state->shutting_down || state->node == nullptr) {
-          return;
-        }
-        node = state->node;
-        ++state->active_callbacks;
+  io_->Subscribe([state = callback_state_](gpu_ros_managed::ManagedTensorBundleView inputs) {
+    OnnxInferenceNode * node = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      if (state->shutting_down || state->node == nullptr) {
+        return;
       }
+      node = state->node;
+      ++state->active_callbacks;
+    }
 
-      try {
-        node->OnTensors(std::move(inputs));
-      } catch (...) {
-        // OnTensors handles the expected failures. Keep an executor callback
-        // from escaping even if a future implementation adds a new throw.
-      }
+    try {
+      node->OnTensors(std::move(inputs));
+    } catch (...) {
+      // OnTensors handles the expected failures. Keep an executor callback
+      // from escaping even if a future implementation adds a new throw.
+    }
 
-      {
-        std::lock_guard<std::mutex> lock(state->mutex);
-        --state->active_callbacks;
-      }
-      state->cv.notify_all();
-    });
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      --state->active_callbacks;
+    }
+    state->cv.notify_all();
+  });
 
   if (model_file_path.empty()) {
     RCLCPP_WARN(get_logger(), "model_file_path is empty — inference core not initialized.");
@@ -189,14 +168,10 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   cfg.managed_pool_wait_timeout = std::chrono::milliseconds(managed_pool_wait_timeout_ms);
   core_ = std::make_unique<OnnxInferenceCore>(cfg);
 
-  RCLCPP_INFO(
-    get_logger(),
+  RCLCPP_INFO(get_logger(),
     "Loaded model '%s' with %zu inputs, %zu outputs, EP=%s, transport=%s, "
     "managed_io_contract=%s",
-    model_file_path.c_str(),
-    core_->GetInputCount(),
-    core_->GetOutputCount(),
-    ep_str.c_str(),
+    model_file_path.c_str(), core_->GetInputCount(), core_->GetOutputCount(), ep_str.c_str(),
     transport.c_str(), managed_io_contract.empty() ? "compat" : managed_io_contract.c_str());
 
   const std::string output_probe = core_->OutputBindingProbeReport();
@@ -205,8 +180,7 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   }
 
   if (core_->IsProfilingEnabled()) {
-    RCLCPP_INFO(
-      get_logger(),
+    RCLCPP_INFO(get_logger(),
       "ONNX Runtime profiling enabled with prefix '%s'. The profile is finalized on shutdown.",
       ort_profile_prefix.c_str());
   }
@@ -228,14 +202,11 @@ OnnxInferenceNode::~OnnxInferenceNode()
   // io_; resetting io_ first would turn a normal SIGINT into a use-after-free.
   if (callback_state_) {
     std::unique_lock<std::mutex> lock(callback_state_->mutex);
-    callback_state_->cv.wait(lock, [this] {
-        return callback_state_->active_callbacks == 0;
-    });
+    callback_state_->cv.wait(lock, [this] { return callback_state_->active_callbacks == 0; });
   }
   io_.reset();
   if (core_ && !core_->shutdown(std::chrono::seconds(5))) {
-    RCLCPP_ERROR(
-      get_logger(),
+    RCLCPP_ERROR(get_logger(),
       "Managed output pool shutdown did not drain within the configured timeout; "
       "buffers remain orphan-safe and were not force-released.");
   }
@@ -251,8 +222,7 @@ void OnnxInferenceNode::FinalizeOrtProfile(const char * reason) noexcept
 
   try {
     const std::string profile_path = core_->EndProfiling();
-    RCLCPP_INFO(
-      get_logger(), "ONNX Runtime profile written to '%s' after %zu frames (%s).",
+    RCLCPP_INFO(get_logger(), "ONNX Runtime profile written to '%s' after %zu frames (%s).",
       profile_path.c_str(), inference_count_, reason);
   } catch (const std::exception & e) {
     RCLCPP_ERROR(get_logger(), "Failed to finalize ONNX Runtime profile: %s", e.what());
@@ -270,8 +240,7 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
   try {
     TensorBundleOutput output;
     output.header = inputs.header();
-    output.tensors = core_->RunInference(
-      std::move(inputs), io_->output_placement());
+    output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
     ++inference_count_;
     if (!output_probe_runtime_logged_) {
       const std::string output_probe = core_->OutputBindingProbeReport();
@@ -286,22 +255,19 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
     io_->Publish(std::move(output));
   } catch (const Ort::Exception & e) {
     const char * message = e.what();
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 1000,
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
       "ONNX Runtime dropped an input frame: error_code=%d message=%s",
       static_cast<int>(e.GetOrtErrorCode()),
       (message != nullptr && message[0] != '\0') ? message : "<empty>");
   } catch (const std::exception & e) {
     RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "Inference dropped an input frame: %s", e.what());
+      get_logger(), *get_clock(), 1000, "Inference dropped an input frame: %s", e.what());
   } catch (...) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 1000,
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
       "Inference dropped an input frame after an unknown exception");
   }
 }
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::OnnxInferenceNode)

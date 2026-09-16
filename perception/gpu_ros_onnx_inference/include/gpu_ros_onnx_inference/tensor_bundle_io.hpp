@@ -34,7 +34,7 @@ namespace gpu_ros::onnx_inference
 class ITensorBundleIO
 {
 public:
-  using Callback = std::function<void (gpu_ros_managed::ManagedTensorBundleView)>;
+  using Callback = std::function<void(gpu_ros_managed::ManagedTensorBundleView)>;
 
   virtual ~ITensorBundleIO() = default;
   virtual void Subscribe(Callback callback) = 0;
@@ -46,6 +46,6 @@ public:
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   rclcpp::Node * node, const std::string & transport, bool publish_output = true);
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__TENSOR_BUNDLE_IO_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__TENSOR_BUNDLE_IO_HPP_

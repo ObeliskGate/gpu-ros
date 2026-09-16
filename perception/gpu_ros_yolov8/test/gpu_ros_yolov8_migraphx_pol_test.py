@@ -48,16 +48,13 @@ def generate_test_model():
     output_values[4 * 8400] = 0.95
 
     inputs = [
-        helper.make_tensor_value_info(
-            'images', TensorProto.FLOAT, [1, 3, 640, 640]),
+        helper.make_tensor_value_info('images', TensorProto.FLOAT, [1, 3, 640, 640]),
     ]
     outputs = [
-        helper.make_tensor_value_info(
-            'output0', TensorProto.FLOAT, output_shape),
+        helper.make_tensor_value_info('output0', TensorProto.FLOAT, output_shape),
     ]
     initializers = [
-        helper.make_tensor(
-            'output_base', TensorProto.FLOAT, output_shape, output_values),
+        helper.make_tensor('output_base', TensorProto.FLOAT, output_shape, output_values),
         helper.make_tensor('zero', TensorProto.FLOAT, [], [0.0]),
     ]
     nodes = [
@@ -92,11 +89,13 @@ def generate_test_description():
         namespace=NAMESPACE,
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8ImageEncoderNode',
-        parameters=[{
-            'tensor_name': 'images',
-            'output_width': 640,
-            'output_height': 640,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'images',
+                'output_width': 640,
+                'output_height': 640,
+            }
+        ],
     )
 
     onnx_node = ComposableNode(
@@ -104,11 +103,13 @@ def generate_test_description():
         namespace=NAMESPACE,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': str(MODEL_PATH),
-            'execution_provider': 'migraphx',
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': str(MODEL_PATH),
+                'execution_provider': 'migraphx',
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'encoded_tensor'),
             ('tensor_output', 'tensor_sub'),
@@ -120,12 +121,14 @@ def generate_test_description():
         namespace=NAMESPACE,
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': 'output0',
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'output0',
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -136,10 +139,12 @@ def generate_test_description():
         composable_node_descriptions=[image_encoder_node, onnx_node, decoder_node],
         output='screen',
     )
-    return launch.LaunchDescription([
-        container,
-        launch_testing.actions.ReadyToTest(),
-    ])
+    return launch.LaunchDescription(
+        [
+            container,
+            launch_testing.actions.ReadyToTest(),
+        ]
+    )
 
 
 class TestYoloV8MigraphxProofOfLife(unittest.TestCase):
@@ -164,7 +169,8 @@ class TestYoloV8MigraphxProofOfLife(unittest.TestCase):
         detection_topic = f'/{NAMESPACE}/detections_output'
         image_pub = self.node.create_publisher(Image, image_topic, 10)
         detection_sub = self.node.create_subscription(
-            Detection2DArray, detection_topic, received_messages.append, 10)
+            Detection2DArray, detection_topic, received_messages.append, 10
+        )
 
         image = Image()
         image.height = 640

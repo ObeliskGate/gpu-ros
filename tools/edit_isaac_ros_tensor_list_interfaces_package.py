@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from typing import NoReturn
 import xml.etree.ElementTree as ET
 
 
@@ -65,7 +66,9 @@ def text_of(element: ET.Element) -> str:
     return (element.text or "").strip()
 
 
-def find_dependency_elements(root: ET.Element, name: str) -> list[tuple[ET.Element | None, ET.Element]]:
+def find_dependency_elements(
+    root: ET.Element, name: str
+) -> list[tuple[ET.Element | None, ET.Element]]:
     matches: list[tuple[ET.Element | None, ET.Element]] = []
     for parent in root.iter():
         for child in list(parent):
@@ -96,8 +99,7 @@ def validate_and_edit(
     unexpected = [element.tag for _, element in matches if element.tag != "build_depend"]
     if unexpected:
         fail(
-            "isaac_ros_common appears in unexpected dependency element(s): "
-            + ", ".join(unexpected)
+            "isaac_ros_common appears in unexpected dependency element(s): " + ", ".join(unexpected)
         )
     if len(matches) > 1:
         fail("ambiguous package XML: multiple isaac_ros_common dependencies")

@@ -31,15 +31,13 @@ constexpr int kChannels = 3;
 }
 
 gpu_ros_tensor_bundle_msgs::msg::TensorBundle EncodeYoloV8Image(
-  const sensor_msgs::msg::Image & image,
-  const YoloV8ImageEncoderConfig & config)
+  const sensor_msgs::msg::Image & image, const YoloV8ImageEncoderConfig & config)
 {
   if (config.tensor_name.empty()) {
     throw std::invalid_argument("YOLOv8 tensor_name must not be empty");
   }
-  const auto plan = detection_common::MakeImagePreprocessPlan(
-    image, config.output_width, config.output_height,
-    detection_common::PreprocessNormalization::kUnitRange);
+  const auto plan = detection_common::MakeImagePreprocessPlan(image, config.output_width,
+    config.output_height, detection_common::PreprocessNormalization::kUnitRange);
   const auto values = detection_common::ExecuteCpuPreprocess(image, plan);
 
   gpu_ros_tensor_bundle_msgs::msg::Tensor tensor;
@@ -55,4 +53,4 @@ gpu_ros_tensor_bundle_msgs::msg::TensorBundle EncodeYoloV8Image(
   return output;
 }
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8

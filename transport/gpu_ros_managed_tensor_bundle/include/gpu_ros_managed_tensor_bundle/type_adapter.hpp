@@ -15,9 +15,8 @@
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 
-template<>
-struct rclcpp::TypeAdapter<
-  gpu_ros_managed::ManagedTensorBundle,
+template <>
+struct rclcpp::TypeAdapter<gpu_ros_managed::ManagedTensorBundle,
   gpu_ros_tensor_bundle_msgs::msg::TensorBundle>
 {
   using is_specialized = std::true_type;
@@ -40,8 +39,8 @@ struct rclcpp::TypeAdapter<
           std::copy_n(host->data(), tensor.byte_size(), output.data.data());
         }
       } else {
-        const auto & device = std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
-          tensor.storage());
+        const auto & device =
+          std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(tensor.storage());
         device->copy_to_host_blocking(output.data.data(), output.data.size());
       }
     }
@@ -53,15 +52,14 @@ struct rclcpp::TypeAdapter<
     tensors.reserve(source.tensors.size());
     for (const auto & tensor : source.tensors) {
       std::vector<int64_t> shape(tensor.shape.begin(), tensor.shape.end());
-      tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_copy(
-          tensor.name, static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type),
-          std::move(shape), tensor.data.data(), tensor.data.size()));
+      tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_copy(tensor.name,
+        static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type), std::move(shape),
+        tensor.data.data(), tensor.data.size()));
     }
     destination = custom_type(source.header, std::move(tensors));
   }
 };
 
 RCLCPP_USING_CUSTOM_TYPE_AS_ROS_MESSAGE_TYPE(
-  gpu_ros_managed::ManagedTensorBundle,
-  gpu_ros_tensor_bundle_msgs::msg::TensorBundle);
+  gpu_ros_managed::ManagedTensorBundle, gpu_ros_tensor_bundle_msgs::msg::TensorBundle);
 #endif

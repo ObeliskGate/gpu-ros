@@ -15,48 +15,44 @@
 
 namespace gpu_ros_managed
 {
-template<typename MessageT>
-class ManagedPublisher
+template <typename MessageT> class ManagedPublisher
 {
 public:
   ManagedPublisher(
-    rclcpp::Node * node, const std::string & topic,
-    const rclcpp::QoS & qos = rclcpp::QoS(1))
+    rclcpp::Node * node, const std::string & topic, const rclcpp::QoS & qos = rclcpp::QoS(1))
   {
     rclcpp::PublisherOptions options;
     options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
     publisher_ = node->create_publisher<MessageT>(topic, qos, options);
   }
-  void publish(MessageT && message) {publisher_->publish(std::move(message));}
-  void publish(std::unique_ptr<MessageT> message) {publisher_->publish(std::move(message));}
-  void reset() noexcept {publisher_.reset();}
+  void publish(MessageT && message) { publisher_->publish(std::move(message)); }
+  void publish(std::unique_ptr<MessageT> message) { publisher_->publish(std::move(message)); }
+  void reset() noexcept { publisher_.reset(); }
 
 private:
   typename rclcpp::Publisher<MessageT>::SharedPtr publisher_;
 };
 
-template<typename ViewT>
-class ManagedSubscriber
+template <typename ViewT> class ManagedSubscriber
 {
 public:
   using MessageT = typename ViewT::MessageType;
   using Callback = std::function<void(ViewT)>;
-  ManagedSubscriber(
-    rclcpp::Node * node, const std::string & topic, Callback callback,
+  ManagedSubscriber(rclcpp::Node * node, const std::string & topic, Callback callback,
     const rclcpp::QoS & qos = rclcpp::QoS(1))
   {
     rclcpp::SubscriptionOptions options;
     options.use_intra_process_comm = rclcpp::IntraProcessSetting::Enable;
     subscription_ = node->create_subscription<MessageT>(
       topic, qos,
-      [callback = std::move(callback)](std::shared_ptr<const MessageT> message) {
-        callback(ViewT(std::move(message)));
-      }, options);
+      [callback = std::move(callback)](
+        std::shared_ptr<const MessageT> message) { callback(ViewT(std::move(message))); },
+      options);
   }
-  void reset() noexcept {subscription_.reset();}
+  void reset() noexcept { subscription_.reset(); }
 
 private:
   typename rclcpp::Subscription<MessageT>::SharedPtr subscription_;
 };
-}  // namespace gpu_ros_managed
+} // namespace gpu_ros_managed
 #endif

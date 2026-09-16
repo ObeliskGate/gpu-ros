@@ -42,17 +42,17 @@ def generate_launch_description():
     encoder = ComposableNode(
         name='rtdetr_managed_hip_image_encoder',
         package='gpu_ros_rtdetr',
-        plugin=(
-            'gpu_ros::rtdetr::'
-            'RtDetrManagedHipImageEncoderNode'),
-        parameters=[{
-            'tensor_name': 'input_tensor',
-            'output_width': MODEL_INPUT_SIZE,
-            'output_height': MODEL_INPUT_SIZE,
-            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
-            'managed_pool_capacity': 16,
-            'managed_pool_wait_timeout_ms': 100,
-        }],
+        plugin=('gpu_ros::rtdetr::RtDetrManagedHipImageEncoderNode'),
+        parameters=[
+            {
+                'tensor_name': 'input_tensor',
+                'output_width': MODEL_INPUT_SIZE,
+                'output_height': MODEL_INPUT_SIZE,
+                'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
+            }
+        ],
         remappings=[
             ('image', image_topic),
             ('managed_tensor_output', 'managed_tensor_image'),
@@ -61,51 +61,54 @@ def generate_launch_description():
     preprocessor = ComposableNode(
         name='rtdetr_managed_hip_preprocessor',
         package='gpu_ros_rtdetr',
-        plugin=(
-            'gpu_ros::rtdetr::'
-            'RtDetrManagedHipPreprocessorNode'),
-        parameters=[{
-            'input_image_tensor_name': 'input_tensor',
-            'output_image_tensor_name': 'images',
-            'output_size_tensor_name': 'orig_target_sizes',
-            'image_width': ParameterValue(input_image_width, value_type=int),
-            'image_height': ParameterValue(input_image_height, value_type=int),
-            'model_input_width': MODEL_INPUT_SIZE,
-            'model_input_height': MODEL_INPUT_SIZE,
-            'use_max_dim_for_orig_size': ParameterValue(
-                use_max_dim_for_orig_size, value_type=bool),
-            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
-            'managed_pool_capacity': 16,
-            'managed_pool_wait_timeout_ms': 100,
-        }],
+        plugin=('gpu_ros::rtdetr::RtDetrManagedHipPreprocessorNode'),
+        parameters=[
+            {
+                'input_image_tensor_name': 'input_tensor',
+                'output_image_tensor_name': 'images',
+                'output_size_tensor_name': 'orig_target_sizes',
+                'image_width': ParameterValue(input_image_width, value_type=int),
+                'image_height': ParameterValue(input_image_height, value_type=int),
+                'model_input_width': MODEL_INPUT_SIZE,
+                'model_input_height': MODEL_INPUT_SIZE,
+                'use_max_dim_for_orig_size': ParameterValue(
+                    use_max_dim_for_orig_size, value_type=bool
+                ),
+                'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
+            }
+        ],
         remappings=[('managed_tensor_input', 'managed_tensor_image')],
     )
     onnx = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': model_file_path,
-            'model_profile': model_profile,
-            'model_assets_root': model_assets_root,
-            'execution_provider': 'migraphx',
-            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
-            'ort_profile_prefix': ort_profile_prefix,
-            'binding_report_path': binding_report_path,
-            'transport': 'managed',
-            'managed_io_contract': 'hip_managed_strict',
-            'managed_input_contracts': [
-                'images=float32[1,3,640,640]',
-                'orig_target_sizes=int64[1,2]',
-            ],
-            'managed_output_contracts': [
-                'labels=int64[1,300]',
-                'boxes=float32[1,300,4]',
-                'scores=float32[1,300]',
-            ],
-            'managed_pool_capacity': 16,
-            'managed_pool_wait_timeout_ms': 100,
-        }],
+        parameters=[
+            {
+                'model_file_path': model_file_path,
+                'model_profile': model_profile,
+                'model_assets_root': model_assets_root,
+                'execution_provider': 'migraphx',
+                'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+                'ort_profile_prefix': ort_profile_prefix,
+                'binding_report_path': binding_report_path,
+                'transport': 'managed',
+                'managed_io_contract': 'hip_managed_strict',
+                'managed_input_contracts': [
+                    'images=float32[1,3,640,640]',
+                    'orig_target_sizes=int64[1,2]',
+                ],
+                'managed_output_contracts': [
+                    'labels=int64[1,300]',
+                    'boxes=float32[1,300,4]',
+                    'scores=float32[1,300]',
+                ],
+                'managed_pool_capacity': 16,
+                'managed_pool_wait_timeout_ms': 100,
+            }
+        ],
         remappings=[
             ('tensor_input', 'managed_tensor_output'),
             ('tensor_output', 'managed_tensor_output_ort'),
@@ -114,14 +117,13 @@ def generate_launch_description():
     decoder = ComposableNode(
         name='rtdetr_managed_hip_decoder',
         package='gpu_ros_rtdetr',
-        plugin=(
-            'gpu_ros::rtdetr::'
-            'RtDetrManagedHipDecoderNode'),
-        parameters=[{
-            'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
-            'confidence_threshold': ParameterValue(
-                confidence_threshold, value_type=float),
-        }],
+        plugin=('gpu_ros::rtdetr::RtDetrManagedHipDecoderNode'),
+        parameters=[
+            {
+                'gpu_device_id': ParameterValue(gpu_device_id, value_type=int),
+                'confidence_threshold': ParameterValue(confidence_threshold, value_type=float),
+            }
+        ],
         remappings=[('managed_tensor_input', 'managed_tensor_output_ort')],
     )
 
@@ -137,8 +139,7 @@ def generate_launch_description():
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=''),
         DeclareLaunchArgument('model_profile', default_value='auto'),
-        DeclareLaunchArgument(
-            'model_assets_root', default_value='/workspaces/ovg-assets'),
+        DeclareLaunchArgument('model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument('image_topic', default_value='image'),
         DeclareLaunchArgument('namespace', default_value='rtdetr_managed'),
         DeclareLaunchArgument('input_image_width', default_value='640'),

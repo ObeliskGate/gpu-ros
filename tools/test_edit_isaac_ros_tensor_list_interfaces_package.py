@@ -22,17 +22,13 @@ class PackageEditorTest(unittest.TestCase):
         package_path.parent.mkdir()
         package_path.write_text(package_xml, encoding="utf-8")
         subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
-        subprocess.run(
-            ["git", "-C", str(root), "config", "user.name", "fixture"], check=True
-        )
+        subprocess.run(["git", "-C", str(root), "config", "user.name", "fixture"], check=True)
         subprocess.run(
             ["git", "-C", str(root), "config", "user.email", "fixture@example.invalid"],
             check=True,
         )
         subprocess.run(["git", "-C", str(root), "add", "."], check=True)
-        subprocess.run(
-            ["git", "-C", str(root), "commit", "-qm", "fixture"], check=True
-        )
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "fixture"], check=True)
         commit = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             check=True,
@@ -92,7 +88,7 @@ class PackageEditorTest(unittest.TestCase):
 
     def test_rejects_wrong_upstream_revision(self) -> None:
         fixture = """<package format=\"3\"><name>isaac_ros_tensor_list_interfaces</name><version>1</version></package>"""
-        temporary, _, commit = self.make_checkout(fixture)
+        temporary, _, _ = self.make_checkout(fixture)
         self.addCleanup(temporary.cleanup)
         result = self.run_editor(Path(temporary.name), "0" * 40)
         self.assertNotEqual(result.returncode, 0)

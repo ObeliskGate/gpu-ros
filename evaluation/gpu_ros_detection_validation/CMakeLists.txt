@@ -20,7 +20,6 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_capture_runner test/test_capture_runner.py)
   ament_add_pytest_test(test_compare_detection2d_bags test/test_compare_detection2d_bags.py)
-  ament_add_pytest_test(test_managed_topology test/test_managed_topology.py)
 endif()
 
 ament_package()

@@ -51,6 +51,6 @@ private:
   double confidence_threshold_;
 };
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
-#endif  // GPU_ROS_RTDETR__RTDETR_DECODER_NODE_HPP_
+#endif // GPU_ROS_RTDETR__RTDETR_DECODER_NODE_HPP_

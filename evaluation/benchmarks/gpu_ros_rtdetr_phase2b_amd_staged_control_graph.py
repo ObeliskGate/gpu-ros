@@ -28,7 +28,8 @@ from ros2_benchmark import ROS2BenchmarkConfig  # noqa: E402
 
 RESULTS_DIR = os.environ.get("OVG_RESULTS_ROOT", "/workspaces/ovg-results")
 RESULTS_FILE = os.environ.get("R2B_RESULT_FILE") or (
-    "gpu_ros_rtdetr_phase2b_amd_staged_control.json")
+    "gpu_ros_rtdetr_phase2b_amd_staged_control.json"
+)
 
 
 def launch_setup(container_prefix, container_sigterm_timeout):
@@ -36,42 +37,44 @@ def launch_setup(container_prefix, container_sigterm_timeout):
     namespace = TestGpuRosRtDetrPhase2bAmdStagedControl.generate_namespace()
     model_path = os.path.join(
         TestGpuRosRtDetrPhase2bAmdStagedControl.get_assets_root_path(),
-        "models", common.AMD_MODEL_FILE_NAME)
+        "models",
+        common.AMD_MODEL_FILE_NAME,
+    )
 
     encoder = ComposableNode(
         name="RtdetrManagedHipImageEncoder",
         namespace=namespace,
         package="gpu_ros_rtdetr",
-        plugin=(
-            "gpu_ros::rtdetr::"
-            "RtDetrManagedHipImageEncoderNode"),
-        parameters=[{
-            "tensor_name": "input_tensor",
-            "output_width": common.NETWORK_RESOLUTION["width"],
-            "output_height": common.NETWORK_RESOLUTION["height"],
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::rtdetr::RtDetrManagedHipImageEncoderNode"),
+        parameters=[
+            {
+                "tensor_name": "input_tensor",
+                "output_width": common.NETWORK_RESOLUTION["width"],
+                "output_height": common.NETWORK_RESOLUTION["height"],
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[("managed_tensor_output", "managed_tensor_image")],
     )
     hip_preprocessor = ComposableNode(
         name="RtdetrManagedHipPreprocessor",
         namespace=namespace,
         package="gpu_ros_rtdetr",
-        plugin=(
-            "gpu_ros::rtdetr::"
-            "RtDetrManagedHipPreprocessorNode"),
-        parameters=[{
-            "image_width": common.NETWORK_RESOLUTION["width"],
-            "image_height": common.NETWORK_RESOLUTION["height"],
-            "model_input_width": common.NETWORK_RESOLUTION["width"],
-            "model_input_height": common.NETWORK_RESOLUTION["height"],
-            "use_max_dim_for_orig_size": True,
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::rtdetr::RtDetrManagedHipPreprocessorNode"),
+        parameters=[
+            {
+                "image_width": common.NETWORK_RESOLUTION["width"],
+                "image_height": common.NETWORK_RESOLUTION["height"],
+                "model_input_width": common.NETWORK_RESOLUTION["width"],
+                "model_input_height": common.NETWORK_RESOLUTION["height"],
+                "use_max_dim_for_orig_size": True,
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("managed_tensor_input", "managed_tensor_image"),
             ("managed_tensor_output", "managed_tensor_preprocessed"),
@@ -81,9 +84,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="ManagedHipToStdInput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "ManagedHipToStdTensorBundleNode"),
+        plugin=("gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode"),
         parameters=[{"gpu_device_id": 0}],
         remappings=[
             ("tensor_input", "managed_tensor_preprocessed"),
@@ -94,14 +95,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="StdToManagedHipInput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "StdToManagedHipTensorBundleNode"),
-        parameters=[{
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::onnx_inference::StdToManagedHipTensorBundleNode"),
+        parameters=[
+            {
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("tensor_input", "staged_std_model_input"),
             ("tensor_output", "staged_managed_input"),
@@ -112,24 +113,26 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_onnx_inference",
         plugin="gpu_ros::onnx_inference::OnnxInferenceNode",
-        parameters=[{
-            "model_file_path": model_path,
-            "execution_provider": "migraphx",
-            "gpu_device_id": 0,
-            "transport": "managed",
-            "managed_io_contract": "hip_managed_strict",
-            "managed_input_contracts": [
-                "images=float32[1,3,640,640]",
-                "orig_target_sizes=int64[1,2]",
-            ],
-            "managed_output_contracts": [
-                "labels=int64[1,300]",
-                "boxes=float32[1,300,4]",
-                "scores=float32[1,300]",
-            ],
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        parameters=[
+            {
+                "model_file_path": model_path,
+                "execution_provider": "migraphx",
+                "gpu_device_id": 0,
+                "transport": "managed",
+                "managed_io_contract": "hip_managed_strict",
+                "managed_input_contracts": [
+                    "images=float32[1,3,640,640]",
+                    "orig_target_sizes=int64[1,2]",
+                ],
+                "managed_output_contracts": [
+                    "labels=int64[1,300]",
+                    "boxes=float32[1,300,4]",
+                    "scores=float32[1,300]",
+                ],
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("tensor_input", "staged_managed_input"),
             ("tensor_output", "staged_managed_output"),
@@ -139,9 +142,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="ManagedHipToStdOutput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "ManagedHipToStdTensorBundleNode"),
+        plugin=("gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode"),
         parameters=[{"gpu_device_id": 0}],
         remappings=[
             ("tensor_input", "staged_managed_output"),
@@ -183,19 +184,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 def generate_test_description():
     """Generate the staged-control launch-test description."""
-    return TestGpuRosRtDetrPhase2bAmdStagedControl.generate_test_description_with_nsys(
-        launch_setup)
+    return TestGpuRosRtDetrPhase2bAmdStagedControl.generate_test_description_with_nsys(launch_setup)
 
 
-class TestGpuRosRtDetrPhase2bAmdStagedControl(
-    managed_graph.TestGpuRosRtDetrPhase2bAmdManaged):
+class TestGpuRosRtDetrPhase2bAmdStagedControl(managed_graph.TestGpuRosRtDetrPhase2bAmdManaged):
     """Benchmark the intentional Managed<->standard RT-DETR control lane."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name=(
-            "GPU ROS RT-DETR Phase 2B AMD "
-            "(ORT MIGraphX + staged control)"
-        ),
+        benchmark_name=("GPU ROS RT-DETR Phase 2B AMD (ORT MIGraphX + staged control)"),
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
@@ -211,8 +207,7 @@ class TestGpuRosRtDetrPhase2bAmdStagedControl(
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorBundle with std control lane",
             "staging": (
-                "Managed->std->Managed before ORT; "
-                "Managed->std->standard decoder after ORT"
+                "Managed->std->Managed before ORT; Managed->std->standard decoder after ORT"
             ),
             "managed_io_contract": "hip_managed_strict",
             "build_type": "Release",

@@ -35,52 +35,61 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'model_file_path',
             default_value='',
-            description='Absolute path to the RT-DETR ONNX file'),
+            description='Absolute path to the RT-DETR ONNX file',
+        ),
         DeclareLaunchArgument('model_profile', default_value='auto'),
-        DeclareLaunchArgument(
-            'model_assets_root', default_value='/workspaces/ovg-assets'),
+        DeclareLaunchArgument('model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument(
             'image_topic',
             default_value='image',
-            description='Input sensor_msgs/Image topic, relative or absolute'),
+            description='Input sensor_msgs/Image topic, relative or absolute',
+        ),
         DeclareLaunchArgument(
-            'namespace',
-            default_value='rtdetr',
-            description='Namespace for the composable pipeline'),
+            'namespace', default_value='rtdetr', description='Namespace for the composable pipeline'
+        ),
         DeclareLaunchArgument(
             'input_image_width',
             default_value='640',
-            description='Width seed used by RtDetrPreprocessor for orig_target_sizes'),
+            description='Width seed used by RtDetrPreprocessor for orig_target_sizes',
+        ),
         DeclareLaunchArgument(
             'input_image_height',
             default_value='640',
-            description='Height seed used by RtDetrPreprocessor for orig_target_sizes'),
+            description='Height seed used by RtDetrPreprocessor for orig_target_sizes',
+        ),
         DeclareLaunchArgument(
             'use_max_dim_for_orig_size',
             default_value='false',
             description=(
                 'Use a square max-dimension orig_target_sizes value. The image-input '
-                'pipeline defaults false to preserve the source image aspect ratio.')),
+                'pipeline defaults false to preserve the source image aspect ratio.'
+            ),
+        ),
         DeclareLaunchArgument(
             'execution_provider',
             default_value='migraphx',
-            description='ONNX Runtime execution provider (migraphx/rocm/cuda/cpu)'),
+            description='ONNX Runtime execution provider (migraphx/rocm/cuda/cpu)',
+        ),
         DeclareLaunchArgument(
             'gpu_device_id',
             default_value='0',
-            description='GPU device id for providers that support it'),
+            description='GPU device id for providers that support it',
+        ),
         DeclareLaunchArgument(
             'ort_profile_prefix',
             default_value='',
-            description='Enable ORT profiling and write JSON using this path prefix'),
+            description='Enable ORT profiling and write JSON using this path prefix',
+        ),
         DeclareLaunchArgument(
             'binding_report_path',
             default_value='',
-            description='Write the first-frame ORT pointer/lifetime report here'),
+            description='Write the first-frame ORT pointer/lifetime report here',
+        ),
         DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
-            description='Minimum score for a bounding box to be published'),
+            description='Minimum score for a bounding box to be published',
+        ),
     ]
 
     model_file_path = LaunchConfiguration('model_file_path')
@@ -101,11 +110,13 @@ def generate_launch_description():
         name='rtdetr_image_encoder',
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrImageEncoderNode',
-        parameters=[{
-            'tensor_name': 'input_tensor',
-            'output_width': MODEL_INPUT_SIZE,
-            'output_height': MODEL_INPUT_SIZE,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'input_tensor',
+                'output_width': MODEL_INPUT_SIZE,
+                'output_height': MODEL_INPUT_SIZE,
+            }
+        ],
         remappings=[('image', image_topic)],
     )
 
@@ -113,32 +124,37 @@ def generate_launch_description():
         name='rtdetr_preprocessor',
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        parameters=[{
-            'image_width': input_image_width,
-            'image_height': input_image_height,
-            'use_max_dim_for_orig_size': ParameterValue(
-                use_max_dim_for_orig_size, value_type=bool),
-        }],
+        parameters=[
+            {
+                'image_width': input_image_width,
+                'image_height': input_image_height,
+                'use_max_dim_for_orig_size': ParameterValue(
+                    use_max_dim_for_orig_size, value_type=bool
+                ),
+            }
+        ],
     )
 
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': model_file_path,
-            'model_profile': model_profile,
-            'model_assets_root': model_assets_root,
-            'execution_provider': execution_provider,
-            'gpu_device_id': gpu_device_id,
-            'ort_profile_prefix': ort_profile_prefix,
-            'binding_report_path': binding_report_path,
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': model_file_path,
+                'model_profile': model_profile,
+                'model_assets_root': model_assets_root,
+                'execution_provider': execution_provider,
+                'gpu_device_id': gpu_device_id,
+                'ort_profile_prefix': ort_profile_prefix,
+                'binding_report_path': binding_report_path,
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'tensor_sub'),
-        ]
+        ],
     )
 
     rtdetr_decoder_node = ComposableNode(
@@ -159,7 +175,7 @@ def generate_launch_description():
             onnx_node,
             rtdetr_decoder_node,
         ],
-        output='screen'
+        output='screen',
     )
 
     return launch.LaunchDescription(launch_args + [container])

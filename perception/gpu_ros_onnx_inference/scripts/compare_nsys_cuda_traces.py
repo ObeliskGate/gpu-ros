@@ -54,12 +54,16 @@ except ModuleNotFoundError:  # Direct source-tree imports used by pytest.
 def parse_args():
     """Parse paired or self-report command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Compare Config C and Managed nsys cuda_gpu_trace JSON files.')
+        description='Compare Config C and Managed nsys cuda_gpu_trace JSON files.'
+    )
     parser.add_argument('--config-c-trace', type=Path)
     parser.add_argument('--managed-trace', type=Path)
     parser.add_argument(
-        '--trace', action='append', type=Path,
-        help='Trace JSON for --self-report; may be repeated for multi-process output')
+        '--trace',
+        action='append',
+        type=Path,
+        help='Trace JSON for --self-report; may be repeated for multi-process output',
+    )
     parser.add_argument('--lane', default='unknown')
     parser.add_argument('--self-report', action='store_true')
     parser.add_argument('--output-json', required=True, type=Path)
@@ -69,21 +73,28 @@ def parse_args():
         '--max-payload-copy-rate-delta',
         default=0.05,
         type=float,
-        help='Maximum allowed M-minus-C copies per frame for a payload signature')
+        help='Maximum allowed M-minus-C copies per frame for a payload signature',
+    )
     parser.add_argument(
         '--payload-size',
         action='append',
         default=[],
         type=int,
-        help='Expected payload size in bytes; may be repeated')
+        help='Expected payload size in bytes; may be repeated',
+    )
     parser.add_argument(
-        '--boundary-evidence', type=Path,
-        help='Optional JSON evidence confirming or leaving a boundary copy unresolved')
+        '--boundary-evidence',
+        type=Path,
+        help='Optional JSON evidence confirming or leaving a boundary copy unresolved',
+    )
     parser.add_argument('--config-c-binding-report', type=Path)
     parser.add_argument('--managed-binding-report', type=Path)
     parser.add_argument(
-        '--kernel-payload-risk', action='append', default=[],
-        help='Managed-only kernel name that cannot be ruled out as payload movement')
+        '--kernel-payload-risk',
+        action='append',
+        default=[],
+        help='Managed-only kernel name that cannot be ruled out as payload movement',
+    )
     return parser.parse_args()
 
 
@@ -119,16 +130,17 @@ def summarize(events, payload_sizes):
 
 
 def compare(
-        config_c_events,
-        managed_events,
-        payload_sizes,
-        config_c_frames=None,
-        managed_frames=None,
-        max_payload_copy_rate_delta=0.05,
-        boundary_evidence=None,
-        profiler_complete=True,
-        kernel_payload_risk_names=None,
-        binding_reports=None):
+    config_c_events,
+    managed_events,
+    payload_sizes,
+    config_c_frames=None,
+    managed_frames=None,
+    max_payload_copy_rate_delta=0.05,
+    boundary_evidence=None,
+    profiler_complete=True,
+    kernel_payload_risk_names=None,
+    binding_reports=None,
+):
     """
     Build the machine-readable transport audit comparison.
 
@@ -194,14 +206,15 @@ def main():
                 raise ValueError('--self-report cannot be combined with paired trace arguments')
             events = load_trace_records(args.trace)
             result = self_report(
-                events, args.lane, set(args.payload_size),
+                events,
+                args.lane,
+                set(args.payload_size),
                 frames=args.config_c_frames or args.managed_frames,
             )
             result['profiler_complete'] = True
         else:
             if not args.config_c_trace or not args.managed_trace:
-                raise ValueError(
-                    'paired comparison requires --config-c-trace and --managed-trace')
+                raise ValueError('paired comparison requires --config-c-trace and --managed-trace')
             evidence = load_boundary_evidence(args.boundary_evidence)
             result = compare(
                 load_events(args.config_c_trace),
@@ -213,7 +226,8 @@ def main():
                 boundary_evidence=evidence,
                 kernel_payload_risk_names=args.kernel_payload_risk,
                 binding_reports=load_binding_reports(
-                    args.config_c_binding_report, args.managed_binding_report),
+                    args.config_c_binding_report, args.managed_binding_report
+                ),
             )
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         print(f'ERROR: {exc}', file=sys.stderr)
@@ -224,25 +238,27 @@ def main():
     if args.self_report:
         print(
             f"{result['lane']} memory-copy events: "
-            f"{sum(item['count'] for item in result['memory_copy'])}")
+            f"{sum(item['count'] for item in result['memory_copy'])}"
+        )
         print('SELF REPORT')
         return 0
 
     print(f"Status: {result['status']}")
-    print(
-        'Kernel name sets match (diagnostic): '
-        f"{result['criteria']['kernel_name_sets_match']}")
+    print(f'Kernel name sets match (diagnostic): {result["criteria"]["kernel_name_sets_match"]}')
     print(
         'Managed has no extra memcpy signature: '
-        f"{result['criteria']['managed_has_no_extra_memcpy_signature']}")
+        f"{result['criteria']['managed_has_no_extra_memcpy_signature']}"
+    )
     print(
         'Managed has no extra payload copy rate: '
-        f"{result['criteria']['managed_has_no_extra_payload_copy_rate']}")
+        f"{result['criteria']['managed_has_no_extra_payload_copy_rate']}"
+    )
     print(f"Managed boundary status: {result['status']}")
     for delta in result['memcpy']['memory_total_deltas']:
         print(
             f"{delta['direction']}: count delta={delta['count_delta']}, "
-            f"byte delta={delta['byte_delta']}")
+            f"byte delta={delta['byte_delta']}"
+        )
     return 0 if result['status'] == 'PASS' else 1
 
 

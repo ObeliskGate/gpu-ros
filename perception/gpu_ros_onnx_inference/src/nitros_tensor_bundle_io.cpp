@@ -37,27 +37,25 @@ class NitrosTensorBundleIO final : public ITensorBundleIO
 {
 public:
   explicit NitrosTensorBundleIO(rclcpp::Node * node, bool publish_output)
-  : node_(node),
-    gpu_device_id_(node_->has_parameter("gpu_device_id") ?
-      static_cast<int>(node_->get_parameter("gpu_device_id").as_int()) :
-      node_->declare_parameter<int>("gpu_device_id", 0)),
-    input_adapter_(gpu_device_id_)
+      : node_(node),
+        gpu_device_id_(node_->has_parameter("gpu_device_id")
+                         ? static_cast<int>(node_->get_parameter("gpu_device_id").as_int())
+                         : node_->declare_parameter<int>("gpu_device_id", 0)),
+        input_adapter_(gpu_device_id_)
   {
     if (publish_output) {
-      publisher_ = std::make_shared<
-        nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-        node_, "tensor_output", NitrosTensorBundleFormat(),
-        nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
+      publisher_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(node_,
+        "tensor_output", NitrosTensorBundleFormat(), nitros::NitrosDiagnosticsConfig{},
+        rclcpp::QoS(10));
     }
   }
 
   void Subscribe(Callback callback) override
   {
     callback_ = std::move(callback);
-    subscription_ = std::make_shared<
-      nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
-        node_, "tensor_input", NitrosTensorBundleFormat(),
-      [this](const nitros::NitrosTensorListView & view) {OnView(view);},
+    subscription_ = std::make_shared<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
+      node_, "tensor_input", NitrosTensorBundleFormat(),
+      [this](const nitros::NitrosTensorListView & view) { OnView(view); },
       nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
   }
 
@@ -73,16 +71,13 @@ public:
     }
     {
       std::unique_lock<std::mutex> lock(callback_mutex_);
-      callback_cv_.wait(lock, [this] {return active_views_ == 0;});
+      callback_cv_.wait(lock, [this] { return active_views_ == 0; });
     }
     subscription_.reset();
     publisher_.reset();
   }
 
-  OutputPlacement output_placement() const noexcept override
-  {
-    return OutputPlacement::kDevice;
-  }
+  OutputPlacement output_placement() const noexcept override { return OutputPlacement::kDevice; }
 
   void Publish(TensorBundleOutput && output) override
   {
@@ -92,12 +87,10 @@ public:
     try {
       publisher_->publish(BuildNitrosTensorBundle(std::move(output), gpu_device_id_));
     } catch (const std::exception & error) {
-      RCLCPP_ERROR_THROTTLE(
-        node_->get_logger(), *node_->get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
         "Dropping NITROS output frame: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        node_->get_logger(), *node_->get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
         "Dropping NITROS output frame after unknown conversion failure");
     }
   }
@@ -105,18 +98,14 @@ public:
 private:
   class ActiveViewGuard final
   {
-public:
-    explicit ActiveViewGuard(NitrosTensorBundleIO * owner) noexcept
-    : owner_(owner) {}
-    ~ActiveViewGuard() noexcept
-    {
-      owner_->LeaveView();
-    }
+  public:
+    explicit ActiveViewGuard(NitrosTensorBundleIO * owner) noexcept : owner_(owner) {}
+    ~ActiveViewGuard() noexcept { owner_->LeaveView(); }
 
     ActiveViewGuard(const ActiveViewGuard &) = delete;
     ActiveViewGuard & operator=(const ActiveViewGuard &) = delete;
 
-private:
+  private:
     NitrosTensorBundleIO * owner_;
   };
 
@@ -145,12 +134,10 @@ private:
         std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input_adapter_.Convert(view));
       callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
     } catch (const std::exception & error) {
-      RCLCPP_ERROR_THROTTLE(
-        node_->get_logger(), *node_->get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
         "Dropping NITROS input frame: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        node_->get_logger(), *node_->get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 5000,
         "Dropping NITROS input frame after unknown conversion failure");
     }
   }
@@ -166,7 +153,7 @@ private:
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> publisher_;
   std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> subscription_;
 };
-}  // namespace
+} // namespace
 
 std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(
   rclcpp::Node * node, bool publish_output)
@@ -174,4 +161,4 @@ std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(
   return std::make_unique<NitrosTensorBundleIO>(node, publish_output);
 }
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference

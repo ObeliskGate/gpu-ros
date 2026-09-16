@@ -27,12 +27,8 @@ namespace
 using gpu_ros::yolov8::EncodeYoloV8Image;
 using gpu_ros::yolov8::YoloV8ImageEncoderConfig;
 
-sensor_msgs::msg::Image MakeImage(
-  const std::string & encoding,
-  uint32_t width,
-  uint32_t height,
-  uint32_t step,
-  const std::vector<uint8_t> & data)
+sensor_msgs::msg::Image MakeImage(const std::string & encoding, uint32_t width, uint32_t height,
+  uint32_t step, const std::vector<uint8_t> & data)
 {
   sensor_msgs::msg::Image image;
   image.header.frame_id = "camera";
@@ -46,8 +42,7 @@ sensor_msgs::msg::Image MakeImage(
   return image;
 }
 
-std::vector<float> TensorValues(
-  const gpu_ros_tensor_bundle_msgs::msg::Tensor & tensor)
+std::vector<float> TensorValues(const gpu_ros_tensor_bundle_msgs::msg::Tensor & tensor)
 {
   std::vector<float> values(tensor.data.size() / sizeof(float));
   std::memcpy(values.data(), tensor.data.data(), tensor.data.size());
@@ -63,12 +58,11 @@ YoloV8ImageEncoderConfig Config(int64_t width = 2, int64_t height = 2)
   return config;
 }
 
-}  // namespace
+} // namespace
 
 TEST(YoloV8ImageEncoderTest, ConvertsRgbToNormalizedNchwAndPreservesHeader)
 {
-  const auto image = MakeImage(
-    sensor_msgs::image_encodings::RGB8, 1, 1, 3, {10U, 20U, 30U});
+  const auto image = MakeImage(sensor_msgs::image_encodings::RGB8, 1, 1, 3, {10U, 20U, 30U});
 
   const auto output = EncodeYoloV8Image(image, Config());
 
@@ -92,8 +86,7 @@ TEST(YoloV8ImageEncoderTest, ConvertsRgbToNormalizedNchwAndPreservesHeader)
 
 TEST(YoloV8ImageEncoderTest, ConvertsBgrToRgb)
 {
-  const auto image = MakeImage(
-    sensor_msgs::image_encodings::BGR8, 1, 1, 3, {1U, 2U, 3U});
+  const auto image = MakeImage(sensor_msgs::image_encodings::BGR8, 1, 1, 3, {1U, 2U, 3U});
 
   const auto output = EncodeYoloV8Image(image, Config(1, 1));
   const auto values = TensorValues(output.tensors.front());
@@ -106,9 +99,8 @@ TEST(YoloV8ImageEncoderTest, ConvertsBgrToRgb)
 
 TEST(YoloV8ImageEncoderTest, UsesLinearResizeAndBottomPadding)
 {
-  const auto image = MakeImage(
-    sensor_msgs::image_encodings::RGB8, 2, 1, 6,
-    {10U, 20U, 30U, 40U, 50U, 60U});
+  const auto image =
+    MakeImage(sensor_msgs::image_encodings::RGB8, 2, 1, 6, {10U, 20U, 30U, 40U, 50U, 60U});
 
   const auto output = EncodeYoloV8Image(image, Config(4, 4));
   const auto values = TensorValues(output.tensors.front());
@@ -126,8 +118,7 @@ TEST(YoloV8ImageEncoderTest, UsesLinearResizeAndBottomPadding)
 
 TEST(YoloV8ImageEncoderTest, RejectsInvalidImageStorage)
 {
-  const auto image = MakeImage(
-    sensor_msgs::image_encodings::RGB8, 2, 1, 5, {1U, 2U, 3U, 4U, 5U});
+  const auto image = MakeImage(sensor_msgs::image_encodings::RGB8, 2, 1, 5, {1U, 2U, 3U, 4U, 5U});
 
   EXPECT_THROW(EncodeYoloV8Image(image, Config()), std::invalid_argument);
 }

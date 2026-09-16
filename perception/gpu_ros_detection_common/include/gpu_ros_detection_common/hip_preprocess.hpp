@@ -25,14 +25,10 @@ namespace gpu_ros::detection_common
 {
 
 void LaunchHipPreprocess(
-  const uint8_t * raw_image,
-  float * output,
-  const ImagePreprocessPlan & plan,
-  hipStream_t stream);
+  const uint8_t * raw_image, float * output, const ImagePreprocessPlan & plan, hipStream_t stream);
 
-void LaunchHipWriteInt64Pair(
-  int64_t * output, int64_t first, int64_t second, hipStream_t stream);
+void LaunchHipWriteInt64Pair(int64_t * output, int64_t first, int64_t second, hipStream_t stream);
 
-}  // namespace gpu_ros::detection_common
+} // namespace gpu_ros::detection_common
 
-#endif  // GPU_ROS_DETECTION_COMMON__HIP_PREPROCESS_HPP_
+#endif // GPU_ROS_DETECTION_COMMON__HIP_PREPROCESS_HPP_

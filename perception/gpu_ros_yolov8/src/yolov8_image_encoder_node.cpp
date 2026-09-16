@@ -26,25 +26,23 @@ namespace gpu_ros::yolov8
 {
 
 YoloV8ImageEncoderNode::YoloV8ImageEncoderNode(const rclcpp::NodeOptions options)
-: rclcpp::Node("yolov8_image_encoder_node", options)
+    : rclcpp::Node("yolov8_image_encoder_node", options)
 {
   config_.tensor_name = declare_parameter<std::string>("tensor_name", "images");
   config_.output_width = declare_parameter<int64_t>("output_width", 640);
   config_.output_height = declare_parameter<int64_t>("output_height", 640);
-  if (
-    config_.tensor_name.empty() || config_.output_width <= 0 || config_.output_height <= 0 ||
-    config_.output_width > std::numeric_limits<int>::max() ||
-    config_.output_height > std::numeric_limits<int>::max())
+  if (config_.tensor_name.empty() || config_.output_width <= 0 || config_.output_height <= 0 ||
+      config_.output_width > std::numeric_limits<int>::max() ||
+      config_.output_height > std::numeric_limits<int>::max())
   {
     throw std::invalid_argument(
-            "YOLOv8 tensor_name must not be empty and output dimensions must be positive "
-            "and fit in an int");
+      "YOLOv8 tensor_name must not be empty and output dimensions must be positive "
+      "and fit in an int");
   }
 
   pub_ = create_publisher<TensorBundle>("encoded_tensor", 10);
   sub_ = create_subscription<Image>(
-    "image", 10,
-    std::bind(&YoloV8ImageEncoderNode::InputCallback, this, std::placeholders::_1));
+    "image", 10, std::bind(&YoloV8ImageEncoderNode::InputCallback, this, std::placeholders::_1));
 }
 
 void YoloV8ImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
@@ -54,11 +52,10 @@ void YoloV8ImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
     pub_->publish(encoded);
   } catch (const std::exception & error) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "YOLOv8 image encoder dropped frame: %s", error.what());
+      get_logger(), *get_clock(), 5000, "YOLOv8 image encoder dropped frame: %s", error.what());
   }
 }
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::yolov8::YoloV8ImageEncoderNode)

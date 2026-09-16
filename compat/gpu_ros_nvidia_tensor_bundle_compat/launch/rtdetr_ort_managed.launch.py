@@ -36,8 +36,7 @@ def generate_launch_description():
     arguments = [
         DeclareLaunchArgument('model_file_path', default_value=''),
         DeclareLaunchArgument('model_profile', default_value='auto'),
-        DeclareLaunchArgument(
-            'model_assets_root', default_value='/workspaces/ovg-assets'),
+        DeclareLaunchArgument('model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument('input_image_width', default_value='640'),
         DeclareLaunchArgument('input_image_height', default_value='480'),
         DeclareLaunchArgument('confidence_threshold', default_value='0.6'),
@@ -47,77 +46,130 @@ def generate_launch_description():
     ]
 
     resize = ComposableNode(
-        name='resize_node', package='isaac_ros_image_proc',
+        name='resize_node',
+        package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        parameters=[{
-            'input_width': input_image_width, 'input_height': input_image_height,
-            'output_width': 640, 'output_height': 640, 'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8', 'disable_padding': True}],
-        remappings=[('image', 'image_rect'), ('camera_info', 'camera_info_rect')])
+        parameters=[
+            {
+                'input_width': input_image_width,
+                'input_height': input_image_height,
+                'output_width': 640,
+                'output_height': 640,
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
+        remappings=[('image', 'image_rect'), ('camera_info', 'camera_info_rect')],
+    )
     pad = ComposableNode(
-        name='pad_node', package='isaac_ros_image_proc',
+        name='pad_node',
+        package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
-        parameters=[{'output_image_width': 640, 'output_image_height': 640,
-                     'padding_type': 'BOTTOM_RIGHT'}],
-        remappings=[('image', 'resize/image')])
+        parameters=[
+            {'output_image_width': 640, 'output_image_height': 640, 'padding_type': 'BOTTOM_RIGHT'}
+        ],
+        remappings=[('image', 'resize/image')],
+    )
     format_converter = ComposableNode(
-        name='image_format_node', package='isaac_ros_image_proc',
+        name='image_format_node',
+        package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
         parameters=[{'encoding_desired': 'rgb8', 'image_width': 640, 'image_height': 640}],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')])
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
+    )
     image_to_tensor = ComposableNode(
-        name='image_to_tensor_node', package='isaac_ros_tensor_proc',
+        name='image_to_tensor_node',
+        package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
         parameters=[{'scale': False, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')])
+        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')],
+    )
     interleaved_to_planar = ComposableNode(
-        name='interleaved_to_planar_node', package='isaac_ros_tensor_proc',
+        name='interleaved_to_planar_node',
+        package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
         parameters=[{'input_tensor_shape': [640, 640, 3]}],
-        remappings=[('interleaved_tensor', 'normalized_tensor')])
+        remappings=[('interleaved_tensor', 'normalized_tensor')],
+    )
     reshape = ComposableNode(
-        name='reshape_node', package='isaac_ros_tensor_proc',
+        name='reshape_node',
+        package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-        parameters=[{'output_tensor_name': 'input_tensor',
-                     'input_tensor_shape': [3, 640, 640],
-                     'output_tensor_shape': [1, 3, 640, 640]}],
-        remappings=[('tensor', 'planar_tensor')])
+        parameters=[
+            {
+                'output_tensor_name': 'input_tensor',
+                'input_tensor_shape': [3, 640, 640],
+                'output_tensor_shape': [1, 3, 640, 640],
+            }
+        ],
+        remappings=[('tensor', 'planar_tensor')],
+    )
     preprocessor = ComposableNode(
-        name='rtdetr_preprocessor', package='isaac_ros_rtdetr',
+        name='rtdetr_preprocessor',
+        package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
         parameters=[{'image_width': input_image_width, 'image_height': input_image_height}],
-        remappings=[('encoded_tensor', 'reshaped_tensor')])
+        remappings=[('encoded_tensor', 'reshaped_tensor')],
+    )
     nitros_to_managed = ComposableNode(
-        name='nitros_to_managed', package='gpu_ros_onnx_inference',
+        name='nitros_to_managed',
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')])
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')],
+    )
     onnx = ComposableNode(
-        name='onnx_inference', package='gpu_ros_onnx_inference',
+        name='onnx_inference',
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{'model_file_path': model_file_path,
-                     'model_profile': model_profile,
-                     'model_assets_root': model_assets_root,
-                     'execution_provider': 'cuda',
-                     'ort_profile_prefix': ort_profile_prefix,
-                     'ort_profile_frames': ort_profile_frames,
-                     'binding_report_path': binding_report_path,
-                     'transport': 'managed'}],
-        remappings=[('tensor_input', 'managed_tensor_input'),
-                    ('tensor_output', 'managed_tensor_output')])
+        parameters=[
+            {
+                'model_file_path': model_file_path,
+                'model_profile': model_profile,
+                'model_assets_root': model_assets_root,
+                'execution_provider': 'cuda',
+                'ort_profile_prefix': ort_profile_prefix,
+                'ort_profile_frames': ort_profile_frames,
+                'binding_report_path': binding_report_path,
+                'transport': 'managed',
+            }
+        ],
+        remappings=[
+            ('tensor_input', 'managed_tensor_input'),
+            ('tensor_output', 'managed_tensor_output'),
+        ],
+    )
     managed_to_nitros = ComposableNode(
-        name='managed_to_nitros', package='gpu_ros_onnx_inference',
+        name='managed_to_nitros',
+        package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
-        remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')])
+        remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')],
+    )
     decoder = ComposableNode(
-        name='rtdetr_decoder', package='isaac_ros_rtdetr',
+        name='rtdetr_decoder',
+        package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
-        parameters=[{'confidence_threshold': confidence_threshold}])
+        parameters=[{'confidence_threshold': confidence_threshold}],
+    )
 
     container = ComposableNodeContainer(
-        name='rtdetr_managed_container', namespace='rtdetr_managed_container',
-        package='rclcpp_components', executable='component_container_mt',
+        name='rtdetr_managed_container',
+        namespace='rtdetr_managed_container',
+        package='rclcpp_components',
+        executable='component_container_mt',
         composable_node_descriptions=[
-            resize, pad, format_converter, image_to_tensor, interleaved_to_planar, reshape,
-            preprocessor, nitros_to_managed, onnx, managed_to_nitros, decoder],
-        output='screen')
+            resize,
+            pad,
+            format_converter,
+            image_to_tensor,
+            interleaved_to_planar,
+            reshape,
+            preprocessor,
+            nitros_to_managed,
+            onnx,
+            managed_to_nitros,
+            decoder,
+        ],
+        output='screen',
+    )
     return launch.LaunchDescription(arguments + [container])

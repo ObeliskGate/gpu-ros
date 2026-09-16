@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-#include "onnxruntime_cxx_api.h"  // NOLINT
+#include "onnxruntime_cxx_api.h" // NOLINT
 
 namespace gpu_ros::onnx_inference
 {
@@ -33,17 +33,15 @@ struct ManagedTensorContract
 };
 
 std::vector<ManagedTensorContract> ParseManagedTensorContracts(
-  const std::vector<std::string> & specifications,
-  const char * parameter_name);
+  const std::vector<std::string> & specifications, const char * parameter_name);
 
 size_t ManagedTensorElementSize(ONNXTensorElementDataType dtype);
 size_t ManagedTensorByteSize(const ManagedTensorContract & contract);
 
-void ValidateManagedTensorContracts(
-  Ort::Session & session,
+void ValidateManagedTensorContracts(Ort::Session & session,
   const std::vector<ManagedTensorContract> & inputs,
   const std::vector<ManagedTensorContract> & outputs);
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__MANAGED_IO_CONTRACT_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__MANAGED_IO_CONTRACT_HPP_

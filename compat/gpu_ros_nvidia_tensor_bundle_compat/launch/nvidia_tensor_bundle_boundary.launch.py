@@ -27,9 +27,7 @@ from launch_ros.descriptions import ComposableNode
 def generate_launch_description():
     to_nvidia = ComposableNode(
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'TensorBundleToNvidiaTensorListNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::TensorBundleToNvidiaTensorListNode'),
         name='tensor_bundle_to_nvidia_tensor_list',
         remappings=[
             ('tensor_input', 'tensor_bundle_input'),
@@ -38,9 +36,7 @@ def generate_launch_description():
     )
     from_nvidia = ComposableNode(
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         name='nvidia_tensor_list_to_tensor_bundle',
         remappings=[
             ('tensor_input', 'nvidia_tensor_list_output'),

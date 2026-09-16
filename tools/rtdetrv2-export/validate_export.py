@@ -26,16 +26,11 @@ def main() -> None:
     sys.path.insert(0, str(pytorch_root))
     from src.core import YAMLConfig  # pylint: disable=import-outside-toplevel
 
-    official_config = (
-        pytorch_root / "configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml"
-    )
+    official_config = pytorch_root / "configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml"
     with tempfile.TemporaryDirectory(prefix="rtdetrv2-validation-") as temporary:
         config = Path(temporary) / "offline_validation_config.yml"
         config.write_text(
-            "__include__:\n"
-            f"  - {json.dumps(str(official_config))}\n"
-            "PResNet:\n"
-            "  pretrained: false\n"
+            f"__include__:\n  - {json.dumps(str(official_config))}\nPResNet:\n  pretrained: false\n"
         )
         cfg = YAMLConfig(str(config), resume=str(args.checkpoint.resolve()))
         checkpoint = torch.load(args.checkpoint.resolve(), map_location="cpu")
@@ -50,9 +45,7 @@ def main() -> None:
         with torch.no_grad():
             expected = postprocessor(model(images), target_sizes)
 
-    session = ort.InferenceSession(
-        str(args.onnx.resolve()), providers=["CPUExecutionProvider"]
-    )
+    session = ort.InferenceSession(str(args.onnx.resolve()), providers=["CPUExecutionProvider"])
     actual = session.run(
         ["labels", "boxes", "scores"],
         {"images": images.numpy(), "orig_target_sizes": target_sizes.numpy()},

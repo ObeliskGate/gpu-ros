@@ -1,0 +1,68 @@
+exclude: '(^docs/results/|^docker/patches/|(?:^|/)(?:LICENSE|LICENSES|THIRD_PARTY_NOTICES)(?:$|/|\.)|(?:^|/)AGENTS\.md$)'
+default_language_version:
+  python: python3.12
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
+      - id: check-yaml
+        types: [file]
+        files: '(\.ya?ml$|\.repos$|^\.clang-format$)'
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v20.1.3
+    hooks:
+      - id: clang-format
+        types: [file]
+        types_or: [file]
+        files: '\.(cc|cpp|cxx|h|hh|hpp|hxx|cu|cuh|hip)$'
+        args: [--style=file]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.7
+    hooks:
+      - id: ruff
+        types_or: [python, pyi]
+        files: '(\.pyi?$|^tools/phase2-assets$)'
+        args: [--config=ruff.toml, --no-cache]
+      - id: ruff-format
+        types_or: [python, pyi]
+        files: '(\.pyi?$|^tools/phase2-assets$)'
+        args: [--config=ruff.toml, --no-cache]
+
+  - repo: local
+    hooks:
+      - id: bash-syntax
+        name: bash -n
+        language: system
+        types: [shell]
+        entry: bash -c 'for file do bash -n "$file" || exit; done' --
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.12.0-2
+    hooks:
+      - id: shfmt
+        args: [-w, -i, '2', -ci]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+
+  - repo: https://github.com/Mateusz-Grzelinski/actionlint-py
+    rev: v1.7.12.24
+    hooks:
+      - id: actionlint
+        files: '^\.github/workflows/.*\.ya?ml$'
+        additional_dependencies: [shellcheck-py==0.10.0.1]
+        args: [-pyflakes=]

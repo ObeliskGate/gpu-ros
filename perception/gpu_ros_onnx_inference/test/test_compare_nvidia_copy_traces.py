@@ -43,18 +43,22 @@ def binding_report():
     """Create the minimum valid first-frame binding evidence."""
     return {
         'first_frame': True,
-        'inputs': [{
-            'name': 'images',
-            'bytes': 4915200,
-            'storage': 'cuda_device',
-            'lifetime_path': 'lease through ORT Run',
-        }],
-        'outputs': [{
-            'name': 'scores',
-            'bytes': 1200,
-            'storage': 'cuda_device',
-            'lifetime_path': 'ORT-owned output adoption',
-        }],
+        'inputs': [
+            {
+                'name': 'images',
+                'bytes': 4915200,
+                'storage': 'cuda_device',
+                'lifetime_path': 'lease through ORT Run',
+            }
+        ],
+        'outputs': [
+            {
+                'name': 'scores',
+                'bytes': 1200,
+                'storage': 'cuda_device',
+                'lifetime_path': 'ORT-owned output adoption',
+            }
+        ],
     }
 
 

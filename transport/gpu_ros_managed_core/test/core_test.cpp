@@ -23,11 +23,13 @@ using namespace std::chrono_literals;
 class FakeOps final : public grm::detail::BackendOps
 {
 public:
-  grm::BackendKind kind() const noexcept override {return grm::BackendKind::kCuda;}
+  grm::BackendKind kind() const noexcept override { return grm::BackendKind::kCuda; }
 
   void select_device(int ordinal) override
   {
-    if (fail_select.exchange(false)) {throw std::runtime_error("select failure");}
+    if (fail_select.exchange(false)) {
+      throw std::runtime_error("select failure");
+    }
     selected = ordinal;
     ++select_calls;
   }
@@ -35,33 +37,37 @@ public:
   grm::detail::Event create_event() override
   {
     check_event_device();
-    if (fail_create.exchange(false)) {throw std::runtime_error("create failure");}
+    if (fail_create.exchange(false)) {
+      throw std::runtime_error("create failure");
+    }
     std::lock_guard<std::mutex> lock(mutex);
     const auto event = ++next_event;
     live.insert(event);
     return event;
   }
 
-  void record_event(
-    grm::detail::Event event, grm::detail::NativeStream stream) override
+  void record_event(grm::detail::Event event, grm::detail::NativeStream stream) override
   {
     check_event_device();
     std::lock_guard<std::mutex> lock(mutex);
     require_live(event);
     last_record_stream = stream;
     ++records;
-    if (fail_record.exchange(false)) {throw std::runtime_error("record failure");}
+    if (fail_record.exchange(false)) {
+      throw std::runtime_error("record failure");
+    }
   }
 
-  void wait_event(
-    grm::detail::NativeStream stream, grm::detail::Event event) override
+  void wait_event(grm::detail::NativeStream stream, grm::detail::Event event) override
   {
     check_event_device();
     std::lock_guard<std::mutex> lock(mutex);
     require_live(event);
     last_wait_stream = stream;
     ++waits;
-    if (fail_wait.exchange(false)) {throw std::runtime_error("wait failure");}
+    if (fail_wait.exchange(false)) {
+      throw std::runtime_error("wait failure");
+    }
   }
 
   void synchronize_event(grm::detail::Event event) override
@@ -72,7 +78,7 @@ public:
     ++synchronizes;
     synchronize_entered = true;
     synchronize_entered_cv.notify_all();
-    synchronize_gate_cv.wait(lock, [&] {return allow_synchronize;});
+    synchronize_gate_cv.wait(lock, [&] { return allow_synchronize; });
     if (fail_synchronize_events.erase(event) != 0) {
       throw std::runtime_error("synchronize failure");
     }
@@ -91,7 +97,9 @@ public:
   {
     selected = ordinal;
     void * pointer = std::malloc(bytes);
-    if (pointer == nullptr) {throw std::bad_alloc();}
+    if (pointer == nullptr) {
+      throw std::bad_alloc();
+    }
     return std::shared_ptr<void>(pointer, [this](void * value) {
       ++allocation_releases;
       std::free(value);
@@ -101,14 +109,20 @@ public:
   void copy_host_to_device(int, void * destination, const void * source, size_t bytes) override
   {
     ++h2d_copies;
-    if (fail_h2d.exchange(false)) {throw std::runtime_error("H2D failure");}
-    if (bytes != 0) {std::memcpy(destination, source, bytes);}
+    if (fail_h2d.exchange(false)) {
+      throw std::runtime_error("H2D failure");
+    }
+    if (bytes != 0) {
+      std::memcpy(destination, source, bytes);
+    }
   }
 
   void copy_device_to_host(int, void * destination, const void * source, size_t bytes) override
   {
     ++d2h_copies;
-    if (bytes != 0) {std::memcpy(destination, source, bytes);}
+    if (bytes != 0) {
+      std::memcpy(destination, source, bytes);
+    }
   }
 
   void fail_synchronize(grm::detail::Event event)
@@ -126,7 +140,7 @@ public:
   bool wait_until_synchronize_entered(std::chrono::milliseconds timeout)
   {
     std::unique_lock<std::mutex> lock(mutex);
-    return synchronize_entered_cv.wait_for(lock, timeout, [&] {return synchronize_entered;});
+    return synchronize_entered_cv.wait_for(lock, timeout, [&] { return synchronize_entered; });
   }
 
   void unblock_synchronize()
@@ -168,7 +182,9 @@ private:
 
   void require_live(grm::detail::Event event)
   {
-    if (live.count(event) == 0) {throw std::runtime_error("unknown event");}
+    if (live.count(event) == 0) {
+      throw std::runtime_error("unknown event");
+    }
   }
 
   grm::detail::Event next_event{0};
@@ -181,8 +197,7 @@ private:
   bool synchronize_entered{false};
 };
 
-template<typename Exception, typename Function>
-void expect_throws(Function && function)
+template <typename Exception, typename Function> void expect_throws(Function && function)
 {
   bool threw = false;
   try {
@@ -202,18 +217,16 @@ struct OwnedMemory
 OwnedMemory make_owned_memory(std::atomic<int> & releases, size_t bytes = 64)
 {
   void * pointer = std::malloc(bytes);
-  if (pointer == nullptr) {throw std::bad_alloc();}
-  return {
-    pointer,
-    std::shared_ptr<void>(pointer, [&releases](void * value) {
-      ++releases;
-      std::free(value);
-    })
-  };
+  if (pointer == nullptr) {
+    throw std::bad_alloc();
+  }
+  return {pointer, std::shared_ptr<void>(pointer, [&releases](void * value) {
+            ++releases;
+            std::free(value);
+          })};
 }
 
-grm::DeviceStream make_stream(
-  const grm::DeviceId & device, grm::detail::NativeStream native,
+grm::DeviceStream make_stream(const grm::DeviceId & device, grm::detail::NativeStream native,
   const std::shared_ptr<FakeOps> & ops)
 {
   return grm::detail::DeviceBufferFactory::make_stream(device, native, {}, ops);
@@ -231,14 +244,14 @@ void test_blocking_copy_api()
   std::atomic<int> owner_releases{0};
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto memory = make_owned_memory(owner_releases, 16);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 16, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 16, memory.owner, ops);
   const uint8_t source[4]{1, 2, 3, 4};
 
-  expect_throws<std::invalid_argument>([&] {buffer->copy_from_host_blocking(nullptr, 4);});
-  expect_throws<std::out_of_range>([&] {buffer->copy_from_host_blocking(source, 17);});
+  expect_throws<std::invalid_argument>([&] { buffer->copy_from_host_blocking(nullptr, 4); });
+  expect_throws<std::out_of_range>([&] { buffer->copy_from_host_blocking(source, 17); });
   buffer->copy_from_host_blocking(source, sizeof(source));
-  expect_throws<std::logic_error>([&] {buffer->copy_from_host_blocking(source, 1);});
+  expect_throws<std::logic_error>([&] { buffer->copy_from_host_blocking(source, 1); });
 
   uint8_t destination[4]{};
   buffer->copy_to_host_blocking(destination, sizeof(destination));
@@ -296,10 +309,11 @@ void test_blocking_h2d_failure_safe_orphan()
   std::atomic<int> owner_releases{0};
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto memory = make_owned_memory(owner_releases, 16);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 16, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 16, memory.owner, ops);
   const uint8_t source[4]{1, 2, 3, 4};
-  expect_throws<std::runtime_error>([&] {buffer->copy_from_host_blocking(source, sizeof(source));});
+  expect_throws<std::runtime_error>(
+    [&] { buffer->copy_from_host_blocking(source, sizeof(source)); });
   buffer.reset();
   memory.owner.reset();
   wait_for_cleanup();
@@ -313,8 +327,8 @@ void test_readiness_states_and_synchronized_writer()
   auto producer = make_stream(device, 41, ops);
   std::atomic<int> owner_releases{0};
   auto memory = make_owned_memory(owner_releases, 32);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 32, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 32, memory.owner, ops);
   assert(buffer->readiness() == grm::BufferReadiness::kNotReady);
   {
     auto writer = buffer->get_write_handle(producer);
@@ -354,13 +368,13 @@ void test_producer_owner_is_retained_until_event_cleanup()
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto producer = make_stream(device, 51, ops);
   auto memory = make_owned_memory(allocation_releases, 32);
-  auto source_owner = std::shared_ptr<const void>(
-    new int(7), [&source_releases](const void * value) {
+  auto source_owner =
+    std::shared_ptr<const void>(new int(7), [&source_releases](const void * value) {
       ++source_releases;
       delete static_cast<const int *>(value);
     });
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 32, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 32, memory.owner, ops);
   {
     auto writer = buffer->get_write_handle(producer);
     writer.retain_owner(source_owner);
@@ -472,20 +486,18 @@ void test_state_machine_and_multiple_readers()
     auto wrong_device = make_stream({grm::BackendKind::kCuda, 3}, 31, ops);
     auto memory = make_owned_memory(owner_releases);
 
-    expect_throws<std::invalid_argument>([&] {
-      grm::detail::DeviceBufferFactory::make_fresh(
-        device, memory.pointer, 64, {}, ops);
-    });
-    auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-      device, memory.pointer, 64, memory.owner, ops);
+    expect_throws<std::invalid_argument>(
+      [&] { grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, {}, ops); });
+    auto buffer =
+      grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
     auto writer = buffer->get_write_handle(producer);
     assert(writer.data() == memory.pointer);
-    expect_throws<std::logic_error>([&] {buffer->get_read_handle(consumer_a);});
-    expect_throws<std::logic_error>([&] {buffer->get_write_handle(producer);});
+    expect_throws<std::logic_error>([&] { buffer->get_read_handle(consumer_a); });
+    expect_throws<std::logic_error>([&] { buffer->get_write_handle(producer); });
     writer.finalize();
     writer.finalize();
     assert(ops->last_record_stream == 11);
-    expect_throws<std::invalid_argument>([&] {buffer->get_read_handle(wrong_device);});
+    expect_throws<std::invalid_argument>([&] { buffer->get_read_handle(wrong_device); });
 
     auto reader_a = buffer->get_read_handle(consumer_a);
     auto reader_b = buffer->get_read_handle(consumer_b);
@@ -495,7 +507,7 @@ void test_state_machine_and_multiple_readers()
     reader_a.finish();
     reader_b.finish();
     assert(ops->records == 3);
-    expect_throws<std::logic_error>([&] {buffer->get_write_handle(producer);});
+    expect_throws<std::logic_error>([&] { buffer->get_write_handle(producer); });
 
     auto lease = buffer->get_blocking_ready_lease();
     assert(lease.data() == memory.pointer);
@@ -519,8 +531,8 @@ void test_handle_retains_allocation()
     auto producer = make_stream(device, 1, ops);
     auto consumer = make_stream(device, 2, ops);
     auto memory = make_owned_memory(owner_releases, 8);
-    auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-      device, memory.pointer, 8, memory.owner, ops);
+    auto buffer =
+      grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 8, memory.owner, ops);
     {
       auto writer = buffer->get_write_handle(producer);
       writer.finalize();
@@ -544,8 +556,8 @@ void test_writer_event_failures_safe_orphan()
     const grm::DeviceId device{grm::BackendKind::kCuda, 0};
     auto producer = make_stream(device, 1, ops);
     auto memory = make_owned_memory(owner_releases);
-    auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-      device, memory.pointer, 64, memory.owner, ops);
+    auto buffer =
+      grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
     {
       auto writer = buffer->get_write_handle(producer);
       if (fail_during_record) {
@@ -553,14 +565,16 @@ void test_writer_event_failures_safe_orphan()
       } else {
         ops->fail_create = true;
       }
-      expect_throws<std::runtime_error>([&] {writer.finalize();});
+      expect_throws<std::runtime_error>([&] { writer.finalize(); });
     }
     buffer.reset();
     memory.owner.reset();
     wait_for_cleanup();
     assert(owner_releases == 0);
     assert(ops->destroys == (fail_during_record ? 1 : 0));
-    if (fail_during_record) {assert(ops->destroy_count(1) == 1);}
+    if (fail_during_record) {
+      assert(ops->destroy_count(1) == 1);
+    }
   }
 }
 
@@ -573,8 +587,8 @@ void test_reader_event_failures_safe_orphan()
     auto producer = make_stream(device, 1, ops);
     auto consumer = make_stream(device, 2, ops);
     auto memory = make_owned_memory(owner_releases);
-    auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-      device, memory.pointer, 64, memory.owner, ops);
+    auto buffer =
+      grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
     buffer->get_write_handle(producer).finalize();
     {
       auto reader = buffer->get_read_handle(consumer);
@@ -583,14 +597,16 @@ void test_reader_event_failures_safe_orphan()
       } else {
         ops->fail_create = true;
       }
-      expect_throws<std::runtime_error>([&] {reader.finish();});
+      expect_throws<std::runtime_error>([&] { reader.finish(); });
     }
     buffer.reset();
     memory.owner.reset();
     wait_for_cleanup();
     assert(owner_releases == 0);
     assert(ops->destroy_count(1) == 1);
-    if (fail_during_record) {assert(ops->destroy_count(2) == 1);}
+    if (fail_during_record) {
+      assert(ops->destroy_count(2) == 1);
+    }
   }
 }
 
@@ -605,7 +621,7 @@ void test_wait_failure_allows_pool_recycle()
     auto held = std::make_unique<grm::PoolBlock>(pool.acquire(producer));
     held->writer.finalize();
     ops->fail_wait = true;
-    expect_throws<std::runtime_error>([&] {held->buffer->get_read_handle(consumer);});
+    expect_throws<std::runtime_error>([&] { held->buffer->get_read_handle(consumer); });
     assert(pool.available() == 0);
   }
   wait_for_cleanup();
@@ -623,8 +639,8 @@ void test_cleanup_failure_destroys_each_event_once_and_orphans()
   auto consumer_a = make_stream(device, 2, ops);
   auto consumer_b = make_stream(device, 3, ops);
   auto memory = make_owned_memory(owner_releases);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 64, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
   buffer->get_write_handle(producer).finalize();
   buffer->get_read_handle(consumer_a).finish();
   buffer->get_read_handle(consumer_b).finish();
@@ -646,11 +662,11 @@ void test_blocking_failure_safe_orphan()
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto producer = make_stream(device, 1, ops);
   auto memory = make_owned_memory(owner_releases);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 64, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
   buffer->get_write_handle(producer).finalize();
   ops->fail_synchronize(1);
-  expect_throws<std::runtime_error>([&] {buffer->get_blocking_ready_lease();});
+  expect_throws<std::runtime_error>([&] { buffer->get_blocking_ready_lease(); });
   buffer.reset();
   memory.owner.reset();
   wait_for_cleanup();
@@ -681,8 +697,8 @@ void test_pending_cleanup_drain()
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto producer = make_stream(device, 1, ops);
   auto memory = make_owned_memory(owner_releases);
-  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
-    device, memory.pointer, 64, memory.owner, ops);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
   buffer->get_write_handle(producer).finalize();
   buffer.reset();
   memory.owner.reset();

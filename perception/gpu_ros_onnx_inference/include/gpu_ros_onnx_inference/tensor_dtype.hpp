@@ -20,17 +20,15 @@
 #include <string>
 
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
-#include "onnxruntime_cxx_api.h"  // NOLINT
+#include "onnxruntime_cxx_api.h" // NOLINT
 
 namespace gpu_ros::onnx_inference
 {
 
 // TensorBundle data_type is a project-owned wire enum and is intentionally
 // converted at this boundary rather than exposing an external dtype schema.
-constexpr uint8_t kTensorBundleFloat32 =
-  gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
-constexpr uint8_t kTensorBundleInt64 =
-  gpu_ros_tensor_bundle_msgs::msg::Tensor::INT64;
+constexpr uint8_t kTensorBundleFloat32 = gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
+constexpr uint8_t kTensorBundleInt64 = gpu_ros_tensor_bundle_msgs::msg::Tensor::INT64;
 
 inline ONNXTensorElementDataType BundleToOnnxDtype(uint8_t bundle_dtype)
 {
@@ -41,8 +39,7 @@ inline ONNXTensorElementDataType BundleToOnnxDtype(uint8_t bundle_dtype)
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
     default:
       throw std::runtime_error(
-              "OnnxInference: unsupported TensorBundle data_type " +
-              std::to_string(bundle_dtype));
+        "OnnxInference: unsupported TensorBundle data_type " + std::to_string(bundle_dtype));
   }
 }
 
@@ -55,11 +52,10 @@ inline uint8_t OnnxToBundleDtype(ONNXTensorElementDataType onnx_dtype)
       return kTensorBundleInt64;
     default:
       throw std::runtime_error(
-              "OnnxInference: unsupported output dtype " +
-              std::to_string(static_cast<int>(onnx_dtype)));
+        "OnnxInference: unsupported output dtype " + std::to_string(static_cast<int>(onnx_dtype)));
   }
 }
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__TENSOR_DTYPE_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__TENSOR_DTYPE_HPP_

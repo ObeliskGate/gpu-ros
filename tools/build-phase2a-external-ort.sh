@@ -6,7 +6,10 @@ trap 'echo "ERROR: external ORT build failed at line ${LINENO}: ${BASH_COMMAND}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ORT_LOCK="${ROOT_DIR}/config/onnxruntime.lock"
-[[ -f "${ORT_LOCK}" ]] || { echo "ERROR: ORT lock is missing: ${ORT_LOCK}" >&2; exit 1; }
+[[ -f "${ORT_LOCK}" ]] || {
+  echo "ERROR: ORT lock is missing: ${ORT_LOCK}" >&2
+  exit 1
+}
 # shellcheck source=/dev/null
 source "${ORT_LOCK}"
 ORT_STATE_ROOT="${OVG_ORT_STATE_ROOT:-/workspaces/ovg-ort}"
@@ -55,7 +58,7 @@ submodule_status_output="$(git_source submodule status --recursive)" || die \
 while IFS= read -r submodule_status; do
   [[ -n "${submodule_status}" ]] || continue
   case "${submodule_status:0:1}" in
-    -|+|U) die "ORT submodule is not pristine: ${submodule_status}" ;;
+    - | + | U) die "ORT submodule is not pristine: ${submodule_status}" ;;
   esac
 done <<<"${submodule_status_output}"
 if ! git_source diff --submodule=short --exit-code; then
@@ -69,10 +72,10 @@ fi
 normalise_targets() {
   local raw="${1//;/,}"
   raw="${raw// /}"
-  tr ',' '\n' <<<"${raw}" \
-    | awk 'NF && $0 ~ /^gfx[0-9a-fA-F]+$/ {print tolower($0)}' \
-    | sort -u \
-    | paste -sd, -
+  tr ',' '\n' <<<"${raw}" |
+    awk 'NF && $0 ~ /^gfx[0-9a-fA-F]+$/ {print tolower($0)}' |
+    sort -u |
+    paste -sd, -
 }
 
 [[ -n "${AMD_GPU_TARGETS:-}" ]] || die \
@@ -135,7 +138,7 @@ printf -v ORT_BUILD_JOBS_QUOTED '%q' "${ORT_BUILD_JOBS}"
 EXACT_COMMAND="./build.sh --config Release --parallel ${ORT_BUILD_JOBS_QUOTED} --build_shared_lib --skip_tests --allow_running_as_root --use_migraphx --migraphx_home /opt/rocm --cmake_extra_defines GPU_TARGETS=${CMAKE_TARGETS_QUOTED} CMAKE_HIP_ARCHITECTURES=${CMAKE_TARGETS_QUOTED}"
 echo "+ ${EXACT_COMMAND}"
 (
-  cd "${BUILD_SOURCE}"
+  cd "${BUILD_SOURCE}" || exit
   ./build.sh \
     --config Release \
     --parallel "${ORT_BUILD_JOBS}" \
@@ -145,8 +148,8 @@ echo "+ ${EXACT_COMMAND}"
     --use_migraphx \
     --migraphx_home /opt/rocm \
     --cmake_extra_defines \
-      "GPU_TARGETS=${CMAKE_TARGETS}" \
-      "CMAKE_HIP_ARCHITECTURES=${CMAKE_TARGETS}"
+    "GPU_TARGETS=${CMAKE_TARGETS}" \
+    "CMAKE_HIP_ARCHITECTURES=${CMAKE_TARGETS}"
 )
 
 mkdir -p "${INSTALL_ROOT}/include" "${INSTALL_ROOT}/lib"
@@ -163,7 +166,7 @@ for required_file in \
   [[ -e "${required_file}" ]] || die "external ORT build did not produce ${required_file}"
 done
 
-printf '%s\n' "${fingerprint}" > "${INSTALL_ROOT}/.ovg-ort-fingerprint"
+printf '%s\n' "${fingerprint}" >"${INSTALL_ROOT}/.ovg-ort-fingerprint"
 {
   printf 'source_commit=%s\n' "${source_commit}"
   printf 'patchset_sha256=%s\n' "${patchset_sha256}"
@@ -173,6 +176,6 @@ printf '%s\n' "${fingerprint}" > "${INSTALL_ROOT}/.ovg-ort-fingerprint"
   done
   printf 'gpu_targets=%s\n' "${AMD_GPU_TARGETS}"
   printf 'command=%s\n' "${EXACT_COMMAND}"
-} > "${INSTALL_ROOT}/build-info.txt"
+} >"${INSTALL_ROOT}/build-info.txt"
 
 echo "PASS: external ORT installed at ${INSTALL_ROOT}"

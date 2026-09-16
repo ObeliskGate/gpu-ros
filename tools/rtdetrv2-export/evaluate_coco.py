@@ -31,11 +31,13 @@ def main() -> None:
     if len(category_ids) != 80:
         raise RuntimeError(f"expected 80 COCO categories, got {len(category_ids)}")
     session = ort.InferenceSession(str(args.onnx), providers=[args.provider])
-    preprocess = transforms.Compose([
-        transforms.Resize((640, 640)),
-        transforms.ToImage(),
-        transforms.ToDtype(torch.float32, scale=True),
-    ])
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize((640, 640)),
+            transforms.ToImage(),
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
+    )
     predictions = []
     for image_id in image_ids:
         metadata = coco.loadImgs([image_id])[0]
@@ -43,9 +45,7 @@ def main() -> None:
         with Image.open(path) as image:
             rgb = image.convert("RGB")
             tensor = preprocess(rgb).numpy()[None, ...]
-        target_sizes = np.asarray(
-            [[metadata["height"], metadata["width"]]], dtype=np.int64
-        )
+        target_sizes = np.asarray([[metadata["height"], metadata["width"]]], dtype=np.int64)
         labels, boxes, scores = session.run(
             ["labels", "boxes", "scores"],
             {"images": tensor, "orig_target_sizes": target_sizes},
@@ -54,12 +54,14 @@ def main() -> None:
             raise RuntimeError(f"model did not return all 300 candidates: {labels.shape}")
         for label, box, score in zip(labels[0], boxes[0], scores[0]):
             x1, y1, x2, y2 = (float(value) for value in box)
-            predictions.append({
-                "image_id": int(image_id),
-                "category_id": int(category_ids[int(label)]),
-                "bbox": [x1, y1, x2 - x1, y2 - y1],
-                "score": float(score),
-            })
+            predictions.append(
+                {
+                    "image_id": int(image_id),
+                    "category_id": int(category_ids[int(label)]),
+                    "bbox": [x1, y1, x2 - x1, y2 - y1],
+                    "score": float(score),
+                }
+            )
     detections = coco.loadRes(predictions)
     evaluator = COCOeval(coco, detections, "bbox")
     evaluator.params.imgIds = image_ids

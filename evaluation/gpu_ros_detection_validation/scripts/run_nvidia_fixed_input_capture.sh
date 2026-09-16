@@ -41,7 +41,6 @@ if [[ ! ${OUTPUT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 
 WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
-APP_ROOT="${GPU_ROS_REPO_ROOT:-${WORKSPACE_ROOT}/src/gpu-ros}"
 ASSETS_ROOT="${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-${WORKSPACE_ROOT}/assets}"
 INPUT_BAG="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
@@ -231,7 +230,8 @@ if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   existing_profiles=()
   mapfile -t existing_profiles < <(
     find "$(dirname -- "${ORT_PROFILE_PREFIX}")" -maxdepth 1 -type f \
-      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print)
+      -name "$(basename -- "${ORT_PROFILE_PREFIX}")*.json" -print
+  )
   if [[ ${#existing_profiles[@]} -ne 0 ]]; then
     echo "ERROR: refusing to overwrite existing ORT profile output for prefix: ${ORT_PROFILE_PREFIX}" >&2
     exit 1
@@ -241,12 +241,16 @@ fi
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then
   set +u
+  # The selected ROS distribution supplies this setup file outside the repository.
+  # shellcheck disable=SC1090
   source "${ROS_SETUP}"
   set -u
 fi
 
 if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set +u
+  # Colcon generates this setup file in the external runtime workspace.
+  # shellcheck disable=SC1090
   source "${WORKSPACE_ROOT}/install/setup.bash"
   set -u
 fi
@@ -412,7 +416,7 @@ LAUNCH_COMMAND=(
 if [[ -n ${NSYS_OUTPUT} ]]; then
   LAUNCH_COMMAND=(
     nsys profile
-    --trace=cuda,nvtx
+    "--trace=cuda,nvtx"
     --sample=none
     "--output=${NSYS_OUTPUT}"
     "${LAUNCH_COMMAND[@]}"

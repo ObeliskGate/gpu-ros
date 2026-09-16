@@ -39,38 +39,41 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'model_file_path',
             default_value='',
-            description='Absolute path to the RT-DETR ONNX file'),
+            description='Absolute path to the RT-DETR ONNX file',
+        ),
         DeclareLaunchArgument('model_profile', default_value='auto'),
+        DeclareLaunchArgument('model_assets_root', default_value='/workspaces/ovg-assets'),
         DeclareLaunchArgument(
-            'model_assets_root', default_value='/workspaces/ovg-assets'),
+            'input_image_width', default_value='640', description='The input image width'
+        ),
         DeclareLaunchArgument(
-            'input_image_width',
-            default_value='640',
-            description='The input image width'),
-        DeclareLaunchArgument(
-            'input_image_height',
-            default_value='480',
-            description='The input image height'),
+            'input_image_height', default_value='480', description='The input image height'
+        ),
         DeclareLaunchArgument(
             'execution_provider',
             default_value='cuda',
-            description='ONNX Runtime execution provider (cuda/rocm/migraphx/cpu)'),
+            description='ONNX Runtime execution provider (cuda/rocm/migraphx/cpu)',
+        ),
         DeclareLaunchArgument(
             'ort_profile_prefix',
             default_value='',
-            description='Enable ORT profiling and write JSON using this path prefix'),
+            description='Enable ORT profiling and write JSON using this path prefix',
+        ),
         DeclareLaunchArgument(
             'ort_profile_frames',
             default_value='0',
-            description='Number of inference frames to include in the ORT profile'),
+            description='Number of inference frames to include in the ORT profile',
+        ),
         DeclareLaunchArgument(
             'binding_report_path',
             default_value='',
-            description='Write the first-frame ORT pointer/lifetime report here'),
+            description='Write the first-frame ORT pointer/lifetime report here',
+        ),
         DeclareLaunchArgument(
             'confidence_threshold',
             default_value='0.6',
-            description='Minimum score for a bounding box to be published'),
+            description='Minimum score for a bounding box to be published',
+        ),
     ]
 
     input_image_width = LaunchConfiguration('input_image_width')
@@ -88,15 +91,17 @@ def generate_launch_description():
         name='resize_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        parameters=[{
-            'input_width': input_image_width,
-            'input_height': input_image_height,
-            'output_width': MODEL_INPUT_SIZE,
-            'output_height': MODEL_INPUT_SIZE,
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True
-        }],
+        parameters=[
+            {
+                'input_width': input_image_width,
+                'input_height': input_image_height,
+                'output_width': MODEL_INPUT_SIZE,
+                'output_height': MODEL_INPUT_SIZE,
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
         remappings=[('image', 'image_rect'), ('camera_info', 'camera_info_rect')],
     )
 
@@ -104,24 +109,28 @@ def generate_launch_description():
         name='pad_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
-        parameters=[{
-            'output_image_width': MODEL_INPUT_SIZE,
-            'output_image_height': MODEL_INPUT_SIZE,
-            'padding_type': 'BOTTOM_RIGHT'
-        }],
-        remappings=[('image', 'resize/image')]
+        parameters=[
+            {
+                'output_image_width': MODEL_INPUT_SIZE,
+                'output_image_height': MODEL_INPUT_SIZE,
+                'padding_type': 'BOTTOM_RIGHT',
+            }
+        ],
+        remappings=[('image', 'resize/image')],
     )
 
     image_format_node = ComposableNode(
         name='image_format_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': MODEL_INPUT_SIZE,
-            'image_height': MODEL_INPUT_SIZE
-        }],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
+        parameters=[
+            {
+                'encoding_desired': 'rgb8',
+                'image_width': MODEL_INPUT_SIZE,
+                'image_height': MODEL_INPUT_SIZE,
+            }
+        ],
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
     )
 
     image_to_tensor_node = ComposableNode(
@@ -129,28 +138,30 @@ def generate_launch_description():
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
         parameters=[{'scale': False, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
+        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')],
     )
 
     interleave_to_planar_node = ComposableNode(
         name='interleaved_to_planar_node',
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
-        parameters=[{
-            'input_tensor_shape': [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, MODEL_NUM_CHANNELS]
-        }],
-        remappings=[('interleaved_tensor', 'normalized_tensor')]
+        parameters=[
+            {'input_tensor_shape': [MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, MODEL_NUM_CHANNELS]}
+        ],
+        remappings=[('interleaved_tensor', 'normalized_tensor')],
     )
 
     reshape_node = ComposableNode(
         name='reshape_node',
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-        parameters=[{
-            'output_tensor_name': 'input_tensor',
-            'input_tensor_shape': [MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE],
-            'output_tensor_shape': [1, MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE]
-        }],
+        parameters=[
+            {
+                'output_tensor_name': 'input_tensor',
+                'input_tensor_shape': [MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE],
+                'output_tensor_shape': [1, MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE],
+            }
+        ],
         remappings=[('tensor', 'planar_tensor')],
     )
 
@@ -159,9 +170,7 @@ def generate_launch_description():
     tensor_list_adapter_node = ComposableNode(
         name='nvidia_tensor_list_to_tensor_bundle',
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'tensor_bundle_input'),
@@ -174,34 +183,38 @@ def generate_launch_description():
         name='rtdetr_preprocessor',
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        parameters=[{
-            'image_width': input_image_width,
-            'image_height': input_image_height,
-            # Match the baseline graph: it passes a bogus 'image_size' param the
-            # node ignores, so it falls back to use_max_dim_for_orig_size=true
-            # (orig_target_sizes=[640,640]). Keep that default for A/D parity.
-        }],
-        remappings=[('encoded_tensor', 'tensor_bundle_input')]
+        parameters=[
+            {
+                'image_width': input_image_width,
+                'image_height': input_image_height,
+                # Match the baseline graph: it passes a bogus 'image_size' param the
+                # node ignores, so it falls back to use_max_dim_for_orig_size=true
+                # (orig_target_sizes=[640,640]). Keep that default for A/D parity.
+            }
+        ],
+        remappings=[('encoded_tensor', 'tensor_bundle_input')],
     )
 
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': model_file_path,
-            'model_profile': model_profile,
-            'model_assets_root': model_assets_root,
-            'execution_provider': execution_provider,
-            'ort_profile_prefix': ort_profile_prefix,
-            'ort_profile_frames': ort_profile_frames,
-            'binding_report_path': binding_report_path,
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': model_file_path,
+                'model_profile': model_profile,
+                'model_assets_root': model_assets_root,
+                'execution_provider': execution_provider,
+                'ort_profile_prefix': ort_profile_prefix,
+                'ort_profile_frames': ort_profile_frames,
+                'binding_report_path': binding_report_path,
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'tensor_sub'),
-        ]
+        ],
     )
 
     rtdetr_decoder_node = ComposableNode(
@@ -217,12 +230,18 @@ def generate_launch_description():
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[
-            resize_node, pad_node, image_format_node,
-            image_to_tensor_node, interleave_to_planar_node, reshape_node,
+            resize_node,
+            pad_node,
+            image_format_node,
+            image_to_tensor_node,
+            interleave_to_planar_node,
+            reshape_node,
             tensor_list_adapter_node,
-            rtdetr_preprocessor_node, onnx_node, rtdetr_decoder_node
+            rtdetr_preprocessor_node,
+            onnx_node,
+            rtdetr_decoder_node,
         ],
-        output='screen'
+        output='screen',
     )
 
     return launch.LaunchDescription(launch_args + [container])

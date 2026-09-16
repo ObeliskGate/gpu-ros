@@ -1,0 +1,72 @@
+name: CPU Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transport-core:
+    name: transport-core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Build and test transport core
+        run: |
+          cmake -S transport -B "${RUNNER_TEMP}/gpu-ros-transport-core" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_DISABLE_FIND_PACKAGE_ament_cmake=TRUE \
+            -DBUILD_TESTING=ON \
+            -DGPU_ROS_MANAGED_BUILD_TESTING=ON \
+            -DGPU_ROS_MANAGED_BUILD_CUDA=OFF \
+            -DGPU_ROS_MANAGED_BUILD_HIP=OFF
+          cmake --build "${RUNNER_TEMP}/gpu-ros-transport-core" --parallel 2
+          ctest --test-dir "${RUNNER_TEMP}/gpu-ros-transport-core" \
+            --output-on-failure --no-tests=error
+
+  python-tools:
+    name: python-tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ROCPROF_RUN_FULL_TRACE_REGRESSION: '0'
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.11.29'
+          enable-cache: false
+      - name: Check namespace boundaries
+        run: |
+          uv run --no-project --isolated --python 3.12 \
+            python tools/test_open_source_namespace_boundaries.py
+      - name: Run CPU Python tests
+        run: |
+          uv run --no-project --isolated --python 3.12 \
+            --with pytest==9.0.3 \
+            python -m pytest -q -p no:cacheprovider \
+            tools/test_edit_isaac_ros_tensor_list_interfaces_package.py \
+            perception/gpu_ros_onnx_inference/test/test_summarize_ort_profile.py \
+            perception/gpu_ros_onnx_inference/test/test_compare_nsys_cuda_traces.py \
+            perception/gpu_ros_onnx_inference/test/test_compare_nvidia_copy_traces.py \
+            perception/gpu_ros_onnx_inference/test/test_analyze_rocprof_traces.py \
+            evaluation/gpu_ros_detection_validation/test/test_capture_runner.py

@@ -40,19 +40,21 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_tensor_rt',
         plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosYoloV8ConfigA.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'engine_file_path': common.ENGINE_FILE_PATH,
-            'input_tensor_names': [common.TRT_INPUT_TENSOR_NAME],
-            'input_binding_names': [common.INPUT_BINDING_NAME],
-            'output_binding_names': [common.OUTPUT_BINDING_NAME],
-            'output_tensor_names': [common.TRT_OUTPUT_TENSOR_NAME],
-            'verbose': False,
-            'force_engine_update': False
-        }],
-        remappings=[('tensor_pub', 'reshaped_tensor')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosYoloV8ConfigA.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'engine_file_path': common.ENGINE_FILE_PATH,
+                'input_tensor_names': [common.TRT_INPUT_TENSOR_NAME],
+                'input_binding_names': [common.INPUT_BINDING_NAME],
+                'output_binding_names': [common.OUTPUT_BINDING_NAME],
+                'output_tensor_names': [common.TRT_OUTPUT_TENSOR_NAME],
+                'verbose': False,
+                'force_engine_update': False,
+            }
+        ],
+        remappings=[('tensor_pub', 'reshaped_tensor')],
     )
 
     decoder_node = ComposableNode(
@@ -60,12 +62,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_yolov8',
         plugin='nvidia::isaac_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': common.TRT_OUTPUT_TENSOR_NAME,
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }]
+        parameters=[
+            {
+                'tensor_name': common.TRT_OUTPUT_TENSOR_NAME,
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -79,7 +83,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.TRT_INPUT_TENSOR_NAME),
-            tensor_rt_node, decoder_node,
+            tensor_rt_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -89,14 +94,17 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 def generate_test_description():
     model_path = os.path.join(
-        TestGpuRosYoloV8ConfigA.get_assets_root_path(), 'models', common.MODEL_FILE_NAME)
+        TestGpuRosYoloV8ConfigA.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+    )
     if not os.path.isfile(common.ENGINE_FILE_PATH):
-        TRTConverter()([
-            f'--onnx={model_path}',
-            f'--saveEngine={common.ENGINE_FILE_PATH}',
-            '--fp16',
-            '--skipInference',
-        ])
+        TRTConverter()(
+            [
+                f'--onnx={model_path}',
+                f'--saveEngine={common.ENGINE_FILE_PATH}',
+                '--fp16',
+                '--skipInference',
+            ]
+        )
     return TestGpuRosYoloV8ConfigA.generate_test_description_with_nsys(launch_setup)
 
 
@@ -115,7 +123,7 @@ class TestGpuRosYoloV8ConfigA(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
             'inference_precision': 'FP16',
-        }
+        },
     )
 
     def test_benchmark(self):

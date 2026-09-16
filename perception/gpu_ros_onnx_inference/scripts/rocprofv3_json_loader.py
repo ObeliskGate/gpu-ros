@@ -94,13 +94,13 @@ def _context(path: Path, process_index: int, domain: str, record_index: int) -> 
 
 
 def _diagnostic(
-        capture: RocprofCapture,
-        diagnostic_kind: str,
-        message: str,
-        context: Mapping[str, Any],
-        **details: Any) -> None:
-    item: Dict[str, Any] = {
-        'kind': diagnostic_kind, 'message': message, **dict(context)}
+    capture: RocprofCapture,
+    diagnostic_kind: str,
+    message: str,
+    context: Mapping[str, Any],
+    **details: Any,
+) -> None:
+    item: Dict[str, Any] = {'kind': diagnostic_kind, 'message': message, **dict(context)}
     item.update(details)
     capture.diagnostics.append(item)
 
@@ -170,9 +170,8 @@ def _table_entries(value: Any, key_field: str) -> Iterable[Tuple[str, Mapping[st
 
 
 def _build_agent_table(
-        process: Mapping[str, Any],
-        capture: RocprofCapture,
-        context: Mapping[str, Any]) -> Dict[str, Dict[str, Any]]:
+    process: Mapping[str, Any], capture: RocprofCapture, context: Mapping[str, Any]
+) -> Dict[str, Dict[str, Any]]:
     raw_agents = _require_table(process['agents'], 'process.agents')
     agents: Dict[str, Dict[str, Any]] = {}
     if isinstance(raw_agents, Mapping):
@@ -182,32 +181,52 @@ def _build_agent_table(
     for index, (raw_key, raw_agent) in enumerate(agent_entries):
         item_context = {**context, 'agent_index': index}
         if not isinstance(raw_agent, Mapping):
-            _diagnostic(capture, 'malformed_agent_record',
-                        'agent table entry is not an object', item_context)
+            _diagnostic(
+                capture,
+                'malformed_agent_record',
+                'agent table entry is not an object',
+                item_context,
+            )
             continue
         raw_id = raw_agent.get('id')
         if raw_id is None and raw_key is not None:
             raw_id = {'handle': raw_key}
         if not isinstance(raw_id, Mapping):
-            _diagnostic(capture, 'agent_handle_unresolved',
-                        'agent table entry has no id.handle object', item_context)
+            _diagnostic(
+                capture,
+                'agent_handle_unresolved',
+                'agent table entry has no id.handle object',
+                item_context,
+            )
             continue
         handle = _parse_handle(raw_id.get('handle'))
         if handle is None:
-            _diagnostic(capture, 'agent_handle_unresolved',
-                        'agent table id.handle is not an integer', item_context,
-                        value=raw_id.get('handle'))
+            _diagnostic(
+                capture,
+                'agent_handle_unresolved',
+                'agent table id.handle is not an integer',
+                item_context,
+                value=raw_id.get('handle'),
+            )
             continue
         handle_key = str(handle)
         role = _agent_role(raw_agent)
         if role is None:
-            _diagnostic(capture, 'agent_role_unresolved',
-                        'agent table entry is neither a recognized CPU nor GPU agent',
-                        item_context, handle=handle)
+            _diagnostic(
+                capture,
+                'agent_role_unresolved',
+                'agent table entry is neither a recognized CPU nor GPU agent',
+                item_context,
+                handle=handle,
+            )
         if handle_key in agents:
-            _diagnostic(capture, 'duplicate_agent_handle',
-                        'agent handle is duplicated within one process', item_context,
-                        handle=handle)
+            _diagnostic(
+                capture,
+                'duplicate_agent_handle',
+                'agent handle is duplicated within one process',
+                item_context,
+                handle=handle,
+            )
         agents[handle_key] = {
             'handle': handle,
             'role': role or 'unknown',
@@ -240,9 +259,8 @@ def _agent_role(agent: Mapping[str, Any]) -> Optional[str]:
 
 
 def _build_operation_table(
-        process: Mapping[str, Any],
-        capture: RocprofCapture,
-        context: Mapping[str, Any]) -> Dict[str, Any]:
+    process: Mapping[str, Any], capture: RocprofCapture, context: Mapping[str, Any]
+) -> Dict[str, Any]:
     strings = _require_mapping(process['strings'], 'process.strings')
     if 'buffer_records' not in strings:
         raise RocprofJsonError('process.strings.buffer_records is missing')
@@ -254,16 +272,15 @@ def _build_operation_table(
         operation_entries = [(None, value) for value in raw_records]
     for index, (raw_key, raw_entry) in enumerate(operation_entries):
         if not isinstance(raw_entry, Mapping):
-            raise RocprofJsonError(
-                f'process.strings.buffer_records[{index}] must be a JSON object')
+            raise RocprofJsonError(f'process.strings.buffer_records[{index}] must be a JSON object')
         kind = _key(raw_entry.get('kind')) or _key(raw_key)
         if kind is None:
-            raise RocprofJsonError(
-                f'process.strings.buffer_records[{index}].kind is missing')
+            raise RocprofJsonError(f'process.strings.buffer_records[{index}].kind is missing')
         raw_operations = raw_entry.get('operations')
         if not isinstance(raw_operations, (list, Mapping)):
             raise RocprofJsonError(
-                f'process.strings.buffer_records[{index}].operations must be an array or object')
+                f'process.strings.buffer_records[{index}].operations must be an array or object'
+            )
         operations[kind] = raw_operations
         # ROCprofiler 7.1.1 emits the symbolic kind name in this table (for
         # example MEMORY_COPY at list index 10), while activity records carry
@@ -275,9 +292,8 @@ def _build_operation_table(
 
 
 def _lookup_operation(
-        operation_table: Mapping[str, Any],
-        kind: Any,
-        operation: Any) -> Tuple[Optional[str], Optional[str]]:
+    operation_table: Mapping[str, Any], kind: Any, operation: Any
+) -> Tuple[Optional[str], Optional[str]]:
     kind_key = _key(kind)
     if kind_key is None or kind_key not in operation_table:
         return None, 'buffer-record kind lookup failed'
@@ -305,8 +321,7 @@ def _direction(operation_name: Optional[str]) -> str:
     return _MEMORY_COPY_DIRECTIONS.get(str(operation_name), 'unknown')
 
 
-def _schema_sanity_diagnostic(
-        operation_name: Optional[str], operation: Any) -> Optional[str]:
+def _schema_sanity_diagnostic(operation_name: Optional[str], operation: Any) -> Optional[str]:
     numeric = _integer(operation)
     expected = _MEMORY_COPY_OPERATION_NUMBERS.get(str(operation_name))
     if numeric is not None and expected is not None and numeric != expected:
@@ -325,23 +340,27 @@ def _parse_bytes(value: Any) -> Optional[int]:
 
 
 def _symbol_table(
-        process: Mapping[str, Any],
-        capture: RocprofCapture,
-        context: Mapping[str, Any]) -> Dict[str, Mapping[str, Any]]:
+    process: Mapping[str, Any], capture: RocprofCapture, context: Mapping[str, Any]
+) -> Dict[str, Mapping[str, Any]]:
     raw_symbols = _require_table(process['kernel_symbols'], 'process.kernel_symbols')
     symbols: Dict[str, Mapping[str, Any]] = {}
-    for index, (symbol_key, raw_symbol) in enumerate(
-            _table_entries(raw_symbols, 'kernel_id')):
+    for index, (symbol_key, raw_symbol) in enumerate(_table_entries(raw_symbols, 'kernel_id')):
         if not isinstance(raw_symbol, Mapping):
-            _diagnostic(capture, 'malformed_kernel_symbol',
-                        'kernel_symbols entry is not an object',
-                        {**context, 'symbol_index': index})
+            _diagnostic(
+                capture,
+                'malformed_kernel_symbol',
+                'kernel_symbols entry is not an object',
+                {**context, 'symbol_index': index},
+            )
             continue
         kernel_id = _key(raw_symbol.get('kernel_id')) or symbol_key
         if kernel_id is None:
-            _diagnostic(capture, 'kernel_symbol_unresolved',
-                        'kernel_symbols entry has no kernel_id',
-                        {**context, 'symbol_index': index})
+            _diagnostic(
+                capture,
+                'kernel_symbol_unresolved',
+                'kernel_symbols entry has no kernel_id',
+                {**context, 'symbol_index': index},
+            )
             continue
         symbols[kernel_id] = raw_symbol
     return symbols
@@ -358,10 +377,8 @@ def _kernel_name(symbol: Optional[Mapping[str, Any]]) -> Optional[str]:
 
 
 def _event_base(
-        domain: str,
-        process_id: Any,
-        record_index: int,
-        raw_record: Mapping[str, Any]) -> Dict[str, Any]:
+    domain: str, process_id: Any, record_index: int, raw_record: Mapping[str, Any]
+) -> Dict[str, Any]:
     return {
         'rocprof_domain': domain,
         'process_id': process_id,
@@ -371,72 +388,113 @@ def _event_base(
 
 
 def _parse_memory_copies(
-        records: Any,
-        path: Path,
-        process_index: int,
-        process_id: Any,
-        agents: Mapping[str, Mapping[str, Any]],
-        operation_table: Mapping[str, Any],
-        capture: RocprofCapture) -> List[Mapping[str, Any]]:
+    records: Any,
+    path: Path,
+    process_index: int,
+    process_id: Any,
+    agents: Mapping[str, Mapping[str, Any]],
+    operation_table: Mapping[str, Any],
+    capture: RocprofCapture,
+) -> List[Mapping[str, Any]]:
     events: List[Mapping[str, Any]] = []
     if records is None:
         return events
     for index, raw_record in enumerate(records):
         context = _context(path, process_index, 'memory_copy', index)
         if not isinstance(raw_record, Mapping):
-            _diagnostic(capture, 'malformed_memory_copy_record',
-                        'memory_copy entry is not an object', context)
-            events.append({
-                **_event_base('memory_copy', process_id, index, {}),
-                'kind': 'memory_copy',
-                'operation': '<malformed memory_copy record>',
-                'direction': 'unknown',
-                'bytes': None,
-                'source_agent': 'unknown',
-                'destination_agent': 'unknown',
-            })
+            _diagnostic(
+                capture,
+                'malformed_memory_copy_record',
+                'memory_copy entry is not an object',
+                context,
+            )
+            events.append(
+                {
+                    **_event_base('memory_copy', process_id, index, {}),
+                    'kind': 'memory_copy',
+                    'operation': '<malformed memory_copy record>',
+                    'direction': 'unknown',
+                    'bytes': None,
+                    'source_agent': 'unknown',
+                    'destination_agent': 'unknown',
+                }
+            )
             continue
 
-        missing = [key for key in ('kind', 'operation', 'src_agent_id',
-                                   'dst_agent_id', 'bytes') if key not in raw_record]
+        missing = [
+            key
+            for key in ('kind', 'operation', 'src_agent_id', 'dst_agent_id', 'bytes')
+            if key not in raw_record
+        ]
         if missing:
-            _diagnostic(capture, 'incomplete_memory_copy_record',
-                        'memory_copy record is missing required fields', context,
-                        missing_fields=missing)
+            _diagnostic(
+                capture,
+                'incomplete_memory_copy_record',
+                'memory_copy record is missing required fields',
+                context,
+                missing_fields=missing,
+            )
 
         kind = raw_record.get('kind')
         operation = raw_record.get('operation')
         operation_name, lookup_error = _lookup_operation(operation_table, kind, operation)
         if lookup_error:
-            _diagnostic(capture, 'operation_lookup_failed', lookup_error, context,
-                        record_kind=kind, operation=operation)
+            _diagnostic(
+                capture,
+                'operation_lookup_failed',
+                lookup_error,
+                context,
+                record_kind=kind,
+                operation=operation,
+            )
         sanity_error = _schema_sanity_diagnostic(operation_name, operation)
         if sanity_error:
-            _diagnostic(capture, 'schema_version_mismatch', sanity_error, context,
-                        record_kind=kind, operation=operation,
-                        operation_name=operation_name)
+            _diagnostic(
+                capture,
+                'schema_version_mismatch',
+                sanity_error,
+                context,
+                record_kind=kind,
+                operation=operation,
+                operation_name=operation_name,
+            )
 
         source_handle = _parse_handle(raw_record.get('src_agent_id'))
         destination_handle = _parse_handle(raw_record.get('dst_agent_id'))
         source_info = agents.get(str(source_handle)) if source_handle is not None else None
         destination_info = (
-            agents.get(str(destination_handle)) if destination_handle is not None else None)
+            agents.get(str(destination_handle)) if destination_handle is not None else None
+        )
         if source_handle is None or source_info is None:
-            _diagnostic(capture, 'agent_handle_unresolved',
-                        'source agent handle cannot be resolved in this process', context,
-                        side='source', value=raw_record.get('src_agent_id'))
+            _diagnostic(
+                capture,
+                'agent_handle_unresolved',
+                'source agent handle cannot be resolved in this process',
+                context,
+                side='source',
+                value=raw_record.get('src_agent_id'),
+            )
         if destination_handle is None or destination_info is None:
-            _diagnostic(capture, 'agent_handle_unresolved',
-                        'destination agent handle cannot be resolved in this process', context,
-                        side='destination', value=raw_record.get('dst_agent_id'))
+            _diagnostic(
+                capture,
+                'agent_handle_unresolved',
+                'destination agent handle cannot be resolved in this process',
+                context,
+                side='destination',
+                value=raw_record.get('dst_agent_id'),
+            )
 
         source_role = source_info['role'] if source_info else 'unknown'
         destination_role = destination_info['role'] if destination_info else 'unknown'
         direction = _direction(operation_name)
         if direction == 'unknown':
-            _diagnostic(capture, 'unknown_memory_copy_direction',
-                        'memory-copy operation does not identify a canonical direction',
-                        context, operation_name=operation_name)
+            _diagnostic(
+                capture,
+                'unknown_memory_copy_direction',
+                'memory-copy operation does not identify a canonical direction',
+                context,
+                operation_name=operation_name,
+            )
         event = {
             **_event_base('memory_copy', process_id, index, raw_record),
             'kind': 'memory_copy',
@@ -455,85 +513,119 @@ def _parse_memory_copies(
 
 
 def _parse_kernel_dispatches(
-        records: Any,
-        path: Path,
-        process_index: int,
-        process_id: Any,
-        agents: Mapping[str, Mapping[str, Any]],
-        operation_table: Mapping[str, Any],
-        symbols: Mapping[str, Mapping[str, Any]],
-        capture: RocprofCapture) -> List[Mapping[str, Any]]:
+    records: Any,
+    path: Path,
+    process_index: int,
+    process_id: Any,
+    agents: Mapping[str, Mapping[str, Any]],
+    operation_table: Mapping[str, Any],
+    symbols: Mapping[str, Mapping[str, Any]],
+    capture: RocprofCapture,
+) -> List[Mapping[str, Any]]:
     events: List[Mapping[str, Any]] = []
     if records is None:
         return events
     for index, raw_record in enumerate(records):
         context = _context(path, process_index, 'kernel_dispatch', index)
         if not isinstance(raw_record, Mapping):
-            _diagnostic(capture, 'malformed_kernel_dispatch_record',
-                        'kernel_dispatch entry is not an object', context)
-            events.append({
-                **_event_base('kernel_dispatch', process_id, index, {}),
-                'kind': 'kernel_dispatch',
-                'kernel_name': '<malformed kernel_dispatch record>',
-                'operation': '<malformed kernel_dispatch record>',
-            })
+            _diagnostic(
+                capture,
+                'malformed_kernel_dispatch_record',
+                'kernel_dispatch entry is not an object',
+                context,
+            )
+            events.append(
+                {
+                    **_event_base('kernel_dispatch', process_id, index, {}),
+                    'kind': 'kernel_dispatch',
+                    'kernel_name': '<malformed kernel_dispatch record>',
+                    'operation': '<malformed kernel_dispatch record>',
+                }
+            )
             continue
 
-        missing = [key for key in ('kind', 'operation', 'dispatch_info')
-                   if key not in raw_record]
+        missing = [key for key in ('kind', 'operation', 'dispatch_info') if key not in raw_record]
         if missing:
-            _diagnostic(capture, 'incomplete_kernel_dispatch_record',
-                        'kernel_dispatch record is missing required fields', context,
-                        missing_fields=missing)
+            _diagnostic(
+                capture,
+                'incomplete_kernel_dispatch_record',
+                'kernel_dispatch record is missing required fields',
+                context,
+                missing_fields=missing,
+            )
         kind = raw_record.get('kind')
         operation = raw_record.get('operation')
         operation_name, lookup_error = _lookup_operation(operation_table, kind, operation)
         if lookup_error:
-            _diagnostic(capture, 'operation_lookup_failed', lookup_error, context,
-                        record_kind=kind, operation=operation)
+            _diagnostic(
+                capture,
+                'operation_lookup_failed',
+                lookup_error,
+                context,
+                record_kind=kind,
+                operation=operation,
+            )
 
         dispatch_info = raw_record.get('dispatch_info')
         if not isinstance(dispatch_info, Mapping):
-            _diagnostic(capture, 'incomplete_kernel_dispatch_record',
-                        'kernel_dispatch.dispatch_info is not an object', context)
+            _diagnostic(
+                capture,
+                'incomplete_kernel_dispatch_record',
+                'kernel_dispatch.dispatch_info is not an object',
+                context,
+            )
             dispatch_info = {}
         kernel_id = _integer(dispatch_info.get('kernel_id'))
         if kernel_id is None:
-            _diagnostic(capture, 'kernel_id_unresolved',
-                        'kernel dispatch has no integer dispatch_info.kernel_id', context,
-                        value=dispatch_info.get('kernel_id'))
+            _diagnostic(
+                capture,
+                'kernel_id_unresolved',
+                'kernel dispatch has no integer dispatch_info.kernel_id',
+                context,
+                value=dispatch_info.get('kernel_id'),
+            )
         symbol = symbols.get(str(kernel_id)) if kernel_id is not None else None
         name = _kernel_name(symbol)
         if symbol is None or name is None:
-            _diagnostic(capture, 'kernel_id_unresolved',
-                        'kernel dispatch kernel_id is absent from kernel_symbols', context,
-                        kernel_id=kernel_id)
+            _diagnostic(
+                capture,
+                'kernel_id_unresolved',
+                'kernel dispatch kernel_id is absent from kernel_symbols',
+                context,
+                kernel_id=kernel_id,
+            )
         dispatch_agent_handle = _parse_handle(dispatch_info.get('agent_id'))
-        dispatch_agent = agents.get(str(dispatch_agent_handle)) \
-            if dispatch_agent_handle is not None else None
+        dispatch_agent = (
+            agents.get(str(dispatch_agent_handle)) if dispatch_agent_handle is not None else None
+        )
         if dispatch_agent_handle is None or dispatch_agent is None:
-            _diagnostic(capture, 'agent_handle_unresolved',
-                        'kernel dispatch agent handle cannot be resolved in this process',
-                        context, side='dispatch', value=dispatch_info.get('agent_id'))
+            _diagnostic(
+                capture,
+                'agent_handle_unresolved',
+                'kernel dispatch agent handle cannot be resolved in this process',
+                context,
+                side='dispatch',
+                value=dispatch_info.get('agent_id'),
+            )
         event_name = name or f'<unknown kernel {kernel_id!r}>'
-        events.append({
-            **_event_base('kernel_dispatch', process_id, index, raw_record),
-            'kind': 'kernel_dispatch',
-            'kernel_name': event_name,
-            'operation': event_name,
-            'kernel_id': kernel_id,
-            'kernel_agent_handle': dispatch_agent_handle,
-            'kernel_agent': dispatch_agent['role'] if dispatch_agent else 'unknown',
-            'rocprof_kind': kind,
-            'rocprof_operation': operation,
-            'kernel_operation_name': operation_name,
-        })
+        events.append(
+            {
+                **_event_base('kernel_dispatch', process_id, index, raw_record),
+                'kind': 'kernel_dispatch',
+                'kernel_name': event_name,
+                'operation': event_name,
+                'kernel_id': kernel_id,
+                'kernel_agent_handle': dispatch_agent_handle,
+                'kernel_agent': dispatch_agent['role'] if dispatch_agent else 'unknown',
+                'rocprof_kind': kind,
+                'rocprof_operation': operation,
+                'kernel_operation_name': operation_name,
+            }
+        )
     return events
 
 
-def _section_state(
-        process_states: Sequence[Mapping[str, Any]],
-        section: str) -> Dict[str, Any]:
+def _section_state(process_states: Sequence[Mapping[str, Any]], section: str) -> Dict[str, Any]:
     states = [dict(item) for item in process_states]
     present = [bool(item.get('present')) for item in states]
     count = sum(int(item.get('record_count', 0)) for item in states)
@@ -567,23 +659,23 @@ def load_rocprof_json(paths: Sequence[Path]) -> RocprofCapture:
         if not isinstance(document, Mapping):
             raise RocprofJsonError(f'{path}: top-level JSON must be an object')
         if ROCPROF_WRAPPER_KEY not in document:
-            raise RocprofJsonError(
-                f'{path}: top-level {ROCPROF_WRAPPER_KEY!r} wrapper is missing')
+            raise RocprofJsonError(f'{path}: top-level {ROCPROF_WRAPPER_KEY!r} wrapper is missing')
         processes = document[ROCPROF_WRAPPER_KEY]
         if not isinstance(processes, list):
-            raise RocprofJsonError(
-                f'{path}: {ROCPROF_WRAPPER_KEY} must be a JSON array')
+            raise RocprofJsonError(f'{path}: {ROCPROF_WRAPPER_KEY} must be a JSON array')
         for process_index, process in enumerate(processes):
             if not isinstance(process, Mapping):
                 raise RocprofJsonError(
-                    f'{path}: process entry {process_index} must be a JSON object')
+                    f'{path}: process entry {process_index} must be a JSON object'
+                )
             for key in ('agents', 'strings', 'kernel_symbols', 'buffer_records'):
                 if key not in process:
                     raise RocprofJsonError(
-                        f'{path}: process entry {process_index}.{key} is missing')
+                        f'{path}: process entry {process_index}.{key} is missing'
+                    )
             buffer_records = _require_mapping(
-                process['buffer_records'],
-                f'{path}: process entry {process_index}.buffer_records')
+                process['buffer_records'], f'{path}: process entry {process_index}.buffer_records'
+            )
             context = {
                 'path': str(path),
                 'process_index': process_index,
@@ -591,51 +683,76 @@ def load_rocprof_json(paths: Sequence[Path]) -> RocprofCapture:
             metadata = process.get('metadata', {})
             if metadata is not None and not isinstance(metadata, Mapping):
                 raise RocprofJsonError(
-                    f'{path}: process entry {process_index}.metadata must be an object')
-            process_id = metadata.get('pid', f'process-{process_index}') \
-                if isinstance(metadata, Mapping) else f'process-{process_index}'
+                    f'{path}: process entry {process_index}.metadata must be an object'
+                )
+            process_id = (
+                metadata.get('pid', f'process-{process_index}')
+                if isinstance(metadata, Mapping)
+                else f'process-{process_index}'
+            )
             agents = _build_agent_table(process, capture, context)
             operation_table = _build_operation_table(process, capture, context)
             symbols = _symbol_table(process, capture, context)
 
             lane_events: List[Mapping[str, Any]] = []
-            for section, domain in (('memory_copy', 'memory_copy'),
-                                    ('kernel_dispatch', 'kernel_dispatch')):
+            for section in ('memory_copy', 'kernel_dispatch'):
                 if section not in buffer_records:
-                    process_section_states[section].append({
-                        'process_index': process_index,
-                        'pid': process_id,
-                        'present': False,
-                        'record_count': 0,
-                    })
+                    process_section_states[section].append(
+                        {
+                            'process_index': process_index,
+                            'pid': process_id,
+                            'present': False,
+                            'record_count': 0,
+                        }
+                    )
                     continue
                 records = buffer_records[section]
                 if not isinstance(records, list):
                     raise RocprofJsonError(
                         f'{path}: process entry {process_index}.buffer_records.{section} '
-                        'must be a JSON array')
-                process_section_states[section].append({
-                    'process_index': process_index,
-                    'pid': process_id,
-                    'present': True,
-                    'record_count': len(records),
-                })
+                        'must be a JSON array'
+                    )
+                process_section_states[section].append(
+                    {
+                        'process_index': process_index,
+                        'pid': process_id,
+                        'present': True,
+                        'record_count': len(records),
+                    }
+                )
                 if section == 'memory_copy':
-                    lane_events.extend(_parse_memory_copies(
-                        records, path, process_index, process_id, agents,
-                        operation_table, capture))
+                    lane_events.extend(
+                        _parse_memory_copies(
+                            records,
+                            path,
+                            process_index,
+                            process_id,
+                            agents,
+                            operation_table,
+                            capture,
+                        )
+                    )
                 else:
-                    lane_events.extend(_parse_kernel_dispatches(
-                        records, path, process_index, process_id, agents,
-                        operation_table, symbols, capture))
+                    lane_events.extend(
+                        _parse_kernel_dispatches(
+                            records,
+                            path,
+                            process_index,
+                            process_id,
+                            agents,
+                            operation_table,
+                            symbols,
+                            capture,
+                        )
+                    )
             capture.events.extend(lane_events)
             capture.process_count += 1
 
     capture.sections = {
-        MEMORY_COPY_DOMAIN: _section_state(
-            process_section_states['memory_copy'], 'memory_copy'),
+        MEMORY_COPY_DOMAIN: _section_state(process_section_states['memory_copy'], 'memory_copy'),
         KERNEL_TRACE_DOMAIN: _section_state(
-            process_section_states['kernel_dispatch'], 'kernel_dispatch'),
+            process_section_states['kernel_dispatch'], 'kernel_dispatch'
+        ),
     }
     return capture
 
@@ -648,15 +765,13 @@ def load_manifest(path: Path) -> Mapping[str, Any]:
     for key in ('tracing_domains', 'output_formats'):
         value = document.get(key)
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            raise RocprofManifestError(
-                f'{path}: manifest.{key} must be an array of strings')
+            raise RocprofManifestError(f'{path}: manifest.{key} must be an array of strings')
     return document
 
 
 def manifest_domain_status(
-        capture: RocprofCapture,
-        manifest: Optional[Mapping[str, Any]],
-        domain: str) -> Dict[str, Any]:
+    capture: RocprofCapture, manifest: Optional[Mapping[str, Any]], domain: str
+) -> Dict[str, Any]:
     """Describe whether a requested ROCprofiler domain was captured."""
     if manifest is None:
         return {
@@ -671,8 +786,9 @@ def manifest_domain_status(
     if not requested:
         status = 'not_requested'
     elif not section.get('present') or count == 0:
-        status = 'copy_domain_incomplete' if domain == MEMORY_COPY_DOMAIN \
-            else 'kernel_domain_incomplete'
+        status = (
+            'copy_domain_incomplete' if domain == MEMORY_COPY_DOMAIN else 'kernel_domain_incomplete'
+        )
     else:
         status = 'complete'
     return {
@@ -686,10 +802,11 @@ def manifest_domain_status(
 
 
 def capture_completeness(
-        capture: RocprofCapture,
-        manifest: Optional[Mapping[str, Any]],
-        *,
-        require_kernel_evidence: bool = True) -> Dict[str, Any]:
+    capture: RocprofCapture,
+    manifest: Optional[Mapping[str, Any]],
+    *,
+    require_kernel_evidence: bool = True,
+) -> Dict[str, Any]:
     """Return manifest-aware completeness without deciding PASS/FAIL."""
     memory = manifest_domain_status(capture, manifest, MEMORY_COPY_DOMAIN)
     kernel = manifest_domain_status(capture, manifest, KERNEL_TRACE_DOMAIN)
@@ -700,10 +817,10 @@ def capture_completeness(
         'kernel': kernel,
         'parser_diagnostic_count': len(capture.diagnostics),
         'parser_diagnostics': capture.diagnostics,
-        'memory_copy_complete': memory_complete and not any(
-            item.get('domain') == 'memory_copy' for item in capture.diagnostics),
-        'kernel_complete': kernel_complete and not any(
-            item.get('domain') == 'kernel_dispatch' for item in capture.diagnostics),
+        'memory_copy_complete': memory_complete
+        and not any(item.get('domain') == 'memory_copy' for item in capture.diagnostics),
+        'kernel_complete': kernel_complete
+        and not any(item.get('domain') == 'kernel_dispatch' for item in capture.diagnostics),
         'kernel_evidence_required': require_kernel_evidence,
     }
 
@@ -753,44 +870,55 @@ def summarize_csv(paths: Sequence[Path]) -> Dict[str, Any]:
                     operation = _csv_field(row, 'Operation', 'operation')
                     kernel_name = _csv_field(row, 'Kernel_Name', 'Kernel', 'Name')
                     source = _csv_field(
-                        row, 'Source_Agent_Id', 'Src_Agent_Id', 'Source Agent Id',
-                        'Source_Agent')
+                        row, 'Source_Agent_Id', 'Src_Agent_Id', 'Source Agent Id', 'Source_Agent'
+                    )
                     destination = _csv_field(
-                        row, 'Destination_Agent_Id', 'Dst_Agent_Id', 'Destination Agent Id',
-                        'Destination_Agent')
+                        row,
+                        'Destination_Agent_Id',
+                        'Dst_Agent_Id',
+                        'Destination Agent Id',
+                        'Destination_Agent',
+                    )
                     name = str(kernel_name or operation or '')
                     if 'kernel' in path.name.lower() or kernel_name is not None:
                         kernels[name] += 1
                     elif 'memory' in path.name.lower() or operation is not None:
-                        copies[(_csv_direction(operation), str(source or ''),
-                                str(destination or ''))] += 1
+                        copies[
+                            (_csv_direction(operation), str(source or ''), str(destination or ''))
+                        ] += 1
         except (OSError, csv.Error) as exc:
             raise RocprofJsonError(f'{path}: cannot read CSV: {exc}') from exc
     return {
         'row_count': rows,
         'memory_copy': [
-            {'direction': key[0], 'source_agent': key[1],
-             'destination_agent': key[2], 'count': copies[key]}
+            {
+                'direction': key[0],
+                'source_agent': key[1],
+                'destination_agent': key[2],
+                'count': copies[key],
+            }
             for key in sorted(copies, key=str)
         ],
-        'kernels': [{'name': key, 'count': kernels[key]}
-                    for key in sorted(kernels)],
+        'kernels': [{'name': key, 'count': kernels[key]} for key in sorted(kernels)],
     }
 
 
-def cross_check_csv(
-        capture: RocprofCapture,
-        csv_paths: Sequence[Path]) -> Dict[str, Any]:
+def cross_check_csv(capture: RocprofCapture, csv_paths: Sequence[Path]) -> Dict[str, Any]:
     """Compare CSV direction/agent/count with JSON without trusting CSV bytes."""
     csv_summary = summarize_csv(csv_paths)
     json_counts: Counter = Counter()
     for event in capture.memory_copy_events:
-        json_counts[(event.get('direction', 'unknown'),
-                     str(event.get('source_agent_handle', '')),
-                     str(event.get('destination_agent_handle', '')))] += 1
-    csv_counts = Counter((item['direction'], item['source_agent'],
-                          item['destination_agent'])
-                         for item in csv_summary['memory_copy'])
+        json_counts[
+            (
+                event.get('direction', 'unknown'),
+                str(event.get('source_agent_handle', '')),
+                str(event.get('destination_agent_handle', '')),
+            )
+        ] += 1
+    csv_counts = Counter(
+        (item['direction'], item['source_agent'], item['destination_agent'])
+        for item in csv_summary['memory_copy']
+    )
     deltas = [
         {'key': list(key), 'json_count': json_counts[key], 'csv_count': csv_counts[key]}
         for key in sorted(set(json_counts) | set(csv_counts), key=str)

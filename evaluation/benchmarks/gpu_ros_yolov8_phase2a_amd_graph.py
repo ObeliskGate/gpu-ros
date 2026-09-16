@@ -43,8 +43,7 @@ MIGRAPHX_CACHE_PATH = os.environ.get(
     os.path.join(os.environ.get("OVG_CACHE_ROOT", "/workspaces/ovg-cache"), "migraphx"),
 )
 os.environ.setdefault("ORT_MIGRAPHX_MODEL_CACHE_PATH", MIGRAPHX_CACHE_PATH)
-MIGRAPHX_WARMUP_TIMEOUT_SEC = float(
-    os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
+MIGRAPHX_WARMUP_TIMEOUT_SEC = float(os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
 
 
 def make_std_playback_node(namespace):
@@ -54,9 +53,7 @@ def make_std_playback_node(namespace):
         namespace=namespace,
         package="ros2_benchmark",
         plugin="ros2_benchmark::PlaybackNode",
-        parameters=[{
-            "data_formats": ["sensor_msgs/msg/Image", "sensor_msgs/msg/CameraInfo"]
-        }],
+        parameters=[{"data_formats": ["sensor_msgs/msg/Image", "sensor_msgs/msg/CameraInfo"]}],
         remappings=[
             ("buffer/input0", "data_loader/image_raw"),
             ("input0", "image"),
@@ -67,8 +64,7 @@ def make_std_playback_node(namespace):
 
 
 def model_path_for_test(test_class):
-    model_path = os.path.join(
-        test_class.get_assets_root_path(), "models", common.MODEL_FILE_NAME)
+    model_path = os.path.join(test_class.get_assets_root_path(), "models", common.MODEL_FILE_NAME)
     if not os.path.isfile(model_path) or os.path.getsize(model_path) == 0:
         resolved_path = os.path.abspath(model_path)
         raise RuntimeError(
@@ -89,11 +85,13 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_yolov8",
         plugin="gpu_ros::yolov8::YoloV8ImageEncoderNode",
-        parameters=[{
-            "tensor_name": common.ORT_INPUT_TENSOR_NAME,
-            "output_width": common.NETWORK_RESOLUTION["width"],
-            "output_height": common.NETWORK_RESOLUTION["height"],
-        }],
+        parameters=[
+            {
+                "tensor_name": common.ORT_INPUT_TENSOR_NAME,
+                "output_width": common.NETWORK_RESOLUTION["width"],
+                "output_height": common.NETWORK_RESOLUTION["height"],
+            }
+        ],
     )
 
     onnx_node = ComposableNode(
@@ -101,11 +99,13 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_onnx_inference",
         plugin="gpu_ros::onnx_inference::OnnxInferenceNode",
-        parameters=[{
-            "model_file_path": model_path,
-            "execution_provider": "migraphx",
-            "transport": "std",
-        }],
+        parameters=[
+            {
+                "model_file_path": model_path,
+                "execution_provider": "migraphx",
+                "transport": "std",
+            }
+        ],
         remappings=[
             ("tensor_input", "encoded_tensor"),
             ("tensor_output", "tensor_sub"),
@@ -117,12 +117,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_yolov8",
         plugin="gpu_ros::yolov8::YoloV8DecoderNode",
-        parameters=[{
-            "tensor_name": common.ORT_OUTPUT_TENSOR_NAME,
-            "confidence_threshold": 0.25,
-            "nms_threshold": 0.45,
-            "num_classes": 80,
-        }],
+        parameters=[
+            {
+                "tensor_name": common.ORT_OUTPUT_TENSOR_NAME,
+                "confidence_threshold": 0.25,
+                "nms_threshold": 0.45,
+                "num_classes": 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -166,9 +168,7 @@ class TestGpuRosYoloV8Phase2aAmd(ROS2BenchmarkTest):
             "data_resolution": common.IMAGE_RESOLUTION,
             "network_resolution": common.NETWORK_RESOLUTION,
             "model": common.MODEL_FILE_NAME,
-            "model_sha256": (
-                "d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c"
-            ),
+            "model_sha256": ("d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c"),
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "standard ROS2 TensorBundle",
             "build_type": "Release",
@@ -189,7 +189,8 @@ class TestGpuRosYoloV8Phase2aAmd(ROS2BenchmarkTest):
             detection_received = True
 
         subscription = self.node.create_subscription(
-            Detection2DArray, "detections_output", on_detection, 10)
+            Detection2DArray, "detections_output", on_detection, 10
+        )
         try:
             client = self.create_service_client_blocking(PlayMessages, "play_messages")
             request = PlayMessages.Request()
@@ -200,23 +201,24 @@ class TestGpuRosYoloV8Phase2aAmd(ROS2BenchmarkTest):
             request.revise_timestamps_as_message_ids = False
 
             self.get_logger().info(
-                "Starting one-frame MIGraphX YOLOv8 warm-up; "
-                "waiting for detections_output")
+                "Starting one-frame MIGraphX YOLOv8 warm-up; waiting for detections_output"
+            )
             future = client.call_async(request)
             deadline = time.monotonic() + MIGRAPHX_WARMUP_TIMEOUT_SEC
             while not detection_received and time.monotonic() < deadline:
                 rclpy.spin_once(self.node, timeout_sec=0.5)
                 if future.done() and future.exception() is not None:
                     raise RuntimeError(
-                        "MIGraphX YOLOv8 warm-up playback failed") from future.exception()
+                        "MIGraphX YOLOv8 warm-up playback failed"
+                    ) from future.exception()
 
             if not detection_received:
                 raise RuntimeError(
                     "MIGraphX YOLOv8 warm-up did not produce detections within "
-                    f"{MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds")
+                    f"{MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds"
+                )
             self._migraphx_warmup_complete = True
-            self.get_logger().info(
-                "MIGraphX YOLOv8 warm-up complete; starting measured benchmark")
+            self.get_logger().info("MIGraphX YOLOv8 warm-up complete; starting measured benchmark")
         finally:
             self.node.destroy_subscription(subscription)
 

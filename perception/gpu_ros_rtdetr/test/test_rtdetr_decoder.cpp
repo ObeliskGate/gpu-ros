@@ -32,7 +32,7 @@ RtDetrDecoderConfig Config()
   config.confidence_threshold = 0.5;
   return config;
 }
-}  // namespace
+} // namespace
 
 TEST(RtDetrDecoderTest, DecodesValidBoxesAndFiltersScores)
 {
@@ -42,9 +42,8 @@ TEST(RtDetrDecoderTest, DecodesValidBoxesAndFiltersScores)
   std_msgs::msg::Header header;
   header.frame_id = "camera";
 
-  const auto output = DecodeRtDetrValues(
-    header, labels.data(), labels.size(), boxes.data(), boxes.size(),
-    scores.data(), scores.size(), Config());
+  const auto output = DecodeRtDetrValues(header, labels.data(), labels.size(), boxes.data(),
+    boxes.size(), scores.data(), scores.size(), Config());
 
   ASSERT_EQ(output.detections.size(), 1U);
   const auto & detection = output.detections.front();
@@ -61,16 +60,13 @@ TEST(RtDetrDecoderTest, RejectsInconsistentSpansAndNonFiniteBoxes)
   const std::vector<int64_t> labels{1};
   const std::vector<float> boxes{0.0F, 0.0F, 1.0F, 1.0F};
   const std::vector<float> scores{0.9F};
-  EXPECT_THROW(
-    DecodeRtDetrValues(
-      std_msgs::msg::Header{}, labels.data(), labels.size(), boxes.data(), 3U,
-      scores.data(), scores.size(), Config()),
+  EXPECT_THROW(DecodeRtDetrValues(std_msgs::msg::Header{}, labels.data(), labels.size(),
+                 boxes.data(), 3U, scores.data(), scores.size(), Config()),
     std::invalid_argument);
 
   const std::vector<float> nonfinite_boxes{
     0.0F, 0.0F, std::numeric_limits<float>::quiet_NaN(), 1.0F};
-  const auto output = DecodeRtDetrValues(
-    std_msgs::msg::Header{}, labels.data(), labels.size(), nonfinite_boxes.data(),
-    nonfinite_boxes.size(), scores.data(), scores.size(), Config());
+  const auto output = DecodeRtDetrValues(std_msgs::msg::Header{}, labels.data(), labels.size(),
+    nonfinite_boxes.data(), nonfinite_boxes.size(), scores.data(), scores.size(), Config());
   EXPECT_TRUE(output.detections.empty());
 }

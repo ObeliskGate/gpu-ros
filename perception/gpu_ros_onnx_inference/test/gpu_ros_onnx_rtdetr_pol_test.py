@@ -48,14 +48,14 @@ def generate_rtdetr_pol_description(test_class, transport):
     MockModelGenerator.generate(
         input_bindings=[
             MockModelGenerator.Binding('images', [-1, 3, 640, 640], torch.float32),
-            MockModelGenerator.Binding('orig_target_sizes', [-1, 2], torch.int64)
+            MockModelGenerator.Binding('orig_target_sizes', [-1, 2], torch.int64),
         ],
         output_bindings=[
             MockModelGenerator.Binding('labels', [-1, 300], torch.int64),
             MockModelGenerator.Binding('boxes', [-1, 300, 4], torch.float32),
-            MockModelGenerator.Binding('scores', [-1, 300], torch.float32)
+            MockModelGenerator.Binding('scores', [-1, 300], torch.float32),
         ],
-        output_onnx_path=MODEL_ONNX_PATH
+        output_onnx_path=MODEL_ONNX_PATH,
     )
 
     ns = test_class.generate_namespace()
@@ -65,15 +65,17 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
         namespace=ns,
-        parameters=[{
-            'input_width': 640,
-            'input_height': 480,
-            'output_width': 640,
-            'output_height': 640,
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True
-        }]
+        parameters=[
+            {
+                'input_width': 640,
+                'input_height': 480,
+                'output_width': 640,
+                'output_height': 640,
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
     )
 
     pad_node = ComposableNode(
@@ -81,12 +83,10 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
         namespace=ns,
-        parameters=[{
-            'output_image_width': 640,
-            'output_image_height': 640,
-            'padding_type': 'BOTTOM_RIGHT'
-        }],
-        remappings=[('image', 'resize/image')]
+        parameters=[
+            {'output_image_width': 640, 'output_image_height': 640, 'padding_type': 'BOTTOM_RIGHT'}
+        ],
+        remappings=[('image', 'resize/image')],
     )
 
     image_format_node = ComposableNode(
@@ -94,12 +94,8 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
         namespace=ns,
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': 640,
-            'image_height': 640
-        }],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
+        parameters=[{'encoding_desired': 'rgb8', 'image_width': 640, 'image_height': 640}],
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
     )
 
     image_to_tensor_node = ComposableNode(
@@ -108,7 +104,7 @@ def generate_rtdetr_pol_description(test_class, transport):
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
         namespace=ns,
         parameters=[{'scale': False, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
+        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')],
     )
 
     interleave_to_planar_node = ComposableNode(
@@ -117,7 +113,7 @@ def generate_rtdetr_pol_description(test_class, transport):
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
         namespace=ns,
         parameters=[{'input_tensor_shape': [640, 640, 3]}],
-        remappings=[('interleaved_tensor', 'normalized_tensor')]
+        remappings=[('interleaved_tensor', 'normalized_tensor')],
     )
 
     reshape_node = ComposableNode(
@@ -125,12 +121,14 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
         namespace=ns,
-        parameters=[{
-            'output_tensor_name': 'input_tensor',
-            'input_tensor_shape': [3, 640, 640],
-            'output_tensor_shape': [1, 3, 640, 640]
-        }],
-        remappings=[('tensor', 'planar_tensor')]
+        parameters=[
+            {
+                'output_tensor_name': 'input_tensor',
+                'input_tensor_shape': [3, 640, 640],
+                'output_tensor_shape': [1, 3, 640, 640],
+            }
+        ],
+        remappings=[('tensor', 'planar_tensor')],
     )
 
     rtdetr_preprocessor_node = ComposableNode(
@@ -138,7 +136,7 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
         namespace=ns,
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
     # Config C replaces TensorRT directly. Managed keeps the official NITROS
@@ -148,48 +146,59 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         namespace=ns,
-        parameters=[{
-            'model_file_path': MODEL_ONNX_PATH,
-            'execution_provider': 'cuda',
-            'transport': transport,
-        }],
+        parameters=[
+            {
+                'model_file_path': MODEL_ONNX_PATH,
+                'execution_provider': 'cuda',
+                'transport': transport,
+            }
+        ],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'tensor_sub'),
-        ]
+        ],
     )
 
     rtdetr_decoder_node = ComposableNode(
         name='rtdetr_decoder',
         package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrDecoderNode',
-        namespace=ns
+        namespace=ns,
     )
 
     inference_nodes = [onnx_node]
     if transport == 'managed':
         nitros_to_managed_node = ComposableNode(
-            name='nitros_to_managed', package='gpu_ros_onnx_inference',
+            name='nitros_to_managed',
+            package='gpu_ros_onnx_inference',
             plugin='gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode',
             namespace=ns,
-            remappings=[('tensor_input', 'tensor_pub'),
-                        ('tensor_output', 'managed_tensor_input')])
+            remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'managed_tensor_input')],
+        )
         onnx_node = ComposableNode(
-            name='onnx_inference', package='gpu_ros_onnx_inference',
-            plugin='gpu_ros::onnx_inference::OnnxInferenceNode', namespace=ns,
-            parameters=[{
-                'model_file_path': MODEL_ONNX_PATH,
-                'execution_provider': 'cuda',
-                'transport': 'managed',
-            }],
-            remappings=[('tensor_input', 'managed_tensor_input'),
-                        ('tensor_output', 'managed_tensor_output')])
+            name='onnx_inference',
+            package='gpu_ros_onnx_inference',
+            plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+            namespace=ns,
+            parameters=[
+                {
+                    'model_file_path': MODEL_ONNX_PATH,
+                    'execution_provider': 'cuda',
+                    'transport': 'managed',
+                }
+            ],
+            remappings=[
+                ('tensor_input', 'managed_tensor_input'),
+                ('tensor_output', 'managed_tensor_output'),
+            ],
+        )
         managed_to_nitros_node = ComposableNode(
-            name='managed_to_nitros', package='gpu_ros_onnx_inference',
+            name='managed_to_nitros',
+            package='gpu_ros_onnx_inference',
             plugin='gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode',
             namespace=ns,
-            remappings=[('tensor_input', 'managed_tensor_output'),
-                        ('tensor_output', 'tensor_sub')])
+            remappings=[('tensor_input', 'managed_tensor_output'), ('tensor_output', 'tensor_sub')],
+        )
         inference_nodes = [nitros_to_managed_node, onnx_node, managed_to_nitros_node]
 
     container = ComposableNodeContainer(
@@ -198,11 +207,17 @@ def generate_rtdetr_pol_description(test_class, transport):
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[
-            resize_node, pad_node, image_format_node,
-            image_to_tensor_node, interleave_to_planar_node, reshape_node,
-            rtdetr_preprocessor_node, *inference_nodes, rtdetr_decoder_node
+            resize_node,
+            pad_node,
+            image_format_node,
+            image_to_tensor_node,
+            interleave_to_planar_node,
+            reshape_node,
+            rtdetr_preprocessor_node,
+            *inference_nodes,
+            rtdetr_decoder_node,
         ],
-        output='screen'
+        output='screen',
     )
 
     return test_class.generate_test_description([container])
@@ -232,17 +247,19 @@ class GpuRosOnnxRtDetrPOLTest(IsaacROSBaseTest):
         received_messages = {}
         self.generate_namespace_lookup(['image', 'camera_info', 'detections_output'])
 
-        image_pub = self.node.create_publisher(
-            Image, self.namespaces['image'], self.DEFAULT_QOS)
+        image_pub = self.node.create_publisher(Image, self.namespaces['image'], self.DEFAULT_QOS)
         camera_info_pub = self.node.create_publisher(
-            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS)
+            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS
+        )
         subs = self.create_logging_subscribers(
-            [('detections_output', Detection2DArray)], received_messages)
+            [('detections_output', Detection2DArray)], received_messages
+        )
 
         try:
             image = JSONConversion.load_image_from_json(test_folder / 'image.json')
             camera_info = JSONConversion.load_camera_info_from_json(
-                test_folder / 'camera_info.json')
+                test_folder / 'camera_info.json'
+            )
             timestamp = self.node.get_clock().now().to_msg()
             image.header.stamp = timestamp
             camera_info.header.stamp = timestamp

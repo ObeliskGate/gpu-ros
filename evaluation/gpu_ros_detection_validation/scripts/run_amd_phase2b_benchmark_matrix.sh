@@ -160,7 +160,7 @@ repo_untracked_content_hash() {
     return 0
   fi
   (
-    cd "${path}"
+    cd "${path}" || exit
     while IFS= read -r -d '' item; do
       printf '%s\0' "${item}"
       sha256sum -- "${item}"

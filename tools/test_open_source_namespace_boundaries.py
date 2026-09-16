@@ -13,13 +13,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT_ROOTS = tuple(ROOT / name for name in (
-    "transport",
-    "interfaces",
-    "perception",
-    "compat",
-    "evaluation",
-))
+PROJECT_ROOTS = tuple(
+    ROOT / name
+    for name in (
+        "transport",
+        "interfaces",
+        "perception",
+        "compat",
+        "evaluation",
+    )
+)
 BENCHMARKS_ROOT = ROOT / "evaluation" / "benchmarks"
 MANAGED_TRANSPORT_MANIFEST = ROOT / "transport" / "gpu_ros_managed_tensor_bundle" / "package.xml"
 COMPAT_PACKAGE = "gpu_ros_nvidia_tensor_bundle_compat"
@@ -38,8 +41,21 @@ LEGACY_NAMESPACES = {
     "nvidia::isaac_ros::detection_common",
 }
 TEXT_SUFFIXES = {
-    ".c", ".cc", ".cpp", ".h", ".hh", ".hpp", ".hip", ".py", ".sh",
-    ".xml", ".msg", ".srv", ".md", ".yaml", ".yml",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hh",
+    ".hpp",
+    ".hip",
+    ".py",
+    ".sh",
+    ".xml",
+    ".msg",
+    ".srv",
+    ".md",
+    ".yaml",
+    ".yml",
 }
 
 
@@ -81,11 +97,7 @@ def package_dependencies(package_xml: Path) -> set[str]:
 
 
 def assert_project_roots() -> None:
-    missing = [
-        path.relative_to(ROOT).as_posix()
-        for path in PROJECT_ROOTS
-        if not path.is_dir()
-    ]
+    missing = [path.relative_to(ROOT).as_posix() for path in PROJECT_ROOTS if not path.is_dir()]
     assert not missing, "required project roots are missing: " + ", ".join(missing)
 
     benchmark_packages = sorted(BENCHMARKS_ROOT.rglob("package.xml"))
@@ -108,7 +120,9 @@ def assert_package_names() -> None:
             raise AssertionError(f"package directory/name mismatch: {package_xml}: {name}")
         if "isaac_ros_tensor_list_interfaces" in package_dependencies(package_xml):
             tensor_list_dependents.append(name)
-    assert not found_legacy, "project-owned legacy package names remain:\n" + "\n".join(found_legacy)
+    assert not found_legacy, "project-owned legacy package names remain:\n" + "\n".join(
+        found_legacy
+    )
     assert tensor_list_dependents == [COMPAT_PACKAGE], (
         "only the NVIDIA compatibility package may depend on "
         f"isaac_ros_tensor_list_interfaces; found {tensor_list_dependents}"
@@ -117,12 +131,10 @@ def assert_package_names() -> None:
 
 def assert_local_transport_manifest() -> None:
     assert MANAGED_TRANSPORT_MANIFEST.is_file(), (
-        "required local managed transport manifest is missing: "
-        f"{MANAGED_TRANSPORT_MANIFEST}"
+        f"required local managed transport manifest is missing: {MANAGED_TRANSPORT_MANIFEST}"
     )
     assert package_name(MANAGED_TRANSPORT_MANIFEST) == MANAGED_TRANSPORT_MANIFEST.parent.name, (
-        "managed transport manifest/package directory mismatch: "
-        f"{MANAGED_TRANSPORT_MANIFEST}"
+        f"managed transport manifest/package directory mismatch: {MANAGED_TRANSPORT_MANIFEST}"
     )
     assert not (ROOT / "transport" / "gpu_ros_managed_tensor_list").exists(), (
         "old managed TensorList package directory remains"
@@ -198,5 +210,7 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (AssertionError, ElementTree.ParseError) as error:
-        print(f"open-source namespace and dependency boundary checks: FAIL: {error}", file=sys.stderr)
+        print(
+            f"open-source namespace and dependency boundary checks: FAIL: {error}", file=sys.stderr
+        )
         raise SystemExit(1)

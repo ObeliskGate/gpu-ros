@@ -46,37 +46,43 @@ def launch_setup(context):
         name='resize_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        parameters=[{
-            'input_width': input_image_width,
-            'input_height': input_image_height,
-            'output_width': MODEL_INPUT_SIZE,
-            'output_height': MODEL_INPUT_SIZE,
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True,
-        }],
+        parameters=[
+            {
+                'input_width': input_image_width,
+                'input_height': input_image_height,
+                'output_width': MODEL_INPUT_SIZE,
+                'output_height': MODEL_INPUT_SIZE,
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
         remappings=[('image', 'image_rect'), ('camera_info', 'camera_info_rect')],
     )
     pad = ComposableNode(
         name='pad_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
-        parameters=[{
-            'output_image_width': MODEL_INPUT_SIZE,
-            'output_image_height': MODEL_INPUT_SIZE,
-            'padding_type': 'BOTTOM_RIGHT',
-        }],
+        parameters=[
+            {
+                'output_image_width': MODEL_INPUT_SIZE,
+                'output_image_height': MODEL_INPUT_SIZE,
+                'padding_type': 'BOTTOM_RIGHT',
+            }
+        ],
         remappings=[('image', 'resize/image')],
     )
     format_converter = ComposableNode(
         name='image_format_node',
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': MODEL_INPUT_SIZE,
-            'image_height': MODEL_INPUT_SIZE,
-        }],
+        parameters=[
+            {
+                'encoding_desired': 'rgb8',
+                'image_width': MODEL_INPUT_SIZE,
+                'image_height': MODEL_INPUT_SIZE,
+            }
+        ],
         remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
     )
     image_to_tensor = ComposableNode(
@@ -90,56 +96,68 @@ def launch_setup(context):
         name='interleaved_to_planar_node',
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
-        parameters=[{
-            'input_tensor_shape': [
-                MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, MODEL_NUM_CHANNELS,
-            ],
-        }],
+        parameters=[
+            {
+                'input_tensor_shape': [
+                    MODEL_INPUT_SIZE,
+                    MODEL_INPUT_SIZE,
+                    MODEL_NUM_CHANNELS,
+                ],
+            }
+        ],
         remappings=[('interleaved_tensor', 'normalized_tensor')],
     )
     reshape = ComposableNode(
         name='reshape_node',
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-        parameters=[{
-            'output_tensor_name': 'images',
-            'input_tensor_shape': [
-                MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE,
-            ],
-            'output_tensor_shape': [
-                1, MODEL_NUM_CHANNELS, MODEL_INPUT_SIZE, MODEL_INPUT_SIZE,
-            ],
-        }],
+        parameters=[
+            {
+                'output_tensor_name': 'images',
+                'input_tensor_shape': [
+                    MODEL_NUM_CHANNELS,
+                    MODEL_INPUT_SIZE,
+                    MODEL_INPUT_SIZE,
+                ],
+                'output_tensor_shape': [
+                    1,
+                    MODEL_NUM_CHANNELS,
+                    MODEL_INPUT_SIZE,
+                    MODEL_INPUT_SIZE,
+                ],
+            }
+        ],
         remappings=[('tensor', 'planar_tensor')],
     )
 
     if transport == 'nitros':
-        inference_nodes = [ComposableNode(
-            name='onnx_inference',
-            package='gpu_ros_onnx_inference',
-            plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-            parameters=[{
-                'model_file_path': model_file_path,
-                'execution_provider': execution_provider,
-                'ort_profile_prefix': ort_profile_prefix,
-                'ort_profile_frames': ort_profile_frames,
-                'binding_report_path': binding_report_path,
-                'transport': 'nitros',
-            }],
-            remappings=[
-                ('tensor_input', 'reshaped_tensor'),
-                ('tensor_output', 'tensor_sub'),
-            ],
-        )]
+        inference_nodes = [
+            ComposableNode(
+                name='onnx_inference',
+                package='gpu_ros_onnx_inference',
+                plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+                parameters=[
+                    {
+                        'model_file_path': model_file_path,
+                        'execution_provider': execution_provider,
+                        'ort_profile_prefix': ort_profile_prefix,
+                        'ort_profile_frames': ort_profile_frames,
+                        'binding_report_path': binding_report_path,
+                        'transport': 'nitros',
+                    }
+                ],
+                remappings=[
+                    ('tensor_input', 'reshaped_tensor'),
+                    ('tensor_output', 'tensor_sub'),
+                ],
+            )
+        ]
     else:
         inference_nodes = [
             ComposableNode(
                 name='nitros_to_managed',
                 package='gpu_ros_onnx_inference',
-                plugin=(
-                    'gpu_ros::onnx_inference::'
-                    'NitrosToManagedTensorBundleNode'
-                ),
+                plugin=('gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode'),
                 remappings=[
                     ('tensor_input', 'reshaped_tensor'),
                     ('tensor_output', 'managed_tensor_input'),
@@ -149,14 +167,16 @@ def launch_setup(context):
                 name='onnx_inference',
                 package='gpu_ros_onnx_inference',
                 plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-                parameters=[{
-                    'model_file_path': model_file_path,
-                    'execution_provider': execution_provider,
-                    'ort_profile_prefix': ort_profile_prefix,
-                    'ort_profile_frames': ort_profile_frames,
-                    'binding_report_path': binding_report_path,
-                    'transport': 'managed',
-                }],
+                parameters=[
+                    {
+                        'model_file_path': model_file_path,
+                        'execution_provider': execution_provider,
+                        'ort_profile_prefix': ort_profile_prefix,
+                        'ort_profile_frames': ort_profile_frames,
+                        'binding_report_path': binding_report_path,
+                        'transport': 'managed',
+                    }
+                ],
                 remappings=[
                     ('tensor_input', 'managed_tensor_input'),
                     ('tensor_output', 'managed_tensor_output'),
@@ -165,10 +185,7 @@ def launch_setup(context):
             ComposableNode(
                 name='managed_to_nitros',
                 package='gpu_ros_onnx_inference',
-                plugin=(
-                    'gpu_ros::onnx_inference::'
-                    'ManagedToNitrosTensorBundleNode'
-                ),
+                plugin=('gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode'),
                 remappings=[
                     ('tensor_input', 'managed_tensor_output'),
                     ('tensor_output', 'tensor_sub'),
@@ -180,12 +197,14 @@ def launch_setup(context):
         name='yolov8_decoder',
         package='isaac_ros_yolov8',
         plugin='nvidia::isaac_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': 'output0',
-            'confidence_threshold': confidence_threshold,
-            'nms_threshold': nms_threshold,
-            'num_classes': 80,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'output0',
+                'confidence_threshold': confidence_threshold,
+                'nms_threshold': nms_threshold,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(

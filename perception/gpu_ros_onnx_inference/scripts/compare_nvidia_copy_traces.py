@@ -56,13 +56,22 @@ DIRECTIONS = ('H2D', 'D2H', 'D2D', 'H2H', 'unknown')
 def parse_args() -> argparse.Namespace:
     """Parse the C-vs-D comparison arguments."""
     parser = argparse.ArgumentParser(
-        description='Compare Config C and Config D NVIDIA CUDA copy traces.')
+        description='Compare Config C and Config D NVIDIA CUDA copy traces.'
+    )
     parser.add_argument(
-        '--reference-trace', action='append', required=True, type=Path,
-        help='Config C nsys cuda_gpu_trace JSON; may be repeated')
+        '--reference-trace',
+        action='append',
+        required=True,
+        type=Path,
+        help='Config C nsys cuda_gpu_trace JSON; may be repeated',
+    )
     parser.add_argument(
-        '--candidate-trace', action='append', required=True, type=Path,
-        help='Config D nsys cuda_gpu_trace JSON; may be repeated')
+        '--candidate-trace',
+        action='append',
+        required=True,
+        type=Path,
+        help='Config D nsys cuda_gpu_trace JSON; may be repeated',
+    )
     parser.add_argument('--reference-label', default='config_c')
     parser.add_argument('--candidate-label', default='config_d')
     parser.add_argument('--reference-frames', required=True, type=int)
@@ -70,8 +79,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--reference-binding-report', type=Path)
     parser.add_argument('--candidate-binding-report', type=Path)
     parser.add_argument(
-        '--payload-size', action='append', default=[], type=int,
-        help='Additional tensor size in bytes; binding reports are included automatically')
+        '--payload-size',
+        action='append',
+        default=[],
+        type=int,
+        help='Additional tensor size in bytes; binding reports are included automatically',
+    )
     parser.add_argument('--output-json', required=True, type=Path)
     return parser.parse_args()
 
@@ -147,10 +160,11 @@ def _totals(summary: Mapping[str, Any], direction: str) -> Dict[str, int]:
 
 
 def _memory_total_deltas(
-        reference: Mapping[str, Any],
-        candidate: Mapping[str, Any],
-        reference_frames: int,
-        candidate_frames: int) -> list[Dict[str, Any]]:
+    reference: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    reference_frames: int,
+    candidate_frames: int,
+) -> list[Dict[str, Any]]:
     """Return absolute and per-frame candidate-minus-reference totals."""
     rows = []
     for direction in DIRECTIONS:
@@ -158,31 +172,38 @@ def _memory_total_deltas(
         candidate_data = _totals(candidate, direction)
         count_delta = candidate_data['count'] - reference_data['count']
         byte_delta = candidate_data['bytes'] - reference_data['bytes']
-        rows.append({
-            'direction': direction,
-            'reference': reference_data,
-            'candidate': candidate_data,
-            'count_delta': count_delta,
-            'byte_delta': byte_delta,
-            'reference_count_per_frame': reference_data['count'] / reference_frames,
-            'candidate_count_per_frame': candidate_data['count'] / candidate_frames,
-            'count_delta_per_frame': (
-                candidate_data['count'] / candidate_frames -
-                reference_data['count'] / reference_frames),
-            'reference_bytes_per_frame': reference_data['bytes'] / reference_frames,
-            'candidate_bytes_per_frame': candidate_data['bytes'] / candidate_frames,
-            'byte_delta_per_frame': (
-                candidate_data['bytes'] / candidate_frames -
-                reference_data['bytes'] / reference_frames),
-            'candidate_more': count_delta > 0 or byte_delta > 0,
-        })
+        rows.append(
+            {
+                'direction': direction,
+                'reference': reference_data,
+                'candidate': candidate_data,
+                'count_delta': count_delta,
+                'byte_delta': byte_delta,
+                'reference_count_per_frame': reference_data['count'] / reference_frames,
+                'candidate_count_per_frame': candidate_data['count'] / candidate_frames,
+                'count_delta_per_frame': (
+                    candidate_data['count'] / candidate_frames
+                    - reference_data['count'] / reference_frames
+                ),
+                'reference_bytes_per_frame': reference_data['bytes'] / reference_frames,
+                'candidate_bytes_per_frame': candidate_data['bytes'] / candidate_frames,
+                'byte_delta_per_frame': (
+                    candidate_data['bytes'] / candidate_frames
+                    - reference_data['bytes'] / reference_frames
+                ),
+                'candidate_more': count_delta > 0 or byte_delta > 0,
+            }
+        )
     return rows
 
 
 def _payload_deltas(
-        reference: Mapping[str, Any], candidate: Mapping[str, Any],
-        payload_sizes: Iterable[int], reference_frames: int,
-        candidate_frames: int) -> list[Dict[str, Any]]:
+    reference: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    payload_sizes: Iterable[int],
+    reference_frames: int,
+    candidate_frames: int,
+) -> list[Dict[str, Any]]:
     """Return per-size and per-direction copy deltas for known tensor sizes."""
     reference_counts = reference['payload_copy_counts']
     candidate_counts = candidate['payload_copy_counts']
@@ -194,24 +215,26 @@ def _payload_deltas(
             candidate_count = int(candidate_counts.get(key, 0))
             if reference_count == 0 and candidate_count == 0:
                 continue
-            rows.append({
-                'size_bytes': size,
-                'direction': direction,
-                'reference_count': reference_count,
-                'candidate_count': candidate_count,
-                'count_delta': candidate_count - reference_count,
-                'reference_per_frame': reference_count / reference_frames,
-                'candidate_per_frame': candidate_count / candidate_frames,
-                'delta_per_frame': (
-                    candidate_count / candidate_frames -
-                    reference_count / reference_frames),
-            })
+            rows.append(
+                {
+                    'size_bytes': size,
+                    'direction': direction,
+                    'reference_count': reference_count,
+                    'candidate_count': candidate_count,
+                    'count_delta': candidate_count - reference_count,
+                    'reference_per_frame': reference_count / reference_frames,
+                    'candidate_per_frame': candidate_count / candidate_frames,
+                    'delta_per_frame': (
+                        candidate_count / candidate_frames - reference_count / reference_frames
+                    ),
+                }
+            )
     return rows
 
 
 def _candidate_only_payload_evidence(
-        reference: Mapping[str, Any], candidate: Mapping[str, Any],
-        payload_sizes: Set[int]) -> list[Dict[str, Any]]:
+    reference: Mapping[str, Any], candidate: Mapping[str, Any], payload_sizes: Set[int]
+) -> list[Dict[str, Any]]:
     """Identify candidate-only or candidate-increased tensor-sized signatures."""
     rows = []
     for signature, candidate_count in candidate['memcopies'].items():
@@ -221,51 +244,55 @@ def _candidate_only_payload_evidence(
         reference_count = int(reference['memcopies'].get(signature, 0))
         if candidate_count <= reference_count:
             continue
-        rows.append({
-            'signature': list(signature),
-            'reference_count': reference_count,
-            'candidate_count': candidate_count,
-            'count_delta': candidate_count - reference_count,
-            'classification': 'candidate_only_or_increased_tensor_sized_copy',
-        })
+        rows.append(
+            {
+                'signature': list(signature),
+                'reference_count': reference_count,
+                'candidate_count': candidate_count,
+                'count_delta': candidate_count - reference_count,
+                'classification': 'candidate_only_or_increased_tensor_sized_copy',
+            }
+        )
     return rows
 
 
 def compare(
-        reference_events: Iterable[Mapping[str, Any]],
-        candidate_events: Iterable[Mapping[str, Any]],
-        payload_sizes: Iterable[int],
-        reference_frames: int,
-        candidate_frames: int,
-        reference_label: str = 'config_c',
-        candidate_label: str = 'config_d',
-        binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    reference_events: Iterable[Mapping[str, Any]],
+    candidate_events: Iterable[Mapping[str, Any]],
+    payload_sizes: Iterable[int],
+    reference_frames: int,
+    candidate_frames: int,
+    reference_label: str = 'config_c',
+    candidate_label: str = 'config_d',
+    binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Build a lane-neutral C-vs-D copy delta report."""
     if reference_frames <= 0 or candidate_frames <= 0:
         raise ValueError('frame counts must be positive')
     payload_set = {int(size) for size in payload_sizes if int(size) > 0}
     reference_summary = summarize_events(
-        reference_events, payload_set, platform='nsys', frame_count=reference_frames)
+        reference_events, payload_set, platform='nsys', frame_count=reference_frames
+    )
     candidate_summary = summarize_events(
-        candidate_events, payload_set, platform='nsys', frame_count=candidate_frames)
+        candidate_events, payload_set, platform='nsys', frame_count=candidate_frames
+    )
     trace_complete = (
-        reference_summary['kernel_event_count'] > 0 or
-        bool(reference_summary['memcopies'])) and (
-            candidate_summary['kernel_event_count'] > 0 or
-            bool(candidate_summary['memcopies']))
+        reference_summary['kernel_event_count'] > 0 or bool(reference_summary['memcopies'])
+    ) and (candidate_summary['kernel_event_count'] > 0 or bool(candidate_summary['memcopies']))
 
     reports = binding_reports or {}
     reference_binding = reports.get('reference')
     candidate_binding = reports.get('candidate')
-    binding_errors = (
-        _binding_errors(reference_binding, reference_label) +
-        _binding_errors(candidate_binding, candidate_label))
+    binding_errors = _binding_errors(reference_binding, reference_label) + _binding_errors(
+        candidate_binding, candidate_label
+    )
     deltas = _memory_total_deltas(
-        reference_summary, candidate_summary, reference_frames, candidate_frames)
+        reference_summary, candidate_summary, reference_frames, candidate_frames
+    )
     host_device_directions = {'H2D', 'D2H'}
     positive_host_device = [
-        row for row in deltas
+        row
+        for row in deltas
         if row['direction'] in host_device_directions and row['candidate_more']
     ]
     reference_kernel_names = set(reference_summary['kernels'])
@@ -284,7 +311,8 @@ def compare(
             'name': row['name'],
             'reason': (
                 'Config D-only kernel could carry tensor payload; kernel trace '
-                'cannot prove otherwise'),
+                'cannot prove otherwise'
+            ),
         }
         for row in kernel_only_differences
         if looks_like_payload_kernel(row['name'])
@@ -299,7 +327,8 @@ def compare(
         'zero_copy_status': 'NOT_APPLICABLE',
         'status_note': (
             'PASS means both lane traces and binding reports are complete; it does '
-            'not mean Config D is zero-copy.'),
+            'not mean Config D is zero-copy.'
+        ),
         'reference_lane': reference_label,
         'candidate_lane': candidate_label,
         'reference_frames': reference_frames,
@@ -314,9 +343,11 @@ def compare(
         },
         'self': {
             reference_label: self_report_from_summary(
-                reference_summary, reference_label, 'nsys', reference_frames, trace_complete),
+                reference_summary, reference_label, 'nsys', reference_frames, trace_complete
+            ),
             candidate_label: self_report_from_summary(
-                candidate_summary, candidate_label, 'nsys', candidate_frames, trace_complete),
+                candidate_summary, candidate_label, 'nsys', candidate_frames, trace_complete
+            ),
         },
         'memory_totals': {
             reference_label: reference_summary['memory_totals'],
@@ -328,15 +359,18 @@ def compare(
             'positive_deltas': positive_host_device,
             'interpretation': (
                 'Positive D-minus-C H2D/D2H count or byte deltas are direct evidence '
-                'of additional explicit host/device copy records in D.'),
+                'of additional explicit host/device copy records in D.'
+            ),
         },
         'memory_copy_signature_deltas': counter_deltas(
-            reference_summary['memcopies'], candidate_summary['memcopies']),
+            reference_summary['memcopies'], candidate_summary['memcopies']
+        ),
         'payload_copy_deltas': _payload_deltas(
-            reference_summary, candidate_summary, payload_set,
-            reference_frames, candidate_frames),
+            reference_summary, candidate_summary, payload_set, reference_frames, candidate_frames
+        ),
         'boundary_payload_copy_evidence': _candidate_only_payload_evidence(
-            reference_summary, candidate_summary, payload_set),
+            reference_summary, candidate_summary, payload_set
+        ),
         'memory_copy_failures': [],
         'kernel_only_differences': kernel_only_differences,
         'unresolved_payload_copy_risk': unresolved_payload_copy_risk,
@@ -346,7 +380,8 @@ def compare(
             'missing_from_candidate': sorted(reference_kernel_names - candidate_kernel_names),
             'extra_in_candidate': sorted(candidate_kernel_names - reference_kernel_names),
             'event_count_deltas': counter_deltas(
-                reference_summary['kernels'], candidate_summary['kernels']),
+                reference_summary['kernels'], candidate_summary['kernels']
+            ),
         },
         'memory_copy': {
             reference_label: serialize_counter(reference_summary['memcopies']),
@@ -365,9 +400,9 @@ def main() -> int:
     try:
         reference_binding = _load_binding_report(args.reference_binding_report)
         candidate_binding = _load_binding_report(args.candidate_binding_report)
-        binding_sizes = (
-            _binding_payload_sizes(reference_binding) |
-            _binding_payload_sizes(candidate_binding))
+        binding_sizes = _binding_payload_sizes(reference_binding) | _binding_payload_sizes(
+            candidate_binding
+        )
         payload_sizes = binding_sizes | {int(size) for size in args.payload_size}
         result = compare(
             _load_events(args.reference_trace),
@@ -387,7 +422,8 @@ def main() -> int:
     args.output_json.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
     print(
         f'{args.reference_label} frames={args.reference_frames}; '
-        f'{args.candidate_label} frames={args.candidate_frames}')
+        f'{args.candidate_label} frames={args.candidate_frames}'
+    )
     print('Explicit memory-copy delta (candidate minus reference):')
     for row in result['memory_total_deltas']:
         print(
@@ -396,7 +432,8 @@ def main() -> int:
             f"per-frame {row['count_delta_per_frame']:.6f}); bytes "
             f"{row['reference']['bytes']} -> {row['candidate']['bytes']} "
             f"(delta {row['byte_delta']}, "
-            f"per-frame {row['byte_delta_per_frame']:.2f})")
+            f"per-frame {row['byte_delta_per_frame']:.2f})"
+        )
     if result['host_device_copy_evidence']['candidate_more_h2d_or_d2h']:
         print('RESULT: Config D has additional explicit H2D/D2H copy evidence.')
     else:

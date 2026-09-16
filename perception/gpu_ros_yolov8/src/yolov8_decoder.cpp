@@ -42,7 +42,9 @@ using TensorBundle = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 const Tensor & FindTensor(const TensorBundle & message, const std::string & name)
 {
   for (const auto & tensor : message.tensors) {
-    if (tensor.name == name) {return tensor;}
+    if (tensor.name == name) {
+      return tensor;
+    }
   }
   throw std::runtime_error("YOLOv8 tensor '" + name + "' not found");
 }
@@ -51,9 +53,7 @@ size_t ElementCount(const std::vector<int64_t> & shape)
 {
   size_t count = 1;
   for (const int64_t dimension : shape) {
-    if (dimension <= 0 || static_cast<uint64_t>(dimension) >
-      std::numeric_limits<size_t>::max())
-    {
+    if (dimension <= 0 || static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max()) {
       throw std::runtime_error("YOLOv8 output tensor has an invalid dimension");
     }
     const auto value = static_cast<size_t>(dimension);
@@ -65,13 +65,10 @@ size_t ElementCount(const std::vector<int64_t> & shape)
   return count;
 }
 
-}  // namespace
+} // namespace
 
-vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
-  const std_msgs::msg::Header & header,
-  const float * values,
-  size_t value_count,
-  const std::vector<int64_t> & shape,
+vision_msgs::msg::Detection2DArray DecodeYoloV8Values(const std_msgs::msg::Header & header,
+  const float * values, size_t value_count, const std::vector<int64_t> & shape,
   const YoloV8DecoderConfig & config)
 {
   if (config.num_classes <= 0) {
@@ -84,15 +81,14 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
     throw std::runtime_error("YOLOv8 nms_threshold must be in [0, 1]");
   }
   if (shape.size() != 3U || shape[0] != 1 || values == nullptr) {
-    throw std::runtime_error(
-            "YOLOv8 tensor must have shape [1, 4 + classes, boxes]");
+    throw std::runtime_error("YOLOv8 tensor must have shape [1, 4 + classes, boxes]");
   }
   const int64_t channels = shape[1];
   const int64_t num_boxes = shape[2];
   const int64_t expected_channels = 4 + config.num_classes;
   if (channels != expected_channels || num_boxes <= 0) {
     throw std::runtime_error(
-            "YOLOv8 tensor shape does not match 4 + num_classes and a positive box count");
+      "YOLOv8 tensor shape does not match 4 + num_classes and a positive box count");
   }
   const size_t expected_count = ElementCount(shape);
   if (value_count != expected_count) {
@@ -106,16 +102,16 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
   scores.reserve(static_cast<size_t>(num_boxes));
   classes.reserve(static_cast<size_t>(num_boxes));
   const auto value_at = [values, num_boxes](int64_t channel, int64_t box) {
-      return values[static_cast<size_t>(channel * num_boxes + box)];
-    };
+    return values[static_cast<size_t>(channel * num_boxes + box)];
+  };
 
   for (int64_t box = 0; box < num_boxes; ++box) {
     const double x = value_at(0, box);
     const double y = value_at(1, box);
     const double width = value_at(2, box);
     const double height = value_at(3, box);
-    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) ||
-      !std::isfinite(height) || width <= 0.0 || height <= 0.0)
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width) || !std::isfinite(height) ||
+        width <= 0.0 || height <= 0.0)
     {
       continue;
     }
@@ -154,18 +150,17 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
       class_scores.push_back(scores.at(static_cast<size_t>(candidate)));
     }
     std::vector<int> class_indices;
-    cv::dnn::NMSBoxes(
-      class_boxes, class_scores, static_cast<float>(config.confidence_threshold),
+    cv::dnn::NMSBoxes(class_boxes, class_scores, static_cast<float>(config.confidence_threshold),
       static_cast<float>(config.nms_threshold), class_indices, 1.0F);
     for (const int class_index : class_indices) {
       indices.push_back(candidates.at(static_cast<size_t>(class_index)));
     }
   }
   std::stable_sort(indices.begin(), indices.end(), [&scores](int left, int right) {
-      const float left_score = scores.at(static_cast<size_t>(left));
-      const float right_score = scores.at(static_cast<size_t>(right));
-      return left_score == right_score ? left<right : left_score> right_score;
-    });
+    const float left_score = scores.at(static_cast<size_t>(left));
+    const float right_score = scores.at(static_cast<size_t>(right));
+    return left_score == right_score ? left < right : left_score > right_score;
+  });
   vision_msgs::msg::Detection2DArray detections;
   detections.header = header;
   detections.detections.reserve(indices.size());
@@ -187,12 +182,11 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
 }
 
 vision_msgs::msg::Detection2DArray DecodeYoloV8TensorBundle(
-  const TensorBundle & message,
-  const YoloV8DecoderConfig & config)
+  const TensorBundle & message, const YoloV8DecoderConfig & config)
 {
   const auto & tensor = FindTensor(message, config.tensor_name);
   if (tensor.data_type != kTensorBundleFloat32 || tensor.shape.size() != 3U ||
-    tensor.data.size() % sizeof(float) != 0U)
+      tensor.data.size() % sizeof(float) != 0U)
   {
     throw std::runtime_error("YOLOv8 TensorBundle output has the wrong dtype, rank, or byte size");
   }
@@ -203,4 +197,4 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8TensorBundle(
   return DecodeYoloV8Values(message.header, values.data(), values.size(), shape, config);
 }
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8

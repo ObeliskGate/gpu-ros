@@ -23,8 +23,7 @@ MANIFEST = ASSETS_ROOT / "manifest.json"
 DATASET_REL = Path("datasets/r2bdataset2024_v1/r2b_robotarm")
 UPSTREAM_COMMIT = "b8957b30431abc938db16016f6b5e395b562c5dd"
 CHECKPOINT_URL = (
-    "https://github.com/lyuwenyu/storage/releases/download/v0.1/"
-    "rtdetrv2_r50vd_6x_coco_ema.pth"
+    "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetrv2_r50vd_6x_coco_ema.pth"
 )
 CHECKPOINT_SHA256 = "a1f30829515a5096702dbf2ab2e06b5b0c7c6cd96234c257d9862abe45f03641"
 XANYLABELING_SHA256 = "777e5adb5a9e2914ba9ff1d0a1b1e50e5e12236099933e84d1dcfe738f0c90c0"
@@ -88,9 +87,7 @@ def project_python_command(project: Path, *arguments: str) -> list[str]:
         resolved = shutil.which(configured)
         if resolved:
             return [resolved, *arguments]
-        raise RuntimeError(
-            "OVG_RTDETR_EXPORT_PYTHON is not an executable: " + configured
-        )
+        raise RuntimeError("OVG_RTDETR_EXPORT_PYTHON is not an executable: " + configured)
 
     uv = shutil.which("uv")
     if uv:
@@ -145,9 +142,7 @@ def profile_evidence(profile: str) -> dict[str, Any]:
     if profile == "rtdetrv2_r50":
         return {
             "bytes_distributor": "generated locally by the user; never downloaded by prepare",
-            "architecture_upstream": (
-                "https://github.com/lyuwenyu/RT-DETR@" + UPSTREAM_COMMIT
-            ),
+            "architecture_upstream": ("https://github.com/lyuwenyu/RT-DETR@" + UPSTREAM_COMMIT),
             "weights_source": {
                 "url": CHECKPOINT_URL,
                 "sha256": CHECKPOINT_SHA256,
@@ -202,9 +197,7 @@ def validate_rtdetr(path: Path, *, allow_external: bool = True) -> str:
         import onnx  # type: ignore[import-not-found]
     except ImportError:
         if not allow_external:
-            raise RuntimeError(
-                "the selected Python environment is missing the 'onnx' package"
-            )
+            raise RuntimeError("the selected Python environment is missing the 'onnx' package")
         project = REPOSITORY_ROOT / "tools/rtdetrv2-export"
         environment = os.environ.copy()
         environment.update(
@@ -365,15 +358,10 @@ def import_r2b(args: argparse.Namespace) -> None:
 def run_export(upstream: Path, checkpoint: Path, output: Path) -> list[str]:
     project = REPOSITORY_ROOT / "tools/rtdetrv2-export"
     wrapper = project / "run_export.py"
-    official_config = (
-        upstream / "rtdetrv2_pytorch/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml"
-    )
+    official_config = upstream / "rtdetrv2_pytorch/configs/rtdetrv2/rtdetrv2_r50vd_6x_coco.yml"
     config = output.parent / "offline_export_config.yml"
     config.write_text(
-        "__include__:\n"
-        f"  - {json.dumps(str(official_config))}\n"
-        "PResNet:\n"
-        "  pretrained: false\n"
+        f"__include__:\n  - {json.dumps(str(official_config))}\nPResNet:\n  pretrained: false\n"
     )
     script = upstream / "rtdetrv2_pytorch/tools/export_onnx.py"
     command = project_python_command(

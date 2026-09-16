@@ -24,8 +24,7 @@ ManagedTensorBundle host_message()
   const std::vector<float> values{1.0F, 2.0F, 3.0F, 4.0F};
   std::vector<ManagedTensor> tensors;
   tensors.push_back(ManagedTensor::from_host_copy(
-      "input", TensorDataType::kFloat32, {1, 4},
-      values.data(), values.size() * sizeof(float)));
+    "input", TensorDataType::kFloat32, {1, 4}, values.data(), values.size() * sizeof(float)));
   return ManagedTensorBundle(std_msgs::msg::Header{}, std::move(tensors));
 }
 
@@ -66,15 +65,15 @@ TEST(TypeAdapterProbe, NativeIntraProcessPreservesCustomObjectIdentity)
   auto subscriber_node = std::make_shared<rclcpp::Node>("managed_probe_sub", options);
   std::promise<const ManagedTensorBundle *> received;
   auto future = received.get_future();
-  gpu_ros_managed::ManagedSubscriber<ManagedTensorBundleView> subscriber(
-    subscriber_node.get(), "managed_probe",
-    [&received](ManagedTensorBundleView view) {received.set_value(view.owner().get());});
+  gpu_ros_managed::ManagedSubscriber<ManagedTensorBundleView> subscriber(subscriber_node.get(),
+    "managed_probe",
+    [&received](ManagedTensorBundleView view) { received.set_value(view.owner().get()); });
   gpu_ros_managed::ManagedPublisher<ManagedTensorBundle> publisher(
     publisher_node.get(), "managed_probe");
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(publisher_node);
   executor.add_node(subscriber_node);
-  std::thread spin([&executor] {executor.spin();});
+  std::thread spin([&executor] { executor.spin(); });
   std::this_thread::sleep_for(100ms);
   auto message = std::make_unique<ManagedTensorBundle>(host_message());
   const auto * identity = message.get();

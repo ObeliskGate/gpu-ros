@@ -27,16 +27,16 @@ class NvidiaTensorListToTensorBundleNode final : public rclcpp::Node
 public:
   explicit NvidiaTensorListToTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("nvidia_tensor_list_to_tensor_bundle", options)
+      : rclcpp::Node("nvidia_tensor_list_to_tensor_bundle", options)
   {
     publisher_ = create_publisher<TensorBundle>("tensor_output", 10);
     subscription_ = create_subscription<NvidiaTensorList>(
-      "tensor_input", 10,
-      [this](const NvidiaTensorList::SharedPtr message) {
+      "tensor_input", 10, [this](const NvidiaTensorList::SharedPtr message) {
         try {
           publisher_->publish(ToTensorBundle(*message));
         } catch (const std::exception & error) {
-          RCLCPP_ERROR(get_logger(), "TensorList to TensorBundle conversion failed: %s", error.what());
+          RCLCPP_ERROR(
+            get_logger(), "TensorList to TensorBundle conversion failed: %s", error.what());
         }
       });
   }
@@ -51,16 +51,16 @@ class TensorBundleToNvidiaTensorListNode final : public rclcpp::Node
 public:
   explicit TensorBundleToNvidiaTensorListNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("tensor_bundle_to_nvidia_tensor_list", options)
+      : rclcpp::Node("tensor_bundle_to_nvidia_tensor_list", options)
   {
     publisher_ = create_publisher<NvidiaTensorList>("tensor_output", 10);
     subscription_ = create_subscription<TensorBundle>(
-      "tensor_input", 10,
-      [this](const TensorBundle::SharedPtr message) {
+      "tensor_input", 10, [this](const TensorBundle::SharedPtr message) {
         try {
           publisher_->publish(ToNvidiaTensorList(*message));
         } catch (const std::exception & error) {
-          RCLCPP_ERROR(get_logger(), "TensorBundle to TensorList conversion failed: %s", error.what());
+          RCLCPP_ERROR(
+            get_logger(), "TensorBundle to TensorList conversion failed: %s", error.what());
         }
       });
   }
@@ -70,7 +70,7 @@ private:
   rclcpp::Subscription<TensorBundle>::SharedPtr subscription_;
 };
 
-}  // namespace gpu_ros::nvidia_tensor_bundle_compat
+} // namespace gpu_ros::nvidia_tensor_bundle_compat
 
 RCLCPP_COMPONENTS_REGISTER_NODE(
   gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode)

@@ -35,10 +35,11 @@ namespace nitros = nvidia::isaac_ros::nitros;
 
 void CheckCuda(cudaError_t result, const char * operation)
 {
-  if (result == cudaSuccess) {return;}
-  throw std::runtime_error(
-          std::string(operation) + ": " + cudaGetErrorName(result) + " (" +
-          cudaGetErrorString(result) + ")");
+  if (result == cudaSuccess) {
+    return;
+  }
+  throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorName(result) + " (" +
+                           cudaGetErrorString(result) + ")");
 }
 
 gpu_ros_managed::TensorDataType ToManagedType(nitros::NitrosDataType dtype)
@@ -50,8 +51,7 @@ gpu_ros_managed::TensorDataType ToManagedType(nitros::NitrosDataType dtype)
       return gpu_ros_managed::TensorDataType::kInt64;
     default:
       throw std::invalid_argument(
-              "NITROS-to-Managed does not support dtype " +
-              std::to_string(static_cast<int>(dtype)));
+        "NITROS-to-Managed does not support dtype " + std::to_string(static_cast<int>(dtype)));
   }
 }
 
@@ -64,8 +64,7 @@ nitros::NitrosDataType ToNitrosType(gpu_ros_managed::TensorDataType dtype)
       return nitros::NitrosDataType::kInt64;
     default:
       throw std::invalid_argument(
-              "Managed-to-NITROS does not support dtype " +
-              std::to_string(static_cast<int>(dtype)));
+        "Managed-to-NITROS does not support dtype " + std::to_string(static_cast<int>(dtype)));
   }
 }
 
@@ -87,17 +86,15 @@ std::vector<int32_t> ToNitrosShape(const std::vector<int64_t> & shape)
   return result;
 }
 
-void AddManagedTensor(
-  nitros::NitrosTensorListBuilder & builder,
-  const std::string & name,
-  gpu_ros_managed::TensorDataType dtype,
-  const std::vector<int64_t> & shape,
-  std::shared_ptr<gpu_ros_managed::DeviceBuffer> owner,
-  int gpu_device_id)
+void AddManagedTensor(nitros::NitrosTensorListBuilder & builder, const std::string & name,
+  gpu_ros_managed::TensorDataType dtype, const std::vector<int64_t> & shape,
+  std::shared_ptr<gpu_ros_managed::DeviceBuffer> owner, int gpu_device_id)
 {
-  if (!owner) {throw std::invalid_argument("Managed-to-NITROS received a null DeviceBuffer");}
+  if (!owner) {
+    throw std::invalid_argument("Managed-to-NITROS received a null DeviceBuffer");
+  }
   if (owner->device_id() !=
-    gpu_ros_managed::DeviceId{gpu_ros_managed::BackendKind::kCuda, gpu_device_id})
+      gpu_ros_managed::DeviceId{gpu_ros_managed::BackendKind::kCuda, gpu_device_id})
   {
     throw std::invalid_argument("Managed-to-NITROS DeviceBuffer is on the wrong CUDA device");
   }
@@ -106,35 +103,34 @@ void AddManagedTensor(
   // Retain the lease through Build so the pointer cannot be freed early.
   auto ready = owner->get_blocking_ready_lease();
   builder.AddTensor(
-    name,
-    nitros::NitrosTensorBuilder()
-    .WithShape(nitros::NitrosTensorShape(ToNitrosShape(shape)))
-    .WithDataType(ToNitrosType(dtype))
-    .WithData(const_cast<uint8_t *>(ready.data()))
-    .WithReleaseCallback([owner = std::move(owner)]() mutable {owner.reset();})
-    .Build());
+    name, nitros::NitrosTensorBuilder()
+            .WithShape(nitros::NitrosTensorShape(ToNitrosShape(shape)))
+            .WithDataType(ToNitrosType(dtype))
+            .WithData(const_cast<uint8_t *>(ready.data()))
+            .WithReleaseCallback([owner = std::move(owner)]() mutable { owner.reset(); })
+            .Build());
 }
-}  // namespace
+} // namespace
 
 const std::string & NitrosTensorBundleFormat()
 {
-  static const std::string format =
-    nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
+  static const std::string format = nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name;
   return format;
 }
 
 NitrosToManagedTensorBundleAdapter::NitrosToManagedTensorBundleAdapter(int gpu_device_id)
-: gpu_device_id_(gpu_device_id)
+    : gpu_device_id_(gpu_device_id)
 {
   CheckCuda(cudaSetDevice(gpu_device_id_), "cudaSetDevice");
-  CheckCuda(
-    cudaStreamCreateWithFlags(&readiness_stream_, cudaStreamNonBlocking),
+  CheckCuda(cudaStreamCreateWithFlags(&readiness_stream_, cudaStreamNonBlocking),
     "cudaStreamCreateWithFlags");
 }
 
 NitrosToManagedTensorBundleAdapter::~NitrosToManagedTensorBundleAdapter()
 {
-  if (readiness_stream_ == nullptr) {return;}
+  if (readiness_stream_ == nullptr) {
+    return;
+  }
   static_cast<void>(cudaSetDevice(gpu_device_id_));
   static_cast<void>(cudaStreamDestroy(readiness_stream_));
 }
@@ -158,8 +154,7 @@ gpu_ros_managed::ManagedTensorBundle NitrosToManagedTensorBundleAdapter::Convert
     CheckCuda(cudaStreamSynchronize(readiness_stream_), "cudaStreamSynchronize input readiness");
     auto buffer = gpu_ros_managed::cuda::adopt_synchronized_external(
       const_cast<uint8_t *>(read.get_ptr()), owner->tensor_size(), gpu_device_id_, owner);
-    tensors.emplace_back(
-      owner->get_name(), ToManagedType(owner->data_type()), std::move(shape),
+    tensors.emplace_back(owner->get_name(), ToManagedType(owner->data_type()), std::move(shape),
       std::move(buffer), owner->strides());
   }
 
@@ -177,8 +172,8 @@ nitros::NitrosTensorList BuildNitrosTensorBundle(
   nitros::NitrosTensorListBuilder builder;
   builder.WithHeader(input.header());
   for (const auto & tensor : input.tensors()) {
-    const auto * buffer = std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
-      &tensor.storage());
+    const auto * buffer =
+      std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(&tensor.storage());
     if (buffer == nullptr) {
       throw std::invalid_argument("Managed-to-NITROS requires CUDA device tensor payloads");
     }
@@ -188,8 +183,7 @@ nitros::NitrosTensorList BuildNitrosTensorBundle(
   return builder.Build();
 }
 
-nitros::NitrosTensorList BuildNitrosTensorBundle(
-  TensorBundleOutput && output, int gpu_device_id)
+nitros::NitrosTensorList BuildNitrosTensorBundle(TensorBundleOutput && output, int gpu_device_id)
 {
   std::vector<gpu_ros_managed::ManagedTensor> tensors;
   tensors.reserve(output.tensors.size());
@@ -198,14 +192,13 @@ nitros::NitrosTensorList BuildNitrosTensorBundle(
     if (buffer == nullptr) {
       throw std::invalid_argument("NITROS output requires CUDA device tensor payloads");
     }
-    tensors.emplace_back(
-      std::move(tensor.name), ToManagedType(tensor.dtype), std::move(tensor.shape),
-      std::move(*buffer));
+    tensors.emplace_back(std::move(tensor.name), ToManagedType(tensor.dtype),
+      std::move(tensor.shape), std::move(*buffer));
   }
   auto list = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
     std::move(output.header), std::move(tensors));
-  return BuildNitrosTensorBundle(gpu_ros_managed::ManagedTensorBundleView(std::move(list)),
-    gpu_device_id);
+  return BuildNitrosTensorBundle(
+    gpu_ros_managed::ManagedTensorBundleView(std::move(list)), gpu_device_id);
 }
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference

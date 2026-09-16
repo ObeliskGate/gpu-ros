@@ -81,26 +81,25 @@ private:
   gpu_ros_managed::hip::HipStream stream_;
   std::unique_ptr<gpu_ros_managed::FixedDeviceMemoryPool> size_pool_;
   gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle> publisher_;
-  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscriber_;
   size_t pool_exhaustion_drops_{0};
 };
 
 class RtDetrManagedHipDecoderNode final : public rclcpp::Node
 {
 public:
-  explicit RtDetrManagedHipDecoderNode(
-    const rclcpp::NodeOptions options = rclcpp::NodeOptions());
+  explicit RtDetrManagedHipDecoderNode(const rclcpp::NodeOptions options = rclcpp::NodeOptions());
 
 private:
   void InputCallback(gpu_ros_managed::ManagedTensorBundleView message);
   gpu_ros_managed::hip::HipStream read_stream_;
   RtDetrDecoderConfig config_;
   rclcpp::Publisher<vision_msgs::msg::Detection2DArray>::SharedPtr publisher_;
-  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscriber_;
 };
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
-#endif  // GPU_ROS_RTDETR__RTDETR_MANAGED_HIP_NODES_HPP_
+#endif // GPU_ROS_RTDETR__RTDETR_MANAGED_HIP_NODES_HPP_

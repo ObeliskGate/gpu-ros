@@ -53,6 +53,6 @@ private:
   bool use_max_dim_for_orig_size_;
 };
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
-#endif  // GPU_ROS_RTDETR__RTDETR_PREPROCESSOR_NODE_HPP_
+#endif // GPU_ROS_RTDETR__RTDETR_PREPROCESSOR_NODE_HPP_

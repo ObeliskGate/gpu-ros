@@ -37,7 +37,10 @@ export OVG_ORT_STATE_ROOT="${ORT_CONTAINER_ROOT}"
 export OVG_IMAGE_NAME="${IMAGE_NAME}"
 CONTAINER_ENTRYPOINT="${GPU_ROS_REPO_ROOT}/docker/phase2a-amd-entrypoint.sh"
 
-die() { echo "ERROR: $*" >&2; exit 1; }
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
 
 require_explicit_apptainer_environment() {
   [[ "${RUNTIME}" == apptainer ]] || return 0
@@ -65,7 +68,7 @@ require_slurm_compute_node() {
 
   local require_slurm="${OVG_REQUIRE_SLURM:-0}"
   case "${require_slurm}" in
-    0|1) ;;
+    0 | 1) ;;
     *) die "OVG_REQUIRE_SLURM must be 1 or 0" ;;
   esac
 
@@ -147,15 +150,15 @@ EOF
 
 repo_check() {
   [[ -f "${ROOT_DIR}/AGENTS.md" ]] || die "gpu-ros repository is incomplete: ${ROOT_DIR}"
-  [[ -f "${ROOT_DIR}/transport/gpu_ros_managed_core/package.xml" ]] || \
+  [[ -f "${ROOT_DIR}/transport/gpu_ros_managed_core/package.xml" ]] ||
     die "transport package manifest is missing: ${ROOT_DIR}/transport/gpu_ros_managed_core/package.xml"
-  [[ -f "${ROOT_DIR}/interfaces/gpu_ros_tensor_bundle_msgs/package.xml" ]] || \
+  [[ -f "${ROOT_DIR}/interfaces/gpu_ros_tensor_bundle_msgs/package.xml" ]] ||
     die "interface package manifest is missing: ${ROOT_DIR}/interfaces/gpu_ros_tensor_bundle_msgs/package.xml"
 
   local diff_hash untracked_hash
   diff_hash="$(git -C "${ROOT_DIR}" diff HEAD --binary | sha256sum | awk '{print $1}')"
   untracked_hash="$(
-    cd "${ROOT_DIR}"
+    cd "${ROOT_DIR}" || exit
     while IFS= read -r -d '' item; do
       printf '%s\0' "${item}"
       sha256sum -- "${item}"
@@ -191,8 +194,9 @@ resolve_external_ort() {
       external_ort_install_complete "${candidate}" || continue
       candidates+=("${candidate}")
     done < <(
-      find "${install_parent}" -mindepth 1 -maxdepth 1 -type d -print0 \
-        | sort -z)
+      find "${install_parent}" -mindepth 1 -maxdepth 1 -type d -print0 |
+        sort -z
+    )
   fi
 
   if [[ ${#candidates[@]} -eq 1 ]]; then
@@ -232,10 +236,10 @@ prepare_state() {
 normalise_targets() {
   local raw="${1//;/,}"
   raw="${raw// /}"
-  tr ',' '\n' <<<"${raw}" \
-    | awk 'NF && $0 ~ /^gfx[0-9a-fA-F]+$/ {print tolower($0)}' \
-    | sort -u \
-    | paste -sd, -
+  tr ',' '\n' <<<"${raw}" |
+    awk 'NF && $0 ~ /^gfx[0-9a-fA-F]+$/ {print tolower($0)}' |
+    sort -u |
+    paste -sd, -
 }
 
 resolve_gpu_targets() {
@@ -243,10 +247,10 @@ resolve_gpu_targets() {
   if [[ -n "${targets}" ]]; then
     targets="$(normalise_targets "${targets}")"
   elif command -v rocminfo >/dev/null 2>&1; then
-    targets="$(rocminfo 2>/dev/null \
-      | awk '$1 == "Name:" && $2 ~ /^gfx[0-9]/ {print $2}' \
-      | sort -u \
-      | paste -sd, -)"
+    targets="$(rocminfo 2>/dev/null |
+      awk '$1 == "Name:" && $2 ~ /^gfx[0-9]/ {print $2}' |
+      sort -u |
+      paste -sd, -)"
   fi
   [[ -n "${targets}" ]] || die \
     "AMD_GPU_TARGETS is unset and rocminfo could not detect a gfx target; set AMD_GPU_TARGETS explicitly"
@@ -285,7 +289,7 @@ select_runtime() {
 }
 
 resolve_apptainer_sif() {
-  if (( APPTAINER_SIF_EXPLICIT == 1 )); then
+  if ((APPTAINER_SIF_EXPLICIT == 1)); then
     return
   fi
   # A prebuilt SIF may carry a content-specific name, for example
@@ -299,7 +303,8 @@ resolve_apptainer_sif() {
   if [[ -d "${image_dir}" ]]; then
     mapfile -t candidates < <(
       find "${image_dir}" -maxdepth 1 -type f \
-        -name 'phase2-amd*.sif' -print | sort)
+        -name 'phase2-amd*.sif' -print | sort
+    )
   fi
   if [[ ${#candidates[@]} -eq 1 ]]; then
     APPTAINER_SIF="${candidates[0]}"
@@ -328,8 +333,9 @@ compose_env() {
   export OVG_HOME_DIR="${STATE_ROOT}/home"
   export OVG_IMAGE_FINGERPRINT="${image_fingerprint}"
   export OVG_WORKSPACE_FINGERPRINT="${workspace_fingerprint}"
-  export OVG_UID="$(id -u)"
-  export OVG_GID="$(id -g)"
+  OVG_UID="$(id -u)"
+  OVG_GID="$(id -g)"
+  export OVG_UID OVG_GID
   mkdir -p "${OVG_BUILD_DIR}" "${OVG_INSTALL_DIR}" "${OVG_LOG_DIR}"
 }
 
@@ -395,7 +401,7 @@ ensure_sif() {
   mkdir -p "$(dirname "${APPTAINER_SIF}")"
   echo "Pulling ${OVG_APPTAINER_IMAGE_URI} to ${APPTAINER_SIF}"
   apptainer pull --name "${partial}" "${OVG_APPTAINER_IMAGE_URI}"
-  [[ -f "${partial}" ]] || [[ -f "${partial}.sif" ]] || \
+  [[ -f "${partial}" ]] || [[ -f "${partial}.sif" ]] ||
     die "apptainer pull did not produce a SIF at ${partial}"
   [[ -f "${partial}" ]] || partial="${partial}.sif"
   mv -- "${partial}" "${APPTAINER_SIF}"
@@ -433,8 +439,8 @@ apptainer_args() {
 
 apptainer_exec() {
   apptainer_args
-  if [[ "${OVG_APPTAINER_INSTANCE:-0}" == 1 ]] && \
-      apptainer instance list 2>/dev/null | awk '{print $1}' | grep -Fxq "${APPTAINER_INSTANCE_NAME}"; then
+  if [[ "${OVG_APPTAINER_INSTANCE:-0}" == 1 ]] &&
+    apptainer instance list 2>/dev/null | awk '{print $1}' | grep -Fxq "${APPTAINER_INSTANCE_NAME}"; then
     apptainer exec "instance://${APPTAINER_INSTANCE_NAME}" \
       /bin/bash "${CONTAINER_ENTRYPOINT}" "$@"
   else
@@ -479,8 +485,11 @@ verify_runtime() {
 main() {
   local command="${1:-bootstrap}"
   case "${command}" in
-    bootstrap|build|up|colcon|verify|preflight|shell|stop|down) ;;
-    *) usage; exit 2 ;;
+    bootstrap | build | up | colcon | verify | preflight | shell | stop | down) ;;
+    *)
+      usage
+      exit 2
+      ;;
   esac
 
   prepare_state
@@ -488,19 +497,15 @@ main() {
   repo_check
 
   case "${command}" in
-    bootstrap|up|colcon|verify|preflight|shell)
+    bootstrap | up | colcon | verify | preflight | shell)
       require_explicit_apptainer_environment
       require_slurm_compute_node
       ;;
   esac
 
   case "${command}" in
-    bootstrap|up|colcon|verify|preflight)
+    bootstrap | up | colcon | verify | preflight)
       require_external_ort
-      ;;
-    preflight)
-      echo "External ORT: ${OVG_ORT_ROOT}"
-      echo "PASS: AMD launcher environment and compute allocation are valid"
       ;;
     shell)
       if resolve_external_ort; then
@@ -554,8 +559,7 @@ main() {
       [[ "${RUNTIME}" == docker ]] && start_runtime
       verify_runtime
       ;;
-    preflight)
-      ;;
+    preflight) ;;
     shell)
       set_fingerprint
       [[ "${RUNTIME}" == docker ]] && start_runtime

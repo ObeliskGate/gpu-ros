@@ -28,20 +28,12 @@
 namespace gpu_ros::rtdetr
 {
 
-vision_msgs::msg::Detection2DArray DecodeRtDetrValues(
-  const std_msgs::msg::Header & header,
-  const int64_t * labels,
-  size_t label_count,
-  const float * boxes,
-  size_t box_value_count,
-  const float * scores,
-  size_t score_count,
-  const RtDetrDecoderConfig & config)
+vision_msgs::msg::Detection2DArray DecodeRtDetrValues(const std_msgs::msg::Header & header,
+  const int64_t * labels, size_t label_count, const float * boxes, size_t box_value_count,
+  const float * scores, size_t score_count, const RtDetrDecoderConfig & config)
 {
-  if (labels == nullptr || boxes == nullptr || scores == nullptr ||
-    label_count != score_count ||
-    score_count > std::numeric_limits<size_t>::max() / 4U ||
-    box_value_count != score_count * 4U)
+  if (labels == nullptr || boxes == nullptr || scores == nullptr || label_count != score_count ||
+      score_count > std::numeric_limits<size_t>::max() / 4U || box_value_count != score_count * 4U)
   {
     throw std::invalid_argument("RT-DETR decoder tensor spans have inconsistent sizes");
   }
@@ -58,8 +50,8 @@ vision_msgs::msg::Detection2DArray DecodeRtDetrValues(
     const float y1 = boxes[4U * index + 1U];
     const float x2 = boxes[4U * index + 2U];
     const float y2 = boxes[4U * index + 3U];
-    if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) ||
-      !std::isfinite(y2) || x2 < x1 || y2 < y1)
+    if (!std::isfinite(x1) || !std::isfinite(y1) || !std::isfinite(x2) || !std::isfinite(y2) ||
+        x2 < x1 || y2 < y1)
     {
       continue;
     }
@@ -78,4 +70,4 @@ vision_msgs::msg::Detection2DArray DecodeRtDetrValues(
   return detections;
 }
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr

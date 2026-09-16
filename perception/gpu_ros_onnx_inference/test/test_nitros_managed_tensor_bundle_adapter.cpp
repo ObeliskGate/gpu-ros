@@ -51,15 +51,14 @@ TEST(NitrosManagedTensorBundleAdapter, RoundTripPreservesDevicePayloadPointer)
     nitros::NitrosTensorListBuilder input_builder;
     input_builder.WithHeader(std_msgs::msg::Header{});
     input_builder.AddTensor(
-      "images",
-      nitros::NitrosTensorBuilder()
-      .WithShape(nitros::NitrosTensorShape({1, 1, 1, 4}))
-      .WithDataType(nitros::NitrosDataType::kFloat32)
-      .WithData(device_memory)
-      // The test owns the allocation. Production builders receive the managed
-      // buffer owner instead.
-      .WithReleaseCallback([] {})
-      .Build());
+      "images", nitros::NitrosTensorBuilder()
+                  .WithShape(nitros::NitrosTensorShape({1, 1, 1, 4}))
+                  .WithDataType(nitros::NitrosDataType::kFloat32)
+                  .WithData(device_memory)
+                  // The test owns the allocation. Production builders receive the managed
+                  // buffer owner instead.
+                  .WithReleaseCallback([] {})
+                  .Build());
     auto nitros_input = input_builder.Build();
     const nitros::NitrosTensorListView input_view(nitros_input);
 
@@ -68,25 +67,24 @@ TEST(NitrosManagedTensorBundleAdapter, RoundTripPreservesDevicePayloadPointer)
     ASSERT_NE(input_pointer, nullptr);
 
     inference::NitrosToManagedTensorBundleAdapter adapter(0);
-    auto managed = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
-      adapter.Convert(input_view));
+    auto managed =
+      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(adapter.Convert(input_view));
     const auto & storage = managed->tensors().at(0).storage();
     const auto * buffer = std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(&storage);
     ASSERT_NE(buffer, nullptr);
     auto managed_ready = (*buffer)->get_blocking_ready_lease();
     EXPECT_EQ(managed_ready.data(), input_pointer);
 
-    auto nitros_output = inference::BuildNitrosTensorBundle(
-      gpu_ros_managed::ManagedTensorBundleView(managed), 0);
+    auto nitros_output =
+      inference::BuildNitrosTensorBundle(gpu_ros_managed::ManagedTensorBundleView(managed), 0);
     auto output_read = nitros_output.get_read_handle(stream);
     EXPECT_EQ(output_read.get_ptr(), input_pointer);
     EXPECT_EQ(cudaStreamSynchronize(stream), cudaSuccess);
   }
 
-  const auto cleanup_deadline =
-    std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  const auto cleanup_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
   while (nitros_stream_pool.available() != available_streams_before &&
-    std::chrono::steady_clock::now() < cleanup_deadline)
+         std::chrono::steady_clock::now() < cleanup_deadline)
   {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -96,4 +94,4 @@ TEST(NitrosManagedTensorBundleAdapter, RoundTripPreservesDevicePayloadPointer)
   EXPECT_EQ(cudaStreamDestroy(stream), cudaSuccess);
 }
 
-}  // namespace
+} // namespace

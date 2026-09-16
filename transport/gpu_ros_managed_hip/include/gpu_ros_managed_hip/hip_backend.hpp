@@ -13,9 +13,10 @@ namespace gpu_ros_managed::hip
 class HipStream
 {
 public:
-  const DeviceStream & stream() const noexcept {return stream_;}
+  const DeviceStream & stream() const noexcept { return stream_; }
   hipStream_t get() const;
-  operator const DeviceStream &() const noexcept {return stream_;}
+  operator const DeviceStream &() const noexcept { return stream_; }
+
 private:
   explicit HipStream(DeviceStream stream) : stream_(std::move(stream)) {}
   DeviceStream stream_;
@@ -26,8 +27,9 @@ HipStream make_stream(int device_id);
 HipStream wrap_borrowed_stream(hipStream_t, int, std::shared_ptr<void> owner = {});
 std::shared_ptr<DeviceBuffer> allocate(size_t, int);
 std::shared_ptr<DeviceBuffer> adopt_external(void *, size_t, int, std::shared_ptr<void>);
-std::shared_ptr<DeviceBuffer> adopt_synchronized_external(void *, size_t, int, std::shared_ptr<void>);
+std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
+  void *, size_t, int, std::shared_ptr<void>);
 FixedDeviceMemoryPool make_fixed_device_pool(size_t, size_t, int);
 bool wait_for_pending_releases(std::chrono::milliseconds);
-}  // namespace gpu_ros_managed::hip
+} // namespace gpu_ros_managed::hip
 #endif

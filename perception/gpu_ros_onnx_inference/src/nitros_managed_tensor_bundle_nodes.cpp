@@ -40,29 +40,35 @@ class TimingReporter
 {
 public:
   TimingReporter(rclcpp::Node * node, std::string boundary)
-  : node_(node), boundary_(std::move(boundary)),
-    enabled_(node_->declare_parameter<bool>(boundary_ + ".enable_timing", false)),
-    log_every_(node_->declare_parameter<int>(boundary_ + ".timing_log_every", 500))
-  {}
+      : node_(node), boundary_(std::move(boundary)),
+        enabled_(node_->declare_parameter<bool>(boundary_ + ".enable_timing", false)),
+        log_every_(node_->declare_parameter<int>(boundary_ + ".timing_log_every", 500))
+  {
+  }
 
   void Record(std::chrono::steady_clock::time_point start)
   {
-    if (!enabled_) {return;}
+    if (!enabled_) {
+      return;
+    }
     const auto end = std::chrono::steady_clock::now();
-    samples_ms_.push_back(static_cast<double>(
-        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()) / 1000.0);
-    if (log_every_ <= 0 || static_cast<int>(samples_ms_.size()) < log_every_) {return;}
+    samples_ms_.push_back(
+      static_cast<double>(
+        std::chrono::duration_cast<std::chrono::microseconds>(end - start).count()) /
+      1000.0);
+    if (log_every_ <= 0 || static_cast<int>(samples_ms_.size()) < log_every_) {
+      return;
+    }
 
     std::vector<double> sorted = samples_ms_;
     std::sort(sorted.begin(), sorted.end());
-    const double mean = std::accumulate(sorted.begin(), sorted.end(), 0.0) /
-      static_cast<double>(sorted.size());
+    const double mean =
+      std::accumulate(sorted.begin(), sorted.end(), 0.0) / static_cast<double>(sorted.size());
     const size_t p95_index = std::min(
       sorted.size() - 1, static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1)));
-    RCLCPP_INFO(
-      node_->get_logger(),
-          "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms; payload copies=0",
-          boundary_.c_str(), sorted.size(), mean, sorted[p95_index]);
+    RCLCPP_INFO(node_->get_logger(),
+      "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms; payload copies=0", boundary_.c_str(),
+      sorted.size(), mean, sorted[p95_index]);
     samples_ms_.clear();
   }
 
@@ -73,24 +79,23 @@ private:
   int log_every_;
   std::vector<double> samples_ms_;
 };
-}  // namespace
+} // namespace
 
 class NitrosToManagedTensorBundleNode : public rclcpp::Node
 {
 public:
   explicit NitrosToManagedTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("nitros_to_managed_tensor_bundle_node", options),
-    gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
-    adapter_(gpu_device_id_), timing_(this, "nitros_to_managed")
+      : rclcpp::Node("nitros_to_managed_tensor_bundle_node", options),
+        gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)), adapter_(gpu_device_id_),
+        timing_(this, "nitros_to_managed")
   {
-    publisher_ = std::make_unique<
-      gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
-      this, "tensor_output", rclcpp::QoS(10));
-    subscription_ = std::make_shared<
-      nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
+    publisher_ =
+      std::make_unique<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
+        this, "tensor_output", rclcpp::QoS(10));
+    subscription_ = std::make_shared<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
       this, "tensor_input", NitrosTensorBundleFormat(),
-      [this](const nitros::NitrosTensorListView & view) {OnTensorBundle(view);},
+      [this](const nitros::NitrosTensorListView & view) { OnTensorBundle(view); },
       nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
   }
 
@@ -102,12 +107,10 @@ private:
       publisher_->publish(adapter_.Convert(view));
       timing_.Record(start);
     } catch (const std::exception & error) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "NITROS-to-Managed conversion dropped frame: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "NITROS-to-Managed conversion dropped frame: unknown exception");
     }
   }
@@ -116,7 +119,7 @@ private:
   NitrosToManagedTensorBundleAdapter adapter_;
   TimingReporter timing_;
   std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
-  publisher_;
+    publisher_;
   std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> subscription_;
 };
 
@@ -125,17 +128,17 @@ class ManagedToNitrosTensorBundleNode : public rclcpp::Node
 public:
   explicit ManagedToNitrosTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("managed_to_nitros_tensor_bundle_node", options),
-    gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
-    timing_(this, "managed_to_nitros")
+      : rclcpp::Node("managed_to_nitros_tensor_bundle_node", options),
+        gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
+        timing_(this, "managed_to_nitros")
   {
-    publisher_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-      this, "tensor_output", NitrosTensorBundleFormat(), nitros::NitrosDiagnosticsConfig{},
+    publisher_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(this,
+      "tensor_output", NitrosTensorBundleFormat(), nitros::NitrosDiagnosticsConfig{},
       rclcpp::QoS(10));
     subscription_ = std::make_unique<
       gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>(
       this, "tensor_input",
-      [this](gpu_ros_managed::ManagedTensorBundleView input) {OnTensorBundle(std::move(input));},
+      [this](gpu_ros_managed::ManagedTensorBundleView input) { OnTensorBundle(std::move(input)); },
       rclcpp::QoS(10));
   }
 
@@ -147,12 +150,10 @@ private:
       publisher_->publish(BuildNitrosTensorBundle(std::move(input), gpu_device_id_));
       timing_.Record(start);
     } catch (const std::exception & error) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "Managed-to-NITROS conversion dropped frame: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "Managed-to-NITROS conversion dropped frame: unknown exception");
     }
   }
@@ -160,13 +161,11 @@ private:
   int gpu_device_id_;
   TimingReporter timing_;
   std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> publisher_;
-  std::unique_ptr<
-    gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>> subscription_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscription_;
 };
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-RCLCPP_COMPONENTS_REGISTER_NODE(
-  gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode)
-RCLCPP_COMPONENTS_REGISTER_NODE(
-  gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode)

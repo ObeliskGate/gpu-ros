@@ -33,29 +33,27 @@ constexpr int kChannels = 3;
 }
 
 RtDetrImageEncoderNode::RtDetrImageEncoderNode(const rclcpp::NodeOptions options)
-: rclcpp::Node("rtdetr_image_encoder_node", options),
-  tensor_name_{declare_parameter<std::string>("tensor_name", "input_tensor")},
-  output_height_{declare_parameter<int64_t>("output_height", 640)},
-  output_width_{declare_parameter<int64_t>("output_width", 640)}
+    : rclcpp::Node("rtdetr_image_encoder_node", options),
+      tensor_name_{declare_parameter<std::string>("tensor_name", "input_tensor")},
+      output_height_{declare_parameter<int64_t>("output_height", 640)},
+      output_width_{declare_parameter<int64_t>("output_width", 640)}
 {
   if (tensor_name_.empty() || output_height_ <= 0 || output_width_ <= 0 ||
-    output_height_ > std::numeric_limits<int>::max() ||
-    output_width_ > std::numeric_limits<int>::max())
+      output_height_ > std::numeric_limits<int>::max() ||
+      output_width_ > std::numeric_limits<int>::max())
   {
     throw std::invalid_argument(
-            "tensor_name must not be empty and output dimensions must be positive and fit in int");
+      "tensor_name must not be empty and output dimensions must be positive and fit in int");
   }
   pub_ = create_publisher<TensorBundle>("encoded_tensor", 10);
   sub_ = create_subscription<Image>(
-    "image", 10,
-    std::bind(&RtDetrImageEncoderNode::InputCallback, this, std::placeholders::_1));
+    "image", 10, std::bind(&RtDetrImageEncoderNode::InputCallback, this, std::placeholders::_1));
 }
 
 void RtDetrImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
 {
   try {
-    const auto plan = detection_common::MakeImagePreprocessPlan(
-      *msg, output_width_, output_height_,
+    const auto plan = detection_common::MakeImagePreprocessPlan(*msg, output_width_, output_height_,
       // RT-DETRv2's validation pipeline consumes float32 RGB values in [0, 1].
       detection_common::PreprocessNormalization::kUnitRange);
     const auto values = detection_common::ExecuteCpuPreprocess(*msg, plan);
@@ -73,11 +71,10 @@ void RtDetrImageEncoderNode::InputCallback(const Image::ConstSharedPtr msg)
     pub_->publish(std::move(output));
   } catch (const std::exception & error) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "RT-DETR image encoder dropped frame: %s", error.what());
+      get_logger(), *get_clock(), 5000, "RT-DETR image encoder dropped frame: %s", error.what());
   }
 }
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::rtdetr::RtDetrImageEncoderNode)

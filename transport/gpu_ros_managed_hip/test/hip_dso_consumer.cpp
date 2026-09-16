@@ -18,8 +18,7 @@
 
 #include "gpu_ros_managed_hip/hip_backend.hpp"
 
-void ReadHipBufferInConsumerDso(
-  const std::shared_ptr<gpu_ros_managed::DeviceBuffer> & buffer)
+void ReadHipBufferInConsumerDso(const std::shared_ptr<gpu_ros_managed::DeviceBuffer> & buffer)
 {
   auto stream = gpu_ros_managed::hip::make_stream(0);
   auto read = buffer->get_read_handle(stream.stream());

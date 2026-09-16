@@ -13,9 +13,7 @@ import torch
 
 def reject_network_weight_fetch(*args, **kwargs):  # noqa: ANN002, ANN003
     del args, kwargs
-    raise RuntimeError(
-        "the locked RT-DETRv2 export recipe forbids network weight downloads"
-    )
+    raise RuntimeError("the locked RT-DETRv2 export recipe forbids network weight downloads")
 
 
 def main() -> None:

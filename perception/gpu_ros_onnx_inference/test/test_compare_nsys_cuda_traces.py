@@ -52,8 +52,7 @@ def test_equal_kernel_and_memcpy_traces_pass():
         memcpy('[CUDA memcpy DtoH]', 2822400, 'Device', 'Pageable'),
     ]
 
-    result = TRACE_COMPARE.compare(
-        events, events, {2822400, 4915200}, 100, 100)
+    result = TRACE_COMPARE.compare(events, events, {2822400, 4915200}, 100, 100)
 
     assert result['pass'] is True
     assert result['bridge_zero_copy_pass'] is True
@@ -69,8 +68,7 @@ def test_managed_only_payload_copy_fails():
         memcpy('[CUDA memcpy DtoD]', 4915200, 'Device', 'Device'),
     ]
 
-    result = TRACE_COMPARE.compare(
-        config_c, managed, {2822400, 4915200}, 100, 100)
+    result = TRACE_COMPARE.compare(config_c, managed, {2822400, 4915200}, 100, 100)
 
     assert result['pass'] is False
     assert result['bridge_zero_copy_pass'] is False
@@ -80,17 +78,10 @@ def test_managed_only_payload_copy_fails():
 
 def test_one_extra_frame_does_not_look_like_a_new_copy_path():
     """Per-frame normalization tolerates one capture-boundary frame."""
-    config_c = [
-        memcpy('[CUDA memcpy DtoH]', 2822400, 'Device', 'Pageable')
-        for _ in range(393)
-    ]
-    managed = [
-        memcpy('[CUDA memcpy DtoH]', 2822400, 'Device', 'Pageable')
-        for _ in range(394)
-    ]
+    config_c = [memcpy('[CUDA memcpy DtoH]', 2822400, 'Device', 'Pageable') for _ in range(393)]
+    managed = [memcpy('[CUDA memcpy DtoH]', 2822400, 'Device', 'Pageable') for _ in range(394)]
 
-    result = TRACE_COMPARE.compare(
-        config_c, managed, {2822400}, 393, 394)
+    result = TRACE_COMPARE.compare(config_c, managed, {2822400}, 393, 394)
 
     assert result['pass'] is True
     assert result['criteria']['managed_has_no_extra_payload_copy_rate'] is True
@@ -98,17 +89,10 @@ def test_one_extra_frame_does_not_look_like_a_new_copy_path():
 
 def test_same_signature_with_one_extra_payload_copy_per_frame_fails():
     """An existing copy signature cannot hide a Managed bridge copy."""
-    config_c = [
-        memcpy('[CUDA memcpy DtoD]', 4915200, 'Device', 'Device')
-        for _ in range(10)
-    ]
-    managed = [
-        memcpy('[CUDA memcpy DtoD]', 4915200, 'Device', 'Device')
-        for _ in range(20)
-    ]
+    config_c = [memcpy('[CUDA memcpy DtoD]', 4915200, 'Device', 'Device') for _ in range(10)]
+    managed = [memcpy('[CUDA memcpy DtoD]', 4915200, 'Device', 'Device') for _ in range(20)]
 
-    result = TRACE_COMPARE.compare(
-        config_c, managed, {4915200}, 10, 10)
+    result = TRACE_COMPARE.compare(config_c, managed, {4915200}, 10, 10)
 
     assert result['pass'] is False
     assert result['criteria']['managed_has_no_extra_memcpy_signature'] is True

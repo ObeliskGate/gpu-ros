@@ -20,9 +20,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if ort.__version__ != "1.23.1":
-        raise RuntimeError(
-            f"provider parity requires ONNX Runtime 1.23.1, got {ort.__version__}"
-        )
+        raise RuntimeError(f"provider parity requires ONNX Runtime 1.23.1, got {ort.__version__}")
 
     if (args.images_npy is None) != (args.orig_target_sizes_npy is None):
         parser.error("provide both fixed-input .npy files or neither")
@@ -30,9 +28,7 @@ def main() -> None:
         images = np.load(args.images_npy).astype(np.float32, copy=False)
         target_sizes = np.load(args.orig_target_sizes_npy).astype(np.int64, copy=False)
     else:
-        images = np.random.default_rng(20260824).random(
-            (1, 3, 640, 640), dtype=np.float32
-        )
+        images = np.random.default_rng(20260824).random((1, 3, 640, 640), dtype=np.float32)
         target_sizes = np.asarray([[480, 640]], dtype=np.int64)
 
     available = set(ort.get_available_providers())
@@ -55,11 +51,16 @@ def main() -> None:
         raise AssertionError(f"score max absolute error {score_error} exceeds 1e-3")
     if box_error > 0.1:
         raise AssertionError(f"box max absolute error {box_error} exceeds 0.1 px")
-    print(json.dumps({
-        "labels_equal": True,
-        "scores_max_abs_error": score_error,
-        "boxes_max_abs_error_px": box_error,
-    }, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "labels_equal": True,
+                "scores_max_abs_error": score_error,
+                "boxes_max_abs_error_px": box_error,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

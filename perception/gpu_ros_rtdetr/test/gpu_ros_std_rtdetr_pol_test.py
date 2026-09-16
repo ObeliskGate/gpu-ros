@@ -32,8 +32,7 @@ from sensor_msgs.msg import Image
 from vision_msgs.msg import Detection2DArray
 
 
-TEST_ARTIFACT_ROOT = pathlib.Path(
-    f'/tmp/gpu_ros_rtdetr_migraphx_pol_{os.getpid()}')
+TEST_ARTIFACT_ROOT = pathlib.Path(f'/tmp/gpu_ros_rtdetr_migraphx_pol_{os.getpid()}')
 MODEL_PATH = TEST_ARTIFACT_ROOT / 'rtdetr.onnx'
 MIGRAPHX_CACHE_PATH = TEST_ARTIFACT_ROOT / 'migraphx_cache'
 NAMESPACE = 'rtdetr_migraphx_pol'
@@ -97,32 +96,38 @@ def generate_test_description():
         plugin='gpu_ros::rtdetr::RtDetrImageEncoderNode',
         name='image_encoder',
         namespace=NAMESPACE,
-        parameters=[{
-            'tensor_name': 'input_tensor',
-            'output_width': 640,
-            'output_height': 640,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'input_tensor',
+                'output_width': 640,
+                'output_height': 640,
+            }
+        ],
     )
     preprocessor = ComposableNode(
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
         name='preprocessor',
         namespace=NAMESPACE,
-        parameters=[{
-            'image_width': 640,
-            'image_height': 640,
-        }],
+        parameters=[
+            {
+                'image_width': 640,
+                'image_height': 640,
+            }
+        ],
     )
     inference = ComposableNode(
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         name='inference',
         namespace=NAMESPACE,
-        parameters=[{
-            'model_file_path': str(MODEL_PATH),
-            'execution_provider': 'migraphx',
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': str(MODEL_PATH),
+                'execution_provider': 'migraphx',
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'tensor_pub'),
             ('tensor_output', 'tensor_sub'),
@@ -156,10 +161,12 @@ def generate_test_description():
         },
     )
 
-    return launch.LaunchDescription([
-        container,
-        launch_testing.actions.ReadyToTest(),
-    ])
+    return launch.LaunchDescription(
+        [
+            container,
+            launch_testing.actions.ReadyToTest(),
+        ]
+    )
 
 
 class TestRtDetrMigraphxProofOfLife(unittest.TestCase):

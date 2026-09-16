@@ -52,23 +52,22 @@ def _launch_setup(context):
     namespace = LaunchConfiguration('namespace').perform(context)
     execution_provider = LaunchConfiguration('execution_provider').perform(context)
     ort_profile_prefix = LaunchConfiguration('ort_profile_prefix').perform(context)
-    ort_profile_frames = int(
-        LaunchConfiguration('ort_profile_frames').perform(context))
+    ort_profile_frames = int(LaunchConfiguration('ort_profile_frames').perform(context))
     binding_report_path = LaunchConfiguration('binding_report_path').perform(context)
-    confidence_threshold = float(
-        LaunchConfiguration('confidence_threshold').perform(context))
-    nms_threshold = float(
-        LaunchConfiguration('nms_threshold').perform(context))
+    confidence_threshold = float(LaunchConfiguration('confidence_threshold').perform(context))
+    nms_threshold = float(LaunchConfiguration('nms_threshold').perform(context))
 
     image_encoder_node = ComposableNode(
         name='yolov8_image_encoder',
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8ImageEncoderNode',
-        parameters=[{
-            'tensor_name': 'images',
-            'output_width': MODEL_INPUT_SIZE,
-            'output_height': MODEL_INPUT_SIZE,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'images',
+                'output_width': MODEL_INPUT_SIZE,
+                'output_height': MODEL_INPUT_SIZE,
+            }
+        ],
         remappings=[('image', image_topic)],
     )
 
@@ -76,14 +75,16 @@ def _launch_setup(context):
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': resolved_model_path,
-            'execution_provider': execution_provider,
-            'ort_profile_prefix': ort_profile_prefix,
-            'ort_profile_frames': ort_profile_frames,
-            'binding_report_path': binding_report_path,
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': resolved_model_path,
+                'execution_provider': execution_provider,
+                'ort_profile_prefix': ort_profile_prefix,
+                'ort_profile_frames': ort_profile_frames,
+                'binding_report_path': binding_report_path,
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'encoded_tensor'),
             ('tensor_output', 'tensor_sub'),
@@ -94,12 +95,14 @@ def _launch_setup(context):
         name='yolov8_decoder',
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': 'output0',
-            'confidence_threshold': confidence_threshold,
-            'nms_threshold': nms_threshold,
-            'num_classes': 80,
-        }],
+        parameters=[
+            {
+                'tensor_name': 'output0',
+                'confidence_threshold': confidence_threshold,
+                'nms_threshold': nms_threshold,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(

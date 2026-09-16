@@ -49,6 +49,6 @@ private:
   int64_t output_width_;
 };
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
-#endif  // GPU_ROS_RTDETR__RTDETR_IMAGE_ENCODER_NODE_HPP_
+#endif // GPU_ROS_RTDETR__RTDETR_IMAGE_ENCODER_NODE_HPP_

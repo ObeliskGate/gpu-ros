@@ -65,7 +65,7 @@ validate_external_ort() {
   }
   local expected_fingerprint="${root##*/}"
   local recorded_fingerprint
-  recorded_fingerprint="$(tr -d '\r\n' < "${root}/.ovg-ort-fingerprint")"
+  recorded_fingerprint="$(tr -d '\r\n' <"${root}/.ovg-ort-fingerprint")"
   [[ "${recorded_fingerprint}" == "${expected_fingerprint}" ]] || {
     echo "ERROR: external ORT fingerprint marker does not match install path: ${root}" >&2
     return 1

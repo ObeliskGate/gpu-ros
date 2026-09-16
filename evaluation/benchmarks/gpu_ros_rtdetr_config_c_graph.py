@@ -45,7 +45,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         package='isaac_ros_rtdetr',
         plugin='nvidia::isaac_ros::rtdetr::RtDetrPreprocessorNode',
         parameters=[{'image_size': common.NETWORK_RESOLUTION['width']}],
-        remappings=[('encoded_tensor', 'reshaped_tensor')]
+        remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
     onnx_node = ComposableNode(
@@ -53,14 +53,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosRtDetrConfigC.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'nitros',
-        }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosRtDetrConfigC.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'nitros',
+            }
+        ],
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')],
     )
 
     decoder_node = ComposableNode(
@@ -81,7 +83,9 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            preprocessor_node, onnx_node, decoder_node,
+            preprocessor_node,
+            onnx_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -107,7 +111,7 @@ class TestGpuRosRtDetrConfigC(ROS2BenchmarkTest):
             'data_resolution': common.IMAGE_RESOLUTION,
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
-        }
+        },
     )
 
     def test_benchmark(self):

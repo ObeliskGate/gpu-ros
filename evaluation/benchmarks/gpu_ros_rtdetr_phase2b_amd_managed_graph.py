@@ -38,15 +38,13 @@ from vision_msgs.msg import Detection2DArray  # noqa: E402
 
 
 RESULTS_DIR = os.environ.get("OVG_RESULTS_ROOT", "/workspaces/ovg-results")
-RESULTS_FILE = os.environ.get("R2B_RESULT_FILE") or (
-    "gpu_ros_rtdetr_phase2b_amd_managed.json")
+RESULTS_FILE = os.environ.get("R2B_RESULT_FILE") or ("gpu_ros_rtdetr_phase2b_amd_managed.json")
 MIGRAPHX_CACHE_PATH = os.environ.get(
     "ORT_MIGRAPHX_MODEL_CACHE_PATH",
     os.path.join(os.environ.get("OVG_CACHE_ROOT", "/workspaces/ovg-cache"), "migraphx"),
 )
 os.environ.setdefault("ORT_MIGRAPHX_MODEL_CACHE_PATH", MIGRAPHX_CACHE_PATH)
-MIGRAPHX_WARMUP_TIMEOUT_SEC = float(
-    os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
+MIGRAPHX_WARMUP_TIMEOUT_SEC = float(os.environ.get("MIGRAPHX_WARMUP_TIMEOUT_SEC", "900"))
 
 
 def make_std_playback_node(namespace):
@@ -56,9 +54,7 @@ def make_std_playback_node(namespace):
         namespace=namespace,
         package="ros2_benchmark",
         plugin="ros2_benchmark::PlaybackNode",
-        parameters=[{
-            "data_formats": ["sensor_msgs/msg/Image", "sensor_msgs/msg/CameraInfo"]
-        }],
+        parameters=[{"data_formats": ["sensor_msgs/msg/Image", "sensor_msgs/msg/CameraInfo"]}],
         remappings=[
             ("buffer/input0", "data_loader/image_raw"),
             ("input0", "image"),
@@ -76,36 +72,36 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="RtdetrImageEncoder",
         namespace=namespace,
         package="gpu_ros_rtdetr",
-        plugin=(
-            "gpu_ros::rtdetr::"
-            "RtDetrManagedHipImageEncoderNode"),
-        parameters=[{
-            "tensor_name": "input_tensor",
-            "output_width": common.NETWORK_RESOLUTION["width"],
-            "output_height": common.NETWORK_RESOLUTION["height"],
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::rtdetr::RtDetrManagedHipImageEncoderNode"),
+        parameters=[
+            {
+                "tensor_name": "input_tensor",
+                "output_width": common.NETWORK_RESOLUTION["width"],
+                "output_height": common.NETWORK_RESOLUTION["height"],
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[("managed_tensor_output", "managed_tensor_image")],
     )
     preprocessor = ComposableNode(
         name="RtdetrPreprocessor",
         namespace=namespace,
         package="gpu_ros_rtdetr",
-        plugin=(
-            "gpu_ros::rtdetr::"
-            "RtDetrManagedHipPreprocessorNode"),
-        parameters=[{
-            "image_width": common.NETWORK_RESOLUTION["width"],
-            "image_height": common.NETWORK_RESOLUTION["height"],
-            "model_input_width": common.NETWORK_RESOLUTION["width"],
-            "model_input_height": common.NETWORK_RESOLUTION["height"],
-            "use_max_dim_for_orig_size": True,
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::rtdetr::RtDetrManagedHipPreprocessorNode"),
+        parameters=[
+            {
+                "image_width": common.NETWORK_RESOLUTION["width"],
+                "image_height": common.NETWORK_RESOLUTION["height"],
+                "model_input_width": common.NETWORK_RESOLUTION["width"],
+                "model_input_height": common.NETWORK_RESOLUTION["height"],
+                "use_max_dim_for_orig_size": True,
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[("managed_tensor_input", "managed_tensor_image")],
     )
     onnx = ComposableNode(
@@ -113,28 +109,30 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_onnx_inference",
         plugin="gpu_ros::onnx_inference::OnnxInferenceNode",
-        parameters=[{
-            "model_file_path": os.path.join(
-                TestGpuRosRtDetrPhase2bAmdManaged.get_assets_root_path(),
-                "models",
-                common.AMD_MODEL_FILE_NAME,
-            ),
-            "execution_provider": "migraphx",
-            "gpu_device_id": 0,
-            "transport": "managed",
-            "managed_io_contract": "hip_managed_strict",
-            "managed_input_contracts": [
-                "images=float32[1,3,640,640]",
-                "orig_target_sizes=int64[1,2]",
-            ],
-            "managed_output_contracts": [
-                "labels=int64[1,300]",
-                "boxes=float32[1,300,4]",
-                "scores=float32[1,300]",
-            ],
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        parameters=[
+            {
+                "model_file_path": os.path.join(
+                    TestGpuRosRtDetrPhase2bAmdManaged.get_assets_root_path(),
+                    "models",
+                    common.AMD_MODEL_FILE_NAME,
+                ),
+                "execution_provider": "migraphx",
+                "gpu_device_id": 0,
+                "transport": "managed",
+                "managed_io_contract": "hip_managed_strict",
+                "managed_input_contracts": [
+                    "images=float32[1,3,640,640]",
+                    "orig_target_sizes=int64[1,2]",
+                ],
+                "managed_output_contracts": [
+                    "labels=int64[1,300]",
+                    "boxes=float32[1,300,4]",
+                    "scores=float32[1,300]",
+                ],
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("tensor_input", "managed_tensor_output"),
             ("tensor_output", "managed_tensor_output_ort"),
@@ -144,9 +142,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="RtdetrDecoder",
         namespace=namespace,
         package="gpu_ros_rtdetr",
-        plugin=(
-            "gpu_ros::rtdetr::"
-            "RtDetrManagedHipDecoderNode"),
+        plugin=("gpu_ros::rtdetr::RtDetrManagedHipDecoderNode"),
         parameters=[{"gpu_device_id": 0, "confidence_threshold": 0.6}],
         remappings=[("managed_tensor_input", "managed_tensor_output_ort")],
     )
@@ -174,18 +170,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 def generate_test_description():
     """Generate the ROS 2 benchmark launch-test description."""
-    return TestGpuRosRtDetrPhase2bAmdManaged.generate_test_description_with_nsys(
-        launch_setup)
+    return TestGpuRosRtDetrPhase2bAmdManaged.generate_test_description_with_nsys(launch_setup)
 
 
 class TestGpuRosRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
     """Benchmark RT-DETR with AMD Managed HIP transport."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name=(
-            "GPU ROS RT-DETR Phase 2B AMD "
-            "(ORT MIGraphX + Managed HIP)"
-        ),
+        benchmark_name=("GPU ROS RT-DETR Phase 2B AMD (ORT MIGraphX + Managed HIP)"),
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
@@ -218,7 +210,8 @@ class TestGpuRosRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
             detection_received = True
 
         subscription = self.node.create_subscription(
-            Detection2DArray, "detections_output", on_detection, 10)
+            Detection2DArray, "detections_output", on_detection, 10
+        )
         try:
             client = self.create_service_client_blocking(PlayMessages, "play_messages")
             request = PlayMessages.Request()
@@ -229,8 +222,8 @@ class TestGpuRosRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
             request.revise_timestamps_as_message_ids = False
 
             self.get_logger().info(
-                "Starting one-frame MIGraphX Managed HIP warm-up; "
-                "waiting for detections_output")
+                "Starting one-frame MIGraphX Managed HIP warm-up; waiting for detections_output"
+            )
             future = client.call_async(request)
             deadline = time.monotonic() + MIGRAPHX_WARMUP_TIMEOUT_SEC
             while not detection_received and time.monotonic() < deadline:
@@ -243,11 +236,12 @@ class TestGpuRosRtDetrPhase2bAmdManaged(ROS2BenchmarkTest):
             if not detection_received:
                 raise RuntimeError(
                     "MIGraphX Managed HIP warm-up did not produce detections "
-                    f"within {MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds")
+                    f"within {MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds"
+                )
             self._migraphx_warmup_complete = True
             self.get_logger().info(
-                "MIGraphX Managed HIP warm-up complete; "
-                "starting measured benchmark")
+                "MIGraphX Managed HIP warm-up complete; starting measured benchmark"
+            )
         finally:
             self.node.destroy_subscription(subscription)
 

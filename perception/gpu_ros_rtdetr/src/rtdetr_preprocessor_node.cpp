@@ -35,23 +35,22 @@ namespace gpu_ros::rtdetr
 namespace
 {
 using Tensor = gpu_ros_tensor_bundle_msgs::msg::Tensor;
-}  // namespace
+} // namespace
 
 RtDetrPreprocessorNode::RtDetrPreprocessorNode(const rclcpp::NodeOptions options)
-: rclcpp::Node("rtdetr_preprocessor_node", options),
-  input_image_tensor_name_{declare_parameter<std::string>(
-      "input_image_tensor_name", "input_tensor")},
-  output_image_tensor_name_{declare_parameter<std::string>(
-      "output_image_tensor_name", "images")},
-  output_size_tensor_name_{declare_parameter<std::string>(
-      "output_size_tensor_name", "orig_target_sizes")},
-  image_height_{declare_parameter<int64_t>("image_height", 480)},
-  image_width_{declare_parameter<int64_t>("image_width", 640)},
-  use_max_dim_for_orig_size_{declare_parameter<bool>("use_max_dim_for_orig_size", true)}
+    : rclcpp::Node("rtdetr_preprocessor_node", options),
+      input_image_tensor_name_{
+        declare_parameter<std::string>("input_image_tensor_name", "input_tensor")},
+      output_image_tensor_name_{
+        declare_parameter<std::string>("output_image_tensor_name", "images")},
+      output_size_tensor_name_{
+        declare_parameter<std::string>("output_size_tensor_name", "orig_target_sizes")},
+      image_height_{declare_parameter<int64_t>("image_height", 480)},
+      image_width_{declare_parameter<int64_t>("image_width", 640)},
+      use_max_dim_for_orig_size_{declare_parameter<bool>("use_max_dim_for_orig_size", true)}
 {
   pub_ = create_publisher<TensorBundle>("tensor_pub", 10);
-  sub_ = create_subscription<TensorBundle>(
-    "encoded_tensor", 10,
+  sub_ = create_subscription<TensorBundle>("encoded_tensor", 10,
     std::bind(&RtDetrPreprocessorNode::InputCallback, this, std::placeholders::_1));
 }
 
@@ -66,16 +65,15 @@ void RtDetrPreprocessorNode::InputCallback(TensorBundle::UniquePtr msg)
     }
   }
   if (image_tensor_index == msg->tensors.size()) {
-    RCLCPP_WARN(
-      get_logger(), "Input tensor '%s' not found; dropping message.",
+    RCLCPP_WARN(get_logger(), "Input tensor '%s' not found; dropping message.",
       input_image_tensor_name_.c_str());
     return;
   }
 
-  const int64_t orig_width = use_max_dim_for_orig_size_ ?
-    std::max(image_height_, image_width_) : image_width_;
-  const int64_t orig_height = use_max_dim_for_orig_size_ ?
-    std::max(image_height_, image_width_) : image_height_;
+  const int64_t orig_width =
+    use_max_dim_for_orig_size_ ? std::max(image_height_, image_width_) : image_width_;
+  const int64_t orig_height =
+    use_max_dim_for_orig_size_ ? std::max(image_height_, image_width_) : image_height_;
   const int64_t output_size[2]{orig_width, orig_height};
 
   auto loaned_output = pub_->borrow_loaned_message();
@@ -99,6 +97,6 @@ void RtDetrPreprocessorNode::InputCallback(TensorBundle::UniquePtr msg)
   pub_->publish(std::move(loaned_output));
 }
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::rtdetr::RtDetrPreprocessorNode)

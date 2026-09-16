@@ -56,14 +56,14 @@ echo "Collecting ROCprofiler HIP copy probe..."
 echo "Executable: ${EXECUTABLE}"
 
 (
-  cd "${OUTPUT_ROOT}"
+  cd "${OUTPUT_ROOT}" || exit
   ROCPROF_KERNEL_TRACE=1 \
-  ROCPROF_MEMORY_COPY_TRACE=1 \
-  ROCPROF_HIP_RUNTIME_TRACE=1 \
-  ROCPROF_OUTPUT_PATH="${OUTPUT_ROOT}" \
-  ROCPROF_OUTPUT_FILE_NAME=hip_copy_probe \
-  ROCPROF_OUTPUT_FORMAT=json,csv \
-  rocprofv3 \
+    ROCPROF_MEMORY_COPY_TRACE=1 \
+    ROCPROF_HIP_RUNTIME_TRACE=1 \
+    ROCPROF_OUTPUT_PATH="${OUTPUT_ROOT}" \
+    ROCPROF_OUTPUT_FILE_NAME=hip_copy_probe \
+    ROCPROF_OUTPUT_FORMAT=json,csv \
+    rocprofv3 \
     --memory-copy-trace \
     --kernel-trace \
     --hip-trace \

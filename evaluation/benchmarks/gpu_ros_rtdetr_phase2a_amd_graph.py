@@ -55,8 +55,8 @@ def make_std_playback_node(namespace):
             ('buffer/input0', 'data_loader/image_raw'),
             ('input0', 'image'),
             ('buffer/input1', 'data_loader/camera_info'),
-            ('input1', 'camera_info')
-        ]
+            ('input1', 'camera_info'),
+        ],
     )
 
 
@@ -68,11 +68,13 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrImageEncoderNode',
-        parameters=[{
-            'tensor_name': 'input_tensor',
-            'output_width': common.NETWORK_RESOLUTION['width'],
-            'output_height': common.NETWORK_RESOLUTION['height'],
-        }],
+        parameters=[
+            {
+                'tensor_name': 'input_tensor',
+                'output_width': common.NETWORK_RESOLUTION['width'],
+                'output_height': common.NETWORK_RESOLUTION['height'],
+            }
+        ],
     )
 
     preprocessor_node = ComposableNode(
@@ -80,11 +82,13 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        parameters=[{
-            'image_width': common.NETWORK_RESOLUTION['width'],
-            'image_height': common.NETWORK_RESOLUTION['height'],
-            'use_max_dim_for_orig_size': True,
-        }],
+        parameters=[
+            {
+                'image_width': common.NETWORK_RESOLUTION['width'],
+                'image_height': common.NETWORK_RESOLUTION['height'],
+                'use_max_dim_for_orig_size': True,
+            }
+        ],
     )
 
     onnx_node = ComposableNode(
@@ -92,14 +96,18 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosRtDetrPhase2aAmd.get_assets_root_path(),
-                'models', common.AMD_MODEL_FILE_NAME),
-            'execution_provider': 'migraphx',
-            'transport': 'std',
-        }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosRtDetrPhase2aAmd.get_assets_root_path(),
+                    'models',
+                    common.AMD_MODEL_FILE_NAME,
+                ),
+                'execution_provider': 'migraphx',
+                'transport': 'std',
+            }
+        ],
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')],
     )
 
     decoder_node = ComposableNode(
@@ -154,7 +162,7 @@ class TestGpuRosRtDetrPhase2aAmd(ROS2BenchmarkTest):
             'transport': 'standard ROS2 TensorBundle',
             'build_type': 'Release',
             'result_directory': RESULTS_DIR,
-        }
+        },
     )
 
     def prepare_buffer(self):
@@ -170,7 +178,8 @@ class TestGpuRosRtDetrPhase2aAmd(ROS2BenchmarkTest):
             detection_received = True
 
         subscription = self.node.create_subscription(
-            Detection2DArray, 'detections_output', on_detection, 10)
+            Detection2DArray, 'detections_output', on_detection, 10
+        )
         try:
             client = self.create_service_client_blocking(PlayMessages, 'play_messages')
             request = PlayMessages.Request()
@@ -181,7 +190,8 @@ class TestGpuRosRtDetrPhase2aAmd(ROS2BenchmarkTest):
             request.revise_timestamps_as_message_ids = False
 
             self.get_logger().info(
-                'Starting one-frame MIGraphX warm-up; waiting for detections_output')
+                'Starting one-frame MIGraphX warm-up; waiting for detections_output'
+            )
             future = client.call_async(request)
             deadline = time.monotonic() + MIGRAPHX_WARMUP_TIMEOUT_SEC
             while not detection_received and time.monotonic() < deadline:
@@ -192,7 +202,8 @@ class TestGpuRosRtDetrPhase2aAmd(ROS2BenchmarkTest):
             if not detection_received:
                 raise RuntimeError(
                     'MIGraphX warm-up did not produce detections within '
-                    f'{MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds')
+                    f'{MIGRAPHX_WARMUP_TIMEOUT_SEC:.0f} seconds'
+                )
             self._migraphx_warmup_complete = True
             self.get_logger().info('MIGraphX warm-up complete; starting measured benchmark')
         finally:

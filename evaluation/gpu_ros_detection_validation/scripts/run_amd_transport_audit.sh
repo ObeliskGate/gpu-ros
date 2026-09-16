@@ -263,16 +263,16 @@ start_profiler_attach() {
   # Keep this attach form explicit.  The warm-up player has already stopped,
   # so no warm-up GPU activity is included in the copy statistics.
   (
-    cd "${trace_dir}"
+    cd "${trace_dir}" || exit
     # ROCprofiler-SDK 1.0 uses these values when it injects the profiler
     # configuration into the attached target. Keep them scoped to this
     # profiler process; do not modify the container or shell environment.
     ROCPROF_KERNEL_TRACE=1 \
-    ROCPROF_MEMORY_COPY_TRACE=1 \
-    ROCPROF_OUTPUT_PATH="${trace_dir}" \
-    ROCPROF_OUTPUT_FILE_NAME="${MODEL}_managed_attach" \
-    ROCPROF_OUTPUT_FORMAT=json \
-    rocprofv3 --attach "${container_pid}" \
+      ROCPROF_MEMORY_COPY_TRACE=1 \
+      ROCPROF_OUTPUT_PATH="${trace_dir}" \
+      ROCPROF_OUTPUT_FILE_NAME="${MODEL}_managed_attach" \
+      ROCPROF_OUTPUT_FORMAT=json \
+      rocprofv3 --attach "${container_pid}" \
       --memory-copy-trace \
       --kernel-trace \
       --output-format json \
@@ -324,20 +324,20 @@ run_lane() {
   # capture lane; do not export it from the container or modify the user's
   # shell environment.
   ROCP_TOOL_ATTACH=1 \
-  CAPTURE_TRANSPORT="${transport}" \
-  CAPTURE_EXECUTION_PROVIDER=migraphx \
-  CAPTURE_OUTPUT_ROOT="${BAG_ROOT}" \
-  CAPTURE_PLAYBACK_RATE="${PLAYBACK_RATE}" \
-  CAPTURE_ORT_PROFILE_PREFIX="${profile_prefix}" \
-  CAPTURE_BINDING_REPORT_PATH="${binding_path}" \
-  CAPTURE_TRACE_ATTACH_READY_FILE="${ready_file}" \
-  CAPTURE_TRACE_ATTACH_RELEASE_FILE="${release_file}" \
-  CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE="${playback_done_file}" \
-  CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE="${detach_complete_file}" \
-  CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS="${TRACE_ATTACH_TIMEOUT_SECONDS}" \
-  CAPTURE_STOP_GRACE_SECONDS=60 \
-  CAPTURE_STOP_TERM_SECONDS=20 \
-  "${CAPTURE_RUNNER}" "${capture_args[@]}" >"${command_log}" 2>&1 &
+    CAPTURE_TRANSPORT="${transport}" \
+    CAPTURE_EXECUTION_PROVIDER=migraphx \
+    CAPTURE_OUTPUT_ROOT="${BAG_ROOT}" \
+    CAPTURE_PLAYBACK_RATE="${PLAYBACK_RATE}" \
+    CAPTURE_ORT_PROFILE_PREFIX="${profile_prefix}" \
+    CAPTURE_BINDING_REPORT_PATH="${binding_path}" \
+    CAPTURE_TRACE_ATTACH_READY_FILE="${ready_file}" \
+    CAPTURE_TRACE_ATTACH_RELEASE_FILE="${release_file}" \
+    CAPTURE_TRACE_ATTACH_PLAYBACK_DONE_FILE="${playback_done_file}" \
+    CAPTURE_TRACE_ATTACH_DETACH_COMPLETE_FILE="${detach_complete_file}" \
+    CAPTURE_TRACE_ATTACH_TIMEOUT_SECONDS="${TRACE_ATTACH_TIMEOUT_SECONDS}" \
+    CAPTURE_STOP_GRACE_SECONDS=60 \
+    CAPTURE_STOP_TERM_SECONDS=20 \
+    "${CAPTURE_RUNNER}" "${capture_args[@]}" >"${command_log}" 2>&1 &
   CAPTURE_PID=$!
   ACTIVE_RELEASE_FILE="${release_file}"
 

@@ -17,29 +17,39 @@ namespace
 void CheckHip(hipError_t error, const char * operation)
 {
   if (error != hipSuccess) {
-    throw std::runtime_error(
-            std::string(operation) + ": " + hipGetErrorString(error));
+    throw std::runtime_error(std::string(operation) + ": " + hipGetErrorString(error));
   }
 }
 
 struct HipAllocation
 {
   void * pointer{nullptr};
-  ~HipAllocation() {if (pointer != nullptr) {static_cast<void>(hipFree(pointer));}}
+  ~HipAllocation()
+  {
+    if (pointer != nullptr) {
+      static_cast<void>(hipFree(pointer));
+    }
+  }
 };
 
 struct HipStream
 {
   hipStream_t stream{nullptr};
-  ~HipStream() {if (stream != nullptr) {static_cast<void>(hipStreamDestroy(stream));}}
+  ~HipStream()
+  {
+    if (stream != nullptr) {
+      static_cast<void>(hipStreamDestroy(stream));
+    }
+  }
 };
 
-sensor_msgs::msg::Image MakeImage(
-  gpu_ros::detection_common::ImageEncoding encoding)
+sensor_msgs::msg::Image MakeImage(gpu_ros::detection_common::ImageEncoding encoding)
 {
   using gpu_ros::detection_common::ImageEncoding;
-  const uint32_t channels = encoding == ImageEncoding::kMono8 ? 1U :
-    (encoding == ImageEncoding::kRgb8 || encoding == ImageEncoding::kBgr8 ? 3U : 4U);
+  const uint32_t channels =
+    encoding == ImageEncoding::kMono8
+      ? 1U
+      : (encoding == ImageEncoding::kRgb8 || encoding == ImageEncoding::kBgr8 ? 3U : 4U);
   sensor_msgs::msg::Image image;
   image.width = 7;
   image.height = 5;
@@ -57,12 +67,9 @@ sensor_msgs::msg::Image MakeImage(
   return image;
 }
 
-void CompareHipAndCpu(
-  gpu_ros::detection_common::ImageEncoding encoding,
-  gpu_ros::detection_common::PreprocessNormalization normalization,
-  int64_t output_width = 11,
-  int64_t output_height = 9,
-  bool require_exact = false)
+void CompareHipAndCpu(gpu_ros::detection_common::ImageEncoding encoding,
+  gpu_ros::detection_common::PreprocessNormalization normalization, int64_t output_width = 11,
+  int64_t output_height = 9, bool require_exact = false)
 {
   using namespace gpu_ros::detection_common;
   const auto image = MakeImage(encoding);
@@ -76,20 +83,18 @@ void CompareHipAndCpu(
   HipAllocation output;
   CheckHip(hipMalloc(&raw.pointer, image.data.size()), "hipMalloc raw");
   CheckHip(hipMalloc(&output.pointer, cpu.size() * sizeof(float)), "hipMalloc output");
-  CheckHip(hipMemcpyAsync(
-      raw.pointer, image.data.data(), image.data.size(), hipMemcpyHostToDevice, stream.stream),
+  CheckHip(hipMemcpyAsync(raw.pointer, image.data.data(), image.data.size(), hipMemcpyHostToDevice,
+             stream.stream),
     "hipMemcpy raw");
-  ASSERT_NO_THROW(LaunchHipPreprocess(
-      static_cast<const uint8_t *>(raw.pointer), static_cast<float *>(output.pointer), plan,
-      stream.stream));
+  ASSERT_NO_THROW(LaunchHipPreprocess(static_cast<const uint8_t *>(raw.pointer),
+    static_cast<float *>(output.pointer), plan, stream.stream));
   CheckHip(hipStreamSynchronize(stream.stream), "hipStreamSynchronize");
   std::vector<float> hip(cpu.size());
-  CheckHip(hipMemcpy(
-      hip.data(), output.pointer, hip.size() * sizeof(float), hipMemcpyDeviceToHost),
+  CheckHip(hipMemcpy(hip.data(), output.pointer, hip.size() * sizeof(float), hipMemcpyDeviceToHost),
     "hipMemcpy output");
 
-  const float tolerance = normalization == PreprocessNormalization::kUnitRange ?
-    (1.0F / 255.0F + 1.0e-6F) : 1.0F;
+  const float tolerance =
+    normalization == PreprocessNormalization::kUnitRange ? (1.0F / 255.0F + 1.0e-6F) : 1.0F;
   ASSERT_EQ(hip.size(), cpu.size());
   for (size_t index = 0; index < cpu.size(); ++index) {
     ASSERT_TRUE(std::isfinite(hip[index]));
@@ -106,8 +111,8 @@ void CompareHipAndCpu(
     for (int y = 0; y < plan.output_height; ++y) {
       for (int x = 0; x < plan.output_width; ++x) {
         if (x >= plan.resized_width || y >= plan.resized_height) {
-          const size_t index = static_cast<size_t>(channel) * plane +
-            static_cast<size_t>(y) * plan.output_width + x;
+          const size_t index =
+            static_cast<size_t>(channel) * plane + static_cast<size_t>(y) * plan.output_width + x;
           EXPECT_FLOAT_EQ(hip[index], 0.0F);
         }
       }
@@ -115,14 +120,13 @@ void CompareHipAndCpu(
   }
 }
 
-}  // namespace
+} // namespace
 
 TEST(HipPreprocess, MatchesCpuReferenceAcrossSupportedEncodings)
 {
   using namespace gpu_ros::detection_common;
-  for (const auto encoding : {
-      ImageEncoding::kRgb8, ImageEncoding::kBgr8, ImageEncoding::kRgba8,
-      ImageEncoding::kBgra8, ImageEncoding::kMono8})
+  for (const auto encoding : {ImageEncoding::kRgb8, ImageEncoding::kBgr8, ImageEncoding::kRgba8,
+         ImageEncoding::kBgra8, ImageEncoding::kMono8})
   {
     SCOPED_TRACE(ImageEncodingName(encoding));
     CompareHipAndCpu(encoding, PreprocessNormalization::kNone);
@@ -135,6 +139,5 @@ TEST(HipPreprocess, NoResizeChannelConversionIsElementwiseExact)
   using namespace gpu_ros::detection_common;
   const auto image = MakeImage(ImageEncoding::kBgra8);
   EXPECT_NO_THROW(CompareHipAndCpu(
-      ImageEncoding::kBgra8, PreprocessNormalization::kNone,
-      image.width, image.height, true));
+    ImageEncoding::kBgra8, PreprocessNormalization::kNone, image.width, image.height, true));
 }

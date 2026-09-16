@@ -21,11 +21,14 @@ command -v vcs >/dev/null 2>&1 || {
   exit 1
 }
 mkdir -p "${SOURCE_ROOT}"
-vcs import "${SOURCE_ROOT}" < "${MANIFEST}"
+vcs import "${SOURCE_ROOT}" <"${MANIFEST}"
 
 verify_checkout() {
   local name="$1" expected="$2" path="${SOURCE_ROOT}/$1"
-  [[ -d "${path}/.git" ]] || { echo "ERROR: missing checkout ${path}" >&2; exit 1; }
+  [[ -d "${path}/.git" ]] || {
+    echo "ERROR: missing checkout ${path}" >&2
+    exit 1
+  }
   local actual
   actual="$(git -C "${path}" rev-parse HEAD)"
   [[ "${actual}" == "${expected}" ]] || {

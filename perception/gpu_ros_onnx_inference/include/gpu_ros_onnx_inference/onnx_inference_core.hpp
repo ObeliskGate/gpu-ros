@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-#include "onnxruntime_cxx_api.h"  // NOLINT
+#include "onnxruntime_cxx_api.h" // NOLINT
 #include "gpu_ros_managed_core/fixed_device_memory_pool.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 #include "gpu_ros_onnx_inference/managed_io_contract.hpp"
@@ -32,7 +32,13 @@ namespace gpu_ros::onnx_inference
 {
 
 /// Supported execution providers.
-enum class ExecutionProvider { kCuda, kRocm, kMigraphx, kCpu };
+enum class ExecutionProvider
+{
+  kCuda,
+  kRocm,
+  kMigraphx,
+  kCpu
+};
 
 ExecutionProvider ParseExecutionProvider(const std::string & ep_str);
 
@@ -70,8 +76,7 @@ public:
   OnnxInferenceCore(const OnnxInferenceCore &) = delete;
   OnnxInferenceCore & operator=(const OnnxInferenceCore &) = delete;
 
-  std::vector<OutputTensor> RunInference(
-    gpu_ros_managed::ManagedTensorBundleView inputs,
+  std::vector<OutputTensor> RunInference(gpu_ros_managed::ManagedTensorBundleView inputs,
     OutputPlacement output_placement = OutputPlacement::kHost,
     InferenceStageTiming * stage_timing = nullptr);
 
@@ -80,8 +85,8 @@ public:
   bool IsProfilingEnabled() const;
   std::string EndProfiling();
   std::string OutputBindingProbeReport() const;
-  bool healthy() const noexcept {return strict_healthy_;}
-  size_t pool_exhaustion_drops() const noexcept {return pool_exhaustion_drops_;}
+  bool healthy() const noexcept { return strict_healthy_; }
+  size_t pool_exhaustion_drops() const noexcept { return pool_exhaustion_drops_; }
   bool shutdown(std::chrono::milliseconds timeout) noexcept;
 
 private:
@@ -127,14 +132,12 @@ private:
   std::vector<ManagedTensorContract> managed_output_contracts_;
   std::vector<std::unique_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> managed_output_pools_;
 
-  void WriteBindingReport(
-    const std::vector<BindingTensorReport> & inputs,
-    const std::vector<BindingTensorReport> & outputs,
-    OutputPlacement output_placement);
+  void WriteBindingReport(const std::vector<BindingTensorReport> & inputs,
+    const std::vector<BindingTensorReport> & outputs, OutputPlacement output_placement);
   std::vector<OutputTensor> RunStrictManagedInference(
     gpu_ros_managed::ManagedTensorBundleView inputs);
 };
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_CORE_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_CORE_HPP_

@@ -47,7 +47,9 @@ namespace
 int DeclareNonnegativeDeviceId(rclcpp::Node * node)
 {
   const int value = node->declare_parameter<int>("gpu_device_id", 0);
-  if (value < 0) {throw std::invalid_argument("gpu_device_id must be non-negative");}
+  if (value < 0) {
+    throw std::invalid_argument("gpu_device_id must be non-negative");
+  }
   return value;
 }
 
@@ -64,27 +66,27 @@ std::chrono::milliseconds DeclareNonnegativeTimeout(
   rclcpp::Node * node, const char * name, int64_t default_value)
 {
   const int64_t value = node->declare_parameter<int64_t>(name, default_value);
-  if (value < 0) {throw std::invalid_argument(std::string(name) + " must be non-negative");}
+  if (value < 0) {
+    throw std::invalid_argument(std::string(name) + " must be non-negative");
+  }
   return std::chrono::milliseconds(value);
 }
 
-}  // namespace
+} // namespace
 
-void CheckHipDevice(
-  const gpu_ros_managed::ManagedTensor & tensor, int gpu_device_id)
+void CheckHipDevice(const gpu_ros_managed::ManagedTensor & tensor, int gpu_device_id)
 {
-  const auto * buffer = std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(
-    &tensor.storage());
+  const auto * buffer =
+    std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(&tensor.storage());
   if (buffer == nullptr || !*buffer) {
     throw std::invalid_argument(
-            "Managed HIP TensorBundle tensor '" + tensor.name() + "' is not device-backed");
+      "Managed HIP TensorBundle tensor '" + tensor.name() + "' is not device-backed");
   }
   if ((*buffer)->device_id() !=
-    gpu_ros_managed::DeviceId{gpu_ros_managed::BackendKind::kHip, gpu_device_id})
+      gpu_ros_managed::DeviceId{gpu_ros_managed::BackendKind::kHip, gpu_device_id})
   {
     throw std::invalid_argument(
-            "Managed HIP TensorBundle tensor '" + tensor.name() +
-            "' is on the wrong backend or device");
+      "Managed HIP TensorBundle tensor '" + tensor.name() + "' is on the wrong backend or device");
   }
 }
 
@@ -93,21 +95,19 @@ class StdToManagedHipTensorBundleNode final : public rclcpp::Node
 public:
   explicit StdToManagedHipTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("std_to_managed_hip_tensor_bundle_node", options),
-    gpu_device_id_(DeclareNonnegativeDeviceId(this)),
-    pool_capacity_(DeclarePositiveSize(this, "managed_pool_capacity", 16)),
-    pool_timeout_(DeclareNonnegativeTimeout(this, "managed_pool_wait_timeout_ms", 100)),
-    max_tensor_bytes_(DeclarePositiveSize(this, "managed_max_tensor_bytes", 67108864)),
-    pool_cache_max_bytes_(DeclarePositiveSize(
-        this, "managed_pool_cache_max_bytes", 1073741824)),
-    pool_cache_max_entries_(DeclarePositiveSize(
-        this, "managed_pool_cache_max_entries", 16)),
-    stream_(gpu_ros_managed::hip::make_stream(gpu_device_id_)),
-    publisher_(this, "tensor_output", rclcpp::QoS(10))
+      : rclcpp::Node("std_to_managed_hip_tensor_bundle_node", options),
+        gpu_device_id_(DeclareNonnegativeDeviceId(this)),
+        pool_capacity_(DeclarePositiveSize(this, "managed_pool_capacity", 16)),
+        pool_timeout_(DeclareNonnegativeTimeout(this, "managed_pool_wait_timeout_ms", 100)),
+        max_tensor_bytes_(DeclarePositiveSize(this, "managed_max_tensor_bytes", 67108864)),
+        pool_cache_max_bytes_(
+          DeclarePositiveSize(this, "managed_pool_cache_max_bytes", 1073741824)),
+        pool_cache_max_entries_(DeclarePositiveSize(this, "managed_pool_cache_max_entries", 16)),
+        stream_(gpu_ros_managed::hip::make_stream(gpu_device_id_)),
+        publisher_(this, "tensor_output", rclcpp::QoS(10))
   {
-    subscription_ = create_subscription<TensorBundleMsg>(
-      "tensor_input", rclcpp::QoS(10),
-      [this](const TensorBundleMsg::SharedPtr message) {OnTensorBundle(message);});
+    subscription_ = create_subscription<TensorBundleMsg>("tensor_input", rclcpp::QoS(10),
+      [this](const TensorBundleMsg::SharedPtr message) { OnTensorBundle(message); });
   }
 
   ~StdToManagedHipTensorBundleNode() override
@@ -131,9 +131,9 @@ private:
     if (found != pools_.end()) {
       return found->second;
     }
-    const size_t next_cache_bytes = detail::ValidateStagingPoolAddition(
-      bytes, pool_capacity_, pool_cache_bytes_, pools_.size(), max_tensor_bytes_,
-      pool_cache_max_bytes_, pool_cache_max_entries_);
+    const size_t next_cache_bytes =
+      detail::ValidateStagingPoolAddition(bytes, pool_capacity_, pool_cache_bytes_, pools_.size(),
+        max_tensor_bytes_, pool_cache_max_bytes_, pool_cache_max_entries_);
     auto pool = std::make_shared<gpu_ros_managed::FixedDeviceMemoryPool>(
       gpu_ros_managed::hip::make_fixed_device_pool(
         bytes, static_cast<size_t>(pool_capacity_), gpu_device_id_));
@@ -151,9 +151,8 @@ private:
       const auto selected = hipSetDevice(gpu_device_id_);
       if (selected != hipSuccess) {
         throw std::runtime_error(
-                "Std-to-Managed HIP hipSetDevice failed: " +
-                std::string(hipGetErrorName(selected)) + " (" +
-                hipGetErrorString(selected) + ")");
+          "Std-to-Managed HIP hipSetDevice failed: " + std::string(hipGetErrorName(selected)) +
+          " (" + hipGetErrorString(selected) + ")");
       }
       blocks.reserve(message->tensors.size());
       copy_submitted.reserve(message->tensors.size());
@@ -161,13 +160,13 @@ private:
       std::vector<gpu_ros_managed::ManagedTensor> tensors;
       tensors.reserve(message->tensors.size());
 
-      const auto reservation_deadline =
-        std::chrono::steady_clock::now() + pool_timeout_;
+      const auto reservation_deadline = std::chrono::steady_clock::now() + pool_timeout_;
       const auto remaining_timeout = [&reservation_deadline]() {
-          const auto now = std::chrono::steady_clock::now();
-          return now >= reservation_deadline ? std::chrono::milliseconds(0) :
-                 std::chrono::duration_cast<std::chrono::milliseconds>(reservation_deadline - now);
-        };
+        const auto now = std::chrono::steady_clock::now();
+        return now >= reservation_deadline ? std::chrono::milliseconds(0)
+                                           : std::chrono::duration_cast<std::chrono::milliseconds>(
+                                               reservation_deadline - now);
+      };
 
       for (const auto & tensor : message->tensors) {
         const std::vector<int64_t> shape(tensor.shape.begin(), tensor.shape.end());
@@ -175,15 +174,13 @@ private:
         const size_t bytes = gpu_ros_managed::tensor_byte_size(shape, dtype);
         if (tensor.data.size() < bytes) {
           throw std::invalid_argument(
-                  "Standard TensorBundle tensor '" + tensor.name +
-                  "' has insufficient data");
+            "Standard TensorBundle tensor '" + tensor.name + "' has insufficient data");
         }
 
         auto block = GetPool(bytes)->acquire_for(stream_.stream(), remaining_timeout());
         if (!block) {
           ++pool_exhaustion_drops_;
-          throw std::runtime_error(
-                  "Std-to-Managed HIP pool exhausted for '" + tensor.name + "'");
+          throw std::runtime_error("Std-to-Managed HIP pool exhausted for '" + tensor.name + "'");
         }
         block->writer.retain_owner(std::static_pointer_cast<const void>(message));
         blocks.push_back(std::move(block));
@@ -195,24 +192,22 @@ private:
         const auto & tensor = message->tensors[index];
         const size_t bytes = blocks[index]->buffer->size();
         copy_submitted[index] = true;
-        const auto result = hipMemcpyAsync(
-          blocks[index]->writer.data(), tensor.data.data(), bytes,
+        const auto result = hipMemcpyAsync(blocks[index]->writer.data(), tensor.data.data(), bytes,
           hipMemcpyHostToDevice, stream_.get());
         if (result != hipSuccess) {
           throw std::runtime_error(
-                  "Std-to-Managed HIP H2D copy failed: " +
-                  std::string(hipGetErrorName(result)) + " (" + hipGetErrorString(result) + ")");
+            "Std-to-Managed HIP H2D copy failed: " + std::string(hipGetErrorName(result)) + " (" +
+            hipGetErrorString(result) + ")");
         }
         blocks[index]->writer.finalize();
         writer_active[index] = false;
         const auto & source = message->tensors[index];
         const auto shape = std::vector<int64_t>(source.shape.begin(), source.shape.end());
-        tensors.emplace_back(
-          source.name, static_cast<gpu_ros_managed::TensorDataType>(source.data_type),
-          shape, blocks[index]->buffer);
+        tensors.emplace_back(source.name,
+          static_cast<gpu_ros_managed::TensorDataType>(source.data_type), shape,
+          blocks[index]->buffer);
       }
-      publisher_.publish(gpu_ros_managed::ManagedTensorBundle(
-          message->header, std::move(tensors)));
+      publisher_.publish(gpu_ros_managed::ManagedTensorBundle(message->header, std::move(tensors)));
     } catch (const std::exception & error) {
       for (size_t index = 0; index < blocks.size(); ++index) {
         if (!writer_active[index]) {
@@ -224,16 +219,14 @@ private:
           blocks[index]->writer.cancel();
         }
       }
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
         "Failed to stage standard TensorBundle to HIP (%zu pool drops): %s",
         pool_exhaustion_drops_.load(), error.what());
     } catch (...) {
       // WriteHandle destruction marks every still-active reservation failed.
       // That #3 invariant makes the callback's #11-style exception boundary
       // safe even when the exception type is unknown.
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "Dropping standard TensorBundle after unknown HIP staging failure");
     }
   }
@@ -248,8 +241,7 @@ private:
   gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle> publisher_;
   rclcpp::Subscription<TensorBundleMsg>::SharedPtr subscription_;
   std::mutex pool_mutex_;
-  std::unordered_map<
-    size_t, std::shared_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> pools_;
+  std::unordered_map<size_t, std::shared_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> pools_;
   size_t pool_cache_bytes_{0};
   std::atomic<size_t> pool_exhaustion_drops_{0};
 };
@@ -259,16 +251,15 @@ class ManagedHipToStdTensorBundleNode final : public rclcpp::Node
 public:
   explicit ManagedHipToStdTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
-  : rclcpp::Node("managed_hip_to_std_tensor_bundle_node", options),
-    gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
-    publisher_(create_publisher<TensorBundleMsg>("tensor_output", rclcpp::QoS(10)))
+      : rclcpp::Node("managed_hip_to_std_tensor_bundle_node", options),
+        gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
+        publisher_(create_publisher<TensorBundleMsg>("tensor_output", rclcpp::QoS(10)))
   {
     subscription_ = std::make_unique<
       gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>(
       this, "tensor_input",
-      [this](gpu_ros_managed::ManagedTensorBundleView input) {
-        OnTensorBundle(std::move(input));
-      }, rclcpp::QoS(10));
+      [this](gpu_ros_managed::ManagedTensorBundleView input) { OnTensorBundle(std::move(input)); },
+      rclcpp::QoS(10));
   }
 
 private:
@@ -278,9 +269,8 @@ private:
       const auto selected = hipSetDevice(gpu_device_id_);
       if (selected != hipSuccess) {
         throw std::runtime_error(
-                "Managed-to-standard HIP hipSetDevice failed: " +
-                std::string(hipGetErrorName(selected)) + " (" +
-                hipGetErrorString(selected) + ")");
+          "Managed-to-standard HIP hipSetDevice failed: " + std::string(hipGetErrorName(selected)) +
+          " (" + hipGetErrorString(selected) + ")");
       }
       auto output = std::make_unique<TensorBundleMsg>();
       output->header = input.header();
@@ -298,23 +288,20 @@ private:
       }
       publisher_->publish(std::move(output));
     } catch (const std::exception & error) {
-      RCLCPP_ERROR(get_logger(), "Failed to stage Managed HIP TensorBundle to host: %s",
-          error.what());
+      RCLCPP_ERROR(
+        get_logger(), "Failed to stage Managed HIP TensorBundle to host: %s", error.what());
     } catch (...) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 5000,
+      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
         "Dropping Managed HIP TensorBundle after unknown staging failure");
     }
   }
 
   int gpu_device_id_;
   rclcpp::Publisher<TensorBundleMsg>::SharedPtr publisher_;
-  std::unique_ptr<
-    gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>> subscription_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscription_;
 };
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-RCLCPP_COMPONENTS_REGISTER_NODE(
-  gpu_ros::onnx_inference::StdToManagedHipTensorBundleNode)
-RCLCPP_COMPONENTS_REGISTER_NODE(
-  gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::StdToManagedHipTensorBundleNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode)

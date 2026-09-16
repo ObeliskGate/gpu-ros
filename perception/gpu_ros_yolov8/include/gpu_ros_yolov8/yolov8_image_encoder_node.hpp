@@ -41,6 +41,6 @@ private:
   YoloV8ImageEncoderConfig config_;
 };
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8
 
-#endif  // GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_NODE_HPP_
+#endif // GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_NODE_HPP_

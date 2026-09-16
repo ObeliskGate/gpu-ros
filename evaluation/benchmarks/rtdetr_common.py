@@ -38,9 +38,7 @@ MODEL_FILE_NAME = 'synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx'
 # Apache-2.0 covers upstream source code, not the separately licensed model bytes.
 # Keep MODEL_FILE_NAME unchanged because it is the historical NVIDIA matrix
 # asset and must remain reproducible.
-AMD_MODEL_FILE_NAME = (
-    'rtdetrv2_r50/rtdetrv2_r50.onnx'
-)
+AMD_MODEL_FILE_NAME = 'rtdetrv2_r50/rtdetrv2_r50.onnx'
 TRT_FP16_ENGINE_FILE_PATH = '/tmp/sdetr_grasp.plan'
 TRT_FP32_ENGINE_FILE_PATH = '/tmp/sdetr_grasp_fp32.plan'
 
@@ -55,15 +53,17 @@ def make_preprocessing_nodes(namespace):
         namespace=namespace,
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        parameters=[{
-            'input_width': IMAGE_RESOLUTION['width'],
-            'input_height': IMAGE_RESOLUTION['height'],
-            'output_width': NETWORK_RESOLUTION['width'],
-            'output_height': NETWORK_RESOLUTION['height'],
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True
-        }]
+        parameters=[
+            {
+                'input_width': IMAGE_RESOLUTION['width'],
+                'input_height': IMAGE_RESOLUTION['height'],
+                'output_width': NETWORK_RESOLUTION['width'],
+                'output_height': NETWORK_RESOLUTION['height'],
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
     )
 
     pad_node = ComposableNode(
@@ -71,12 +71,14 @@ def make_preprocessing_nodes(namespace):
         namespace=namespace,
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
-        parameters=[{
-            'output_image_width': NETWORK_RESOLUTION['width'],
-            'output_image_height': NETWORK_RESOLUTION['height'],
-            'padding_type': 'BOTTOM_RIGHT'
-        }],
-        remappings=[('image', 'resize/image')]
+        parameters=[
+            {
+                'output_image_width': NETWORK_RESOLUTION['width'],
+                'output_image_height': NETWORK_RESOLUTION['height'],
+                'padding_type': 'BOTTOM_RIGHT',
+            }
+        ],
+        remappings=[('image', 'resize/image')],
     )
 
     image_format_converter_node = ComposableNode(
@@ -84,12 +86,14 @@ def make_preprocessing_nodes(namespace):
         namespace=namespace,
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': NETWORK_RESOLUTION['width'],
-            'image_height': NETWORK_RESOLUTION['height']
-        }],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
+        parameters=[
+            {
+                'encoding_desired': 'rgb8',
+                'image_width': NETWORK_RESOLUTION['width'],
+                'image_height': NETWORK_RESOLUTION['height'],
+            }
+        ],
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
     )
 
     image_to_tensor_node = ComposableNode(
@@ -98,7 +102,7 @@ def make_preprocessing_nodes(namespace):
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
         parameters=[{'scale': False, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
+        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')],
     )
 
     interleave_to_planar_node = ComposableNode(
@@ -106,10 +110,10 @@ def make_preprocessing_nodes(namespace):
         namespace=namespace,
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
-        parameters=[{
-            'input_tensor_shape': [NETWORK_RESOLUTION['width'], NETWORK_RESOLUTION['height'], 3]
-        }],
-        remappings=[('interleaved_tensor', 'normalized_tensor')]
+        parameters=[
+            {'input_tensor_shape': [NETWORK_RESOLUTION['width'], NETWORK_RESOLUTION['height'], 3]}
+        ],
+        remappings=[('interleaved_tensor', 'normalized_tensor')],
     )
 
     reshape_node = ComposableNode(
@@ -117,18 +121,32 @@ def make_preprocessing_nodes(namespace):
         namespace=namespace,
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
-        parameters=[{
-            'output_tensor_name': 'input_tensor',
-            'input_tensor_shape': [3, NETWORK_RESOLUTION['height'], NETWORK_RESOLUTION['width']],
-            'output_tensor_shape': [
-                1, 3, NETWORK_RESOLUTION['height'], NETWORK_RESOLUTION['width']]
-        }],
+        parameters=[
+            {
+                'output_tensor_name': 'input_tensor',
+                'input_tensor_shape': [
+                    3,
+                    NETWORK_RESOLUTION['height'],
+                    NETWORK_RESOLUTION['width'],
+                ],
+                'output_tensor_shape': [
+                    1,
+                    3,
+                    NETWORK_RESOLUTION['height'],
+                    NETWORK_RESOLUTION['width'],
+                ],
+            }
+        ],
         remappings=[('tensor', 'planar_tensor')],
     )
 
     return [
-        resize_node, pad_node, image_format_converter_node,
-        image_to_tensor_node, interleave_to_planar_node, reshape_node
+        resize_node,
+        pad_node,
+        image_format_converter_node,
+        image_to_tensor_node,
+        interleave_to_planar_node,
+        reshape_node,
     ]
 
 
@@ -140,8 +158,8 @@ def make_data_loader_node(namespace):
         plugin='ros2_benchmark::DataLoaderNode',
         remappings=[
             ('camera_1/color/image_raw', 'data_loader/image_raw'),
-            ('camera_1/color/camera_info', 'data_loader/camera_info')
-        ]
+            ('camera_1/color/camera_info', 'data_loader/camera_info'),
+        ],
     )
 
 
@@ -156,8 +174,8 @@ def make_playback_node(namespace):
             ('buffer/input0', 'data_loader/image_raw'),
             ('input0', 'image'),
             ('buffer/input1', 'data_loader/camera_info'),
-            ('input1', 'camera_info')
-        ]
+            ('input1', 'camera_info'),
+        ],
     )
 
 

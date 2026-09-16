@@ -44,8 +44,7 @@ struct StreamState
 
 struct StreamAccess
 {
-  static DeviceStream make(
-    DeviceId device, NativeStream native, std::shared_ptr<void> owner,
+  static DeviceStream make(DeviceId device, NativeStream native, std::shared_ptr<void> owner,
     std::shared_ptr<BackendOps> ops)
   {
     auto state = std::make_shared<StreamState>();
@@ -60,5 +59,5 @@ struct StreamAccess
 
 bool wait_for_pending_releases(BackendKind backend, std::chrono::milliseconds timeout);
 size_t pending_release_count(BackendKind backend) noexcept;
-}  // namespace gpu_ros_managed::detail
+} // namespace gpu_ros_managed::detail
 #endif

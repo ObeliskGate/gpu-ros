@@ -65,7 +65,8 @@ def generate_model():
         input_names=['images'],
         output_names=['output0'],
         opset_version=17,
-        do_constant_folding=False)
+        do_constant_folding=False,
+    )
 
 
 @pytest.mark.rostest
@@ -80,15 +81,17 @@ def generate_test_description():
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ResizeNode',
         namespace=ns,
-        parameters=[{
-            'input_width': 640,
-            'input_height': 640,
-            'output_width': 640,
-            'output_height': 640,
-            'keep_aspect_ratio': True,
-            'encoding_desired': 'rgb8',
-            'disable_padding': True
-        }]
+        parameters=[
+            {
+                'input_width': 640,
+                'input_height': 640,
+                'output_width': 640,
+                'output_height': 640,
+                'keep_aspect_ratio': True,
+                'encoding_desired': 'rgb8',
+                'disable_padding': True,
+            }
+        ],
     )
 
     pad_node = ComposableNode(
@@ -96,12 +99,10 @@ def generate_test_description():
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::PadNode',
         namespace=ns,
-        parameters=[{
-            'output_image_width': 640,
-            'output_image_height': 640,
-            'padding_type': 'BOTTOM_RIGHT'
-        }],
-        remappings=[('image', 'resize/image')]
+        parameters=[
+            {'output_image_width': 640, 'output_image_height': 640, 'padding_type': 'BOTTOM_RIGHT'}
+        ],
+        remappings=[('image', 'resize/image')],
     )
 
     image_format_node = ComposableNode(
@@ -109,12 +110,8 @@ def generate_test_description():
         package='isaac_ros_image_proc',
         plugin='nvidia::isaac_ros::image_proc::ImageFormatConverterNode',
         namespace=ns,
-        parameters=[{
-            'encoding_desired': 'rgb8',
-            'image_width': 640,
-            'image_height': 640
-        }],
-        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')]
+        parameters=[{'encoding_desired': 'rgb8', 'image_width': 640, 'image_height': 640}],
+        remappings=[('image_raw', 'padded_image'), ('image', 'image_rgb')],
     )
 
     image_to_tensor_node = ComposableNode(
@@ -123,7 +120,7 @@ def generate_test_description():
         plugin='nvidia::isaac_ros::dnn_inference::ImageToTensorNode',
         namespace=ns,
         parameters=[{'scale': True, 'tensor_name': 'image'}],
-        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')]
+        remappings=[('image', 'image_rgb'), ('tensor', 'normalized_tensor')],
     )
 
     interleave_to_planar_node = ComposableNode(
@@ -132,7 +129,7 @@ def generate_test_description():
         plugin='nvidia::isaac_ros::dnn_inference::InterleavedToPlanarNode',
         namespace=ns,
         parameters=[{'input_tensor_shape': [640, 640, 3]}],
-        remappings=[('interleaved_tensor', 'normalized_tensor')]
+        remappings=[('interleaved_tensor', 'normalized_tensor')],
     )
 
     reshape_node = ComposableNode(
@@ -140,12 +137,14 @@ def generate_test_description():
         package='isaac_ros_tensor_proc',
         plugin='nvidia::isaac_ros::dnn_inference::ReshapeNode',
         namespace=ns,
-        parameters=[{
-            'output_tensor_name': 'images',
-            'input_tensor_shape': [3, 640, 640],
-            'output_tensor_shape': [1, 3, 640, 640]
-        }],
-        remappings=[('tensor', 'planar_tensor')]
+        parameters=[
+            {
+                'output_tensor_name': 'images',
+                'input_tensor_shape': [3, 640, 640],
+                'output_tensor_shape': [1, 3, 640, 640],
+            }
+        ],
+        remappings=[('tensor', 'planar_tensor')],
     )
 
     onnx_node = ComposableNode(
@@ -153,15 +152,17 @@ def generate_test_description():
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         namespace=ns,
-        parameters=[{
-            'model_file_path': MODEL_ONNX_PATH,
-            'execution_provider': 'cuda',
-            'transport': 'std',
-        }],
+        parameters=[
+            {
+                'model_file_path': MODEL_ONNX_PATH,
+                'execution_provider': 'cuda',
+                'transport': 'std',
+            }
+        ],
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'tensor_sub'),
-        ]
+        ],
     )
 
     yolov8_decoder_node = ComposableNode(
@@ -169,12 +170,14 @@ def generate_test_description():
         package='gpu_ros_yolov8',
         plugin='gpu_ros::yolov8::YoloV8DecoderNode',
         namespace=ns,
-        parameters=[{
-            'tensor_name': 'output0',
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }]
+        parameters=[
+            {
+                'tensor_name': 'output0',
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -183,11 +186,16 @@ def generate_test_description():
         package='rclcpp_components',
         executable='component_container_mt',
         composable_node_descriptions=[
-            resize_node, pad_node, image_format_node,
-            image_to_tensor_node, interleave_to_planar_node, reshape_node,
-            onnx_node, yolov8_decoder_node
+            resize_node,
+            pad_node,
+            image_format_node,
+            image_to_tensor_node,
+            interleave_to_planar_node,
+            reshape_node,
+            onnx_node,
+            yolov8_decoder_node,
         ],
-        output='screen'
+        output='screen',
     )
 
     return GpuRosStdYoloV8POLTest.generate_test_description([container])
@@ -210,12 +218,13 @@ class GpuRosStdYoloV8POLTest(IsaacROSBaseTest):
         received_messages = {}
         self.generate_namespace_lookup(['image', 'camera_info', 'detections_output'])
 
-        image_pub = self.node.create_publisher(
-            Image, self.namespaces['image'], self.DEFAULT_QOS)
+        image_pub = self.node.create_publisher(Image, self.namespaces['image'], self.DEFAULT_QOS)
         camera_info_pub = self.node.create_publisher(
-            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS)
+            CameraInfo, self.namespaces['camera_info'], self.DEFAULT_QOS
+        )
         subs = self.create_logging_subscribers(
-            [('detections_output', Detection2DArray)], received_messages)
+            [('detections_output', Detection2DArray)], received_messages
+        )
 
         try:
             image = Image()
@@ -244,8 +253,7 @@ class GpuRosStdYoloV8POLTest(IsaacROSBaseTest):
                     break
 
             self.assertTrue(done, "Didn't receive output on detections_output topic!")
-            self.assertGreaterEqual(
-                len(received_messages['detections_output'].detections), 1)
+            self.assertGreaterEqual(len(received_messages['detections_output'].detections), 1)
         finally:
             self.node.destroy_subscription(subs)
             self.node.destroy_publisher(image_pub)

@@ -24,11 +24,13 @@ def generate_launch_description():
         name='onnx_inference_node',
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': '',
-            'execution_provider': 'cpu',
-            'gpu_device_id': 0,
-        }],
+        parameters=[
+            {
+                'model_file_path': '',
+                'execution_provider': 'cpu',
+                'gpu_device_id': 0,
+            }
+        ],
     )
     container = ComposableNodeContainer(
         name='onnx_inference_container',

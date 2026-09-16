@@ -38,16 +38,16 @@ class ManagedTensorBundleIO final : public ITensorBundleIO
 {
 public:
   explicit ManagedTensorBundleIO(rclcpp::Node * node, bool publish_output)
-  : placement_(
-      (node->get_parameter("execution_provider").as_string() == "cuda" ||
-      node->get_parameter("execution_provider").as_string() == "migraphx") ?
-      OutputPlacement::kDevice : OutputPlacement::kHost),
-    node_(node)
+      : placement_((node->get_parameter("execution_provider").as_string() == "cuda" ||
+                     node->get_parameter("execution_provider").as_string() == "migraphx")
+                     ? OutputPlacement::kDevice
+                     : OutputPlacement::kHost),
+        node_(node)
   {
     if (publish_output) {
-      publisher_ = std::make_unique<
-        gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
-        node, "tensor_output", rclcpp::QoS(10));
+      publisher_ =
+        std::make_unique<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
+          node, "tensor_output", rclcpp::QoS(10));
     }
   }
 
@@ -58,7 +58,7 @@ public:
       node_, "tensor_input", std::move(callback), rclcpp::QoS(10));
   }
 
-  OutputPlacement output_placement() const noexcept override {return placement_;}
+  OutputPlacement output_placement() const noexcept override { return placement_; }
 
   void Publish(TensorBundleOutput && output) override
   {
@@ -70,32 +70,32 @@ public:
     for (auto & tensor : output.tensors) {
       if (auto * host = std::get_if<std::vector<uint8_t>>(&tensor.storage)) {
         auto owner = std::make_shared<std::vector<uint8_t>>(std::move(*host));
-        tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_external(
-            std::move(tensor.name), ToManagedType(tensor.dtype), std::move(tensor.shape),
-            owner, owner->data(), owner->size()));
+        tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_external(std::move(tensor.name),
+          ToManagedType(tensor.dtype), std::move(tensor.shape), owner, owner->data(),
+          owner->size()));
       } else {
-        tensors.emplace_back(
-          std::move(tensor.name), ToManagedType(tensor.dtype), std::move(tensor.shape),
+        tensors.emplace_back(std::move(tensor.name), ToManagedType(tensor.dtype),
+          std::move(tensor.shape),
           std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(std::move(tensor.storage)));
       }
     }
-    publisher_->publish(gpu_ros_managed::ManagedTensorBundle(
-        std::move(output.header), std::move(tensors)));
+    publisher_->publish(
+      gpu_ros_managed::ManagedTensorBundle(std::move(output.header), std::move(tensors)));
   }
 
 private:
   OutputPlacement placement_;
   std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
-  publisher_;
+    publisher_;
   rclcpp::Node * node_;
-  std::unique_ptr<
-    gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscriber_;
 };
-}  // namespace
+} // namespace
 
 std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
   rclcpp::Node * node, bool publish_output)
 {
   return std::make_unique<ManagedTensorBundleIO>(node, publish_output);
 }
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference

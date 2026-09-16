@@ -34,8 +34,7 @@
 namespace gpu_ros::yolov8
 {
 
-constexpr uint8_t kTensorBundleFloat32 =
-  gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
+constexpr uint8_t kTensorBundleFloat32 = gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
 
 struct YoloV8DecoderConfig
 {
@@ -46,16 +45,12 @@ struct YoloV8DecoderConfig
 };
 
 vision_msgs::msg::Detection2DArray DecodeYoloV8TensorBundle(
-  const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & msg,
+  const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & msg, const YoloV8DecoderConfig & config);
+
+vision_msgs::msg::Detection2DArray DecodeYoloV8Values(const std_msgs::msg::Header & header,
+  const float * values, size_t value_count, const std::vector<int64_t> & shape,
   const YoloV8DecoderConfig & config);
 
-vision_msgs::msg::Detection2DArray DecodeYoloV8Values(
-  const std_msgs::msg::Header & header,
-  const float * values,
-  size_t value_count,
-  const std::vector<int64_t> & shape,
-  const YoloV8DecoderConfig & config);
+} // namespace gpu_ros::yolov8
 
-}  // namespace gpu_ros::yolov8
-
-#endif  // GPU_ROS_YOLOV8__YOLOV8_DECODER_HPP_
+#endif // GPU_ROS_YOLOV8__YOLOV8_DECODER_HPP_

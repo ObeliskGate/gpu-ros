@@ -14,35 +14,37 @@ namespace
 {
 void check(cudaError_t result, const char * operation)
 {
-  if (result == cudaSuccess) {return;}
+  if (result == cudaSuccess) {
+    return;
+  }
   std::ostringstream message;
-  message << operation << ": " << cudaGetErrorName(result) << " (" <<
-    cudaGetErrorString(result) << ")";
+  message << operation << ": " << cudaGetErrorName(result) << " (" << cudaGetErrorString(result)
+          << ")";
   throw std::runtime_error(message.str());
 }
 
 class CudaOps final : public detail::BackendOps
 {
 public:
-  BackendKind kind() const noexcept override {return BackendKind::kCuda;}
-  void select_device(int ordinal) override {check(cudaSetDevice(ordinal), "cudaSetDevice");}
+  BackendKind kind() const noexcept override { return BackendKind::kCuda; }
+  void select_device(int ordinal) override { check(cudaSetDevice(ordinal), "cudaSetDevice"); }
   detail::Event create_event() override
   {
     cudaEvent_t event{};
-    check(cudaEventCreateWithFlags(
-        &event, cudaEventDisableTiming | cudaEventBlockingSync), "cudaEventCreateWithFlags");
+    check(cudaEventCreateWithFlags(&event, cudaEventDisableTiming | cudaEventBlockingSync),
+      "cudaEventCreateWithFlags");
     return reinterpret_cast<detail::Event>(event);
   }
   void record_event(detail::Event event, detail::NativeStream stream) override
   {
-    check(cudaEventRecord(
-        reinterpret_cast<cudaEvent_t>(event), reinterpret_cast<cudaStream_t>(stream)),
+    check(
+      cudaEventRecord(reinterpret_cast<cudaEvent_t>(event), reinterpret_cast<cudaStream_t>(stream)),
       "cudaEventRecord");
   }
   void wait_event(detail::NativeStream stream, detail::Event event) override
   {
     check(cudaStreamWaitEvent(
-        reinterpret_cast<cudaStream_t>(stream), reinterpret_cast<cudaEvent_t>(event), 0),
+            reinterpret_cast<cudaStream_t>(stream), reinterpret_cast<cudaEvent_t>(event), 0),
       "cudaStreamWaitEvent");
   }
   void synchronize_event(detail::Event event) override
@@ -51,7 +53,9 @@ public:
   }
   void destroy_event(detail::Event event) noexcept override
   {
-    if (event != 0) {static_cast<void>(cudaEventDestroy(reinterpret_cast<cudaEvent_t>(event)));}
+    if (event != 0) {
+      static_cast<void>(cudaEventDestroy(reinterpret_cast<cudaEvent_t>(event)));
+    }
   }
   std::shared_ptr<void> allocate_device(int ordinal, size_t bytes) override
   {
@@ -59,7 +63,9 @@ public:
     void * pointer{};
     check(cudaMalloc(&pointer, bytes), "cudaMalloc");
     return std::shared_ptr<void>(pointer, [ordinal](void * value) {
-      if (value == nullptr) {return;}
+      if (value == nullptr) {
+        return;
+      }
       static_cast<void>(cudaSetDevice(ordinal));
       static_cast<void>(cudaFree(value));
     });
@@ -83,7 +89,7 @@ std::shared_ptr<detail::BackendOps> ops()
   static auto value = std::make_shared<CudaOps>();
   return value;
 }
-}  // namespace
+} // namespace
 
 cudaStream_t CudaStream::get() const
 {
@@ -96,22 +102,20 @@ CudaStream make_stream(int device_id)
   ops()->select_device(device_id);
   cudaStream_t native{};
   check(cudaStreamCreateWithFlags(&native, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
-  auto owner = std::shared_ptr<void>(
-    reinterpret_cast<void *>(native), [device_id](void * value) {
-      static_cast<void>(cudaSetDevice(device_id));
-      static_cast<void>(cudaStreamDestroy(reinterpret_cast<cudaStream_t>(value)));
-    });
-  return CudaStream(detail::DeviceBufferFactory::make_stream(
-      {BackendKind::kCuda, device_id}, reinterpret_cast<detail::NativeStream>(native),
-      std::move(owner), ops()));
+  auto owner = std::shared_ptr<void>(reinterpret_cast<void *>(native), [device_id](void * value) {
+    static_cast<void>(cudaSetDevice(device_id));
+    static_cast<void>(cudaStreamDestroy(reinterpret_cast<cudaStream_t>(value)));
+  });
+  return CudaStream(detail::DeviceBufferFactory::make_stream({BackendKind::kCuda, device_id},
+    reinterpret_cast<detail::NativeStream>(native), std::move(owner), ops()));
 }
-CudaStream wrap_borrowed_stream(
-  cudaStream_t native, int device_id, std::shared_ptr<void> owner)
+CudaStream wrap_borrowed_stream(cudaStream_t native, int device_id, std::shared_ptr<void> owner)
 {
-  if (native == nullptr) {throw std::invalid_argument("Borrowed CUDA stream is null");}
-  return CudaStream(detail::DeviceBufferFactory::make_stream(
-      {BackendKind::kCuda, device_id}, reinterpret_cast<detail::NativeStream>(native),
-      std::move(owner), ops()));
+  if (native == nullptr) {
+    throw std::invalid_argument("Borrowed CUDA stream is null");
+  }
+  return CudaStream(detail::DeviceBufferFactory::make_stream({BackendKind::kCuda, device_id},
+    reinterpret_cast<detail::NativeStream>(native), std::move(owner), ops()));
 }
 std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int device_id)
 {
@@ -134,14 +138,12 @@ std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
   return detail::DeviceBufferFactory::make_ready(
     {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops());
 }
-FixedDeviceMemoryPool make_fixed_device_pool(
-  size_t block_size, size_t block_count, int device_id)
+FixedDeviceMemoryPool make_fixed_device_pool(size_t block_size, size_t block_count, int device_id)
 {
-  return detail::PoolFactory::make(
-    {BackendKind::kCuda, device_id}, block_size, block_count, ops());
+  return detail::PoolFactory::make({BackendKind::kCuda, device_id}, block_size, block_count, ops());
 }
 bool wait_for_pending_releases(std::chrono::milliseconds timeout)
 {
   return detail::wait_for_pending_releases(BackendKind::kCuda, timeout);
 }
-}  // namespace gpu_ros_managed::cuda
+} // namespace gpu_ros_managed::cuda

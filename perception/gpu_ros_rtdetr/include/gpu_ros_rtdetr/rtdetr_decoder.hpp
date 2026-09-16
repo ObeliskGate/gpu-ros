@@ -40,16 +40,10 @@ struct RtDetrDecoderConfig
   double confidence_threshold{0.9};
 };
 
-vision_msgs::msg::Detection2DArray DecodeRtDetrValues(
-  const std_msgs::msg::Header & header,
-  const int64_t * labels,
-  size_t label_count,
-  const float * boxes,
-  size_t box_value_count,
-  const float * scores,
-  size_t score_count,
-  const RtDetrDecoderConfig & config);
+vision_msgs::msg::Detection2DArray DecodeRtDetrValues(const std_msgs::msg::Header & header,
+  const int64_t * labels, size_t label_count, const float * boxes, size_t box_value_count,
+  const float * scores, size_t score_count, const RtDetrDecoderConfig & config);
 
-}  // namespace gpu_ros::rtdetr
+} // namespace gpu_ros::rtdetr
 
-#endif  // GPU_ROS_RTDETR__RTDETR_DECODER_HPP_
+#endif // GPU_ROS_RTDETR__RTDETR_DECODER_HPP_

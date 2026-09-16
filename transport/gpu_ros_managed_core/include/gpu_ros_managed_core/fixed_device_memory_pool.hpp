@@ -16,14 +16,20 @@
 
 namespace gpu_ros_managed
 {
-namespace detail {struct PoolState; class PoolFactory;}
+namespace detail
+{
+struct PoolState;
+class PoolFactory;
+}
 
 struct PoolBlock
 {
   std::shared_ptr<DeviceBuffer> buffer;
   WriteHandle writer;
   PoolBlock(std::shared_ptr<DeviceBuffer> b, WriteHandle w)
-  : buffer(std::move(b)), writer(std::move(w)) {}
+      : buffer(std::move(b)), writer(std::move(w))
+  {
+  }
   PoolBlock(PoolBlock &&) noexcept = default;
   PoolBlock & operator=(PoolBlock &&) = delete;
 };
@@ -33,7 +39,9 @@ struct SynchronizedPoolBlock
   std::shared_ptr<DeviceBuffer> buffer;
   SynchronizedWriteHandle writer;
   SynchronizedPoolBlock(std::shared_ptr<DeviceBuffer> b, SynchronizedWriteHandle w)
-  : buffer(std::move(b)), writer(std::move(w)) {}
+      : buffer(std::move(b)), writer(std::move(w))
+  {
+  }
   SynchronizedPoolBlock(SynchronizedPoolBlock &&) noexcept = default;
   SynchronizedPoolBlock & operator=(SynchronizedPoolBlock &&) = delete;
 };
@@ -57,7 +65,9 @@ public:
 
 private:
   explicit FixedDeviceMemoryPool(std::shared_ptr<detail::PoolState> state)
-  : state_(std::move(state)) {}
+      : state_(std::move(state))
+  {
+  }
   std::shared_ptr<detail::PoolState> state_;
   friend class detail::PoolFactory;
 };
@@ -71,5 +81,5 @@ public:
     DeviceId, size_t block_size, size_t block_count, std::shared_ptr<BackendOps>);
 };
 }
-}  // namespace gpu_ros_managed
+} // namespace gpu_ros_managed
 #endif

@@ -57,6 +57,6 @@ nvidia::isaac_ros::nitros::NitrosTensorList BuildNitrosTensorBundle(
 nvidia::isaac_ros::nitros::NitrosTensorList BuildNitrosTensorBundle(
   TensorBundleOutput && output, int gpu_device_id);
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__NITROS_MANAGED_TENSOR_BUNDLE_ADAPTER_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__NITROS_MANAGED_TENSOR_BUNDLE_ADAPTER_HPP_

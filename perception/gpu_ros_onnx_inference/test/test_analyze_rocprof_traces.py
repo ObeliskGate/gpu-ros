@@ -56,8 +56,9 @@ def test_fixture_metadata_is_not_an_activity_event():
     assert len(capture.events) == 4
     assert len(capture.memory_copy_events) == 2
     assert len(capture.kernel_events) == 2
-    assert all(event['rocprof_domain'] in {'memory_copy', 'kernel_dispatch'}
-               for event in capture.events)
+    assert all(
+        event['rocprof_domain'] in {'memory_copy', 'kernel_dispatch'} for event in capture.events
+    )
     assert capture.sections['memory_copy_trace']['record_count'] == 2
     assert capture.sections['kernel_trace']['record_count'] == 2
 
@@ -74,16 +75,16 @@ def test_operation_lookup_is_metadata_driven_and_numeric_enum_is_only_sanity_che
 
     document = json.loads((FIXTURE_ROOT / 'rocprofv3_minimal.json').read_text())
     # Keep numeric enum 2 but make the metadata lookup claim enum 3.
-    document['rocprofiler-sdk-tool'][0]['strings']['buffer_records'][0]['operations'][2] = \
+    document['rocprofiler-sdk-tool'][0]['strings']['buffer_records'][0]['operations'][2] = (
         'MEMORY_COPY_DEVICE_TO_HOST'
+    )
     changed = FIXTURE_ROOT / 'rocprofv3_enum_mismatch.json'
     changed.write_text(json.dumps(document), encoding='utf-8')
     try:
         mismatch = ROC.load_capture([changed])
     finally:
         changed.unlink()
-    assert any(item['kind'] == 'schema_version_mismatch'
-               for item in mismatch.diagnostics)
+    assert any(item['kind'] == 'schema_version_mismatch' for item in mismatch.diagnostics)
     # Metadata lookup says D2H even though the numeric value is inconsistent.  The
     # loader must not silently replace the metadata fact with a magic-number
     # guess.
@@ -99,8 +100,7 @@ def test_missing_operation_lookup_does_not_guess_numeric_direction(tmp_path):
     capture = ROC.load_capture([path])
     event = capture.memory_copy_events[0]
     assert event['direction'] == 'unknown'
-    assert any(item['kind'] == 'operation_lookup_failed'
-               for item in capture.diagnostics)
+    assert any(item['kind'] == 'operation_lookup_failed' for item in capture.diagnostics)
 
 
 def test_agent_handles_are_process_local(tmp_path):
@@ -121,16 +121,20 @@ def test_agent_handles_are_process_local(tmp_path):
     capture = ROC.load_capture([FIXTURE_ROOT / 'rocprofv3_minimal.json', path])
     assert len(capture.memory_copy_events) == 4
     assert {event['source_agent_handle'] for event in capture.memory_copy_events} == {10, 11}
-    assert all(event['direction'] == direction for event, direction in zip(
-        capture.memory_copy_events, ('H2D', 'D2H', 'H2D', 'D2H')))
+    assert all(
+        event['direction'] == direction
+        for event, direction in zip(capture.memory_copy_events, ('H2D', 'D2H', 'H2D', 'D2H'))
+    )
 
 
 def test_kernel_dispatch_maps_through_kernel_symbols_without_complete_filtering():
     capture = ROC.load_capture([FIXTURE_ROOT / 'rocprofv3_minimal.json'])
     names = [event['kernel_name'] for event in capture.kernel_events]
     assert names == ['provider_kernel.kd', '__amd_rocclr_copyBuffer.kd']
-    assert all(event['kernel_operation_name'] == 'KERNEL_DISPATCH_COMPLETE'
-               for event in capture.kernel_events)
+    assert all(
+        event['kernel_operation_name'] == 'KERNEL_DISPATCH_COMPLETE'
+        for event in capture.kernel_events
+    )
 
 
 def test_malformed_json_and_schema_are_tooling_errors(tmp_path):
@@ -178,17 +182,21 @@ def test_cli_returns_tooling_error_exit_code_for_malformed_capture(tmp_path):
 def test_malformed_records_are_retained_as_inconclusive_evidence(tmp_path):
     document = json.loads((FIXTURE_ROOT / 'rocprofv3_minimal.json').read_text())
     process = document['rocprofiler-sdk-tool'][0]
-    process['buffer_records']['memory_copy'].append({
-        'kind': 10,
-        'operation': 99,
-        'src_agent_id': {'handle': 999},
-        'dst_agent_id': {'handle': 11},
-    })
-    process['buffer_records']['kernel_dispatch'].append({
-        'kind': 11,
-        'operation': 2,
-        'dispatch_info': {'kernel_id': 999, 'agent_id': {'handle': 11}},
-    })
+    process['buffer_records']['memory_copy'].append(
+        {
+            'kind': 10,
+            'operation': 99,
+            'src_agent_id': {'handle': 999},
+            'dst_agent_id': {'handle': 11},
+        }
+    )
+    process['buffer_records']['kernel_dispatch'].append(
+        {
+            'kind': 11,
+            'operation': 2,
+            'dispatch_info': {'kernel_id': 999, 'agent_id': {'handle': 11}},
+        }
+    )
     path = tmp_path / 'record-errors.json'
     path.write_text(json.dumps(document), encoding='utf-8')
     capture = ROC.load_capture([path])
@@ -197,9 +205,13 @@ def test_malformed_records_are_retained_as_inconclusive_evidence(tmp_path):
     assert len(capture.kernel_events) == 3
     assert capture.diagnostics
     result = ROC.compare(
-        capture.events, capture.events, {16, 8},
-        std_frames=1, managed_frames=1,
-        std_capture=capture, managed_capture=capture,
+        capture.events,
+        capture.events,
+        {16, 8},
+        std_frames=1,
+        managed_frames=1,
+        std_capture=capture,
+        managed_capture=capture,
         std_manifest=json.loads(MANIFEST.read_text()),
         managed_manifest=json.loads(MANIFEST.read_text()),
     )
@@ -215,39 +227,50 @@ def test_requested_empty_memory_copy_domain_is_inconclusive():
     assert details['kernel']['status'] == 'complete'
 
     result = ROC.compare(
-        capture.events, capture.events, set(),
-        std_frames=1, managed_frames=1,
+        capture.events,
+        capture.events,
+        set(),
+        std_frames=1,
+        managed_frames=1,
         require_adapter_directions=True,
-        std_capture=capture, managed_capture=capture,
-        std_manifest=manifest, managed_manifest=manifest,
+        std_capture=capture,
+        managed_capture=capture,
+        std_manifest=manifest,
+        managed_manifest=manifest,
     )
     assert result['status'] == 'INCONCLUSIVE'
     assert result['criteria']['memory_copy_manifest_complete'] is False
 
 
 def test_incomplete_kernel_record_without_name_formats_as_unresolved():
-    rendered = ROC.format_unresolved_kernel({
-        'lane': 'managed',
-        'classification': 'unresolved_kernel_evidence',
-        'reason': 'kernel domain incomplete',
-    })
+    rendered = ROC.format_unresolved_kernel(
+        {
+            'lane': 'managed',
+            'classification': 'unresolved_kernel_evidence',
+            'reason': 'kernel domain incomplete',
+        }
+    )
     assert rendered == (
-        'lane=managed classification=unresolved_kernel_evidence '
-        'reason=kernel domain incomplete')
+        'lane=managed classification=unresolved_kernel_evidence reason=kernel domain incomplete'
+    )
 
 
 def test_staging_shaped_h2d_d2h_evidence_is_not_claimed_as_adapter_proof():
     result = ROC.compare(
         [kernel('std_provider_kernel')],
         [memory_copy('hipMemcpyHtoD', 16), memory_copy('hipMemcpyDtoH', 8, 'device', 'host')],
-        {16, 8}, std_frames=10, managed_frames=10,
-        adapter_directions=('H2D', 'D2H'), require_adapter_directions=False,
+        {16, 8},
+        std_frames=10,
+        managed_frames=10,
+        adapter_directions=('H2D', 'D2H'),
+        require_adapter_directions=False,
     )
 
     assert result['status'] == 'PASS'
     assert result['memory_copy_failures'] == []
     assert {item['classification'] for item in result['adapter_copy_evidence']} == {
-        'staging_shaped_evidence'}
+        'staging_shaped_evidence'
+    }
     assert 'prove' in result['staging_policy']['description']
 
 
@@ -255,19 +278,23 @@ def test_managed_only_tensor_sized_d2d_copy_is_fail():
     result = ROC.compare(
         [kernel('provider_kernel')],
         [kernel('provider_kernel'), memory_copy('hipMemcpyDtoD', 16, 'device', 'device')],
-        {16}, std_frames=10, managed_frames=10,
+        {16},
+        std_frames=10,
+        managed_frames=10,
     )
     assert result['status'] == 'FAIL'
-    assert result['memory_copy_failures'][0]['reason'].startswith(
-        'managed-only tensor-sized')
+    assert result['memory_copy_failures'][0]['reason'].startswith('managed-only tensor-sized')
 
 
 def test_missing_expected_d2h_is_inconclusive_not_zero_copy_pass():
     result = ROC.compare(
         [memory_copy('hipMemcpyHtoD', 16)],
         [memory_copy('hipMemcpyHtoD', 16)],
-        {16}, std_frames=10, managed_frames=10,
-        adapter_directions=('H2D', 'D2H'), require_adapter_directions=True,
+        {16},
+        std_frames=10,
+        managed_frames=10,
+        adapter_directions=('H2D', 'D2H'),
+        require_adapter_directions=True,
     )
     assert result['status'] == 'INCONCLUSIVE'
     assert result['criteria']['expected_adapter_directions_observed'] is False
@@ -278,7 +305,9 @@ def test_ordinary_kernel_count_difference_is_diagnostic_only():
     result = ROC.compare(
         [kernel('provider_kernel')],
         [kernel('provider_kernel'), kernel('provider_kernel')],
-        set(), std_frames=10, managed_frames=10,
+        set(),
+        std_frames=10,
+        managed_frames=10,
     )
     assert result['status'] == 'PASS'
     assert result['unresolved_kernel_evidence'] == []
@@ -289,17 +318,19 @@ def test_shared_copybuffer_delta_is_amd_unresolved_evidence_not_generic_failure(
     result = ROC.compare(
         [kernel('__amd_rocclr_copyBuffer.kd')],
         [kernel('__amd_rocclr_copyBuffer.kd'), kernel('__amd_rocclr_copyBuffer.kd')],
-        set(), std_frames=10, managed_frames=10,
+        set(),
+        std_frames=10,
+        managed_frames=10,
     )
     assert result['status'] == 'INCONCLUSIVE'
     assert result['memory_copy_failures'] == []
     assert result['kernel_evidence']['copyBuffer'][0]['count_delta'] == 1
-    assert result['unresolved_kernel_evidence'][0]['classification'] == \
-        'unresolved_kernel_evidence'
+    assert result['unresolved_kernel_evidence'][0]['classification'] == 'unresolved_kernel_evidence'
 
 
 def test_common_report_does_not_turn_shared_copybuffer_delta_into_failure():
     from pathlib import Path as _Path
+
     common_path = _Path(__file__).parents[1] / 'scripts' / 'copy_audit_common.py'
     common_spec = importlib.util.spec_from_file_location('copy_audit_common_history', common_path)
     common = importlib.util.module_from_spec(common_spec)
@@ -307,7 +338,9 @@ def test_common_report_does_not_turn_shared_copybuffer_delta_into_failure():
     result = common.build_pair_report(
         [kernel('__amd_rocclr_copyBuffer.kd')],
         [kernel('__amd_rocclr_copyBuffer.kd'), kernel('__amd_rocclr_copyBuffer.kd')],
-        set(), reference_frames=10, managed_frames=10,
+        set(),
+        reference_frames=10,
+        managed_frames=10,
     )
     assert result['status'] == 'PASS'
 
@@ -318,8 +351,12 @@ def test_common_report_does_not_turn_shared_copybuffer_delta_into_failure():
 )
 def test_full_mi3501x_rtdetr_trace_regression():
     root = Path(__file__).parents[3]
-    sample_root = root / 'inner_docs' / 'rocprof_samples' / \
-        'rtdetr_amd_transport_audit_mi3501x_20260808_081138'
+    sample_root = (
+        root
+        / 'inner_docs'
+        / 'rocprof_samples'
+        / 'rtdetr_amd_transport_audit_mi3501x_20260808_081138'
+    )
     std_path = sample_root / 'std' / 'rtdetr_managed_attach_results.json'
     managed_path = sample_root / 'managed' / 'rtdetr_managed_attach_results.json'
     if not std_path.exists() or not managed_path.exists():
@@ -328,12 +365,17 @@ def test_full_mi3501x_rtdetr_trace_regression():
     managed_capture = ROC.load_capture([managed_path])
     manifest = json.loads(MANIFEST.read_text())
     result = ROC.compare(
-        std_capture.events, managed_capture.events,
+        std_capture.events,
+        managed_capture.events,
         {4915200, 800, 1600, 400},
-        std_frames=391, managed_frames=393,
-        adapter_directions=('H2D', 'D2H'), require_adapter_directions=True,
-        std_capture=std_capture, managed_capture=managed_capture,
-        std_manifest=manifest, managed_manifest=manifest,
+        std_frames=391,
+        managed_frames=393,
+        adapter_directions=('H2D', 'D2H'),
+        require_adapter_directions=True,
+        std_capture=std_capture,
+        managed_capture=managed_capture,
+        std_manifest=manifest,
+        managed_manifest=manifest,
     )
     assert std_capture.sections['memory_copy_trace']['record_count'] == 386
     assert managed_capture.sections['memory_copy_trace']['record_count'] == 393
@@ -347,7 +389,8 @@ def test_full_mi3501x_rtdetr_trace_regression():
     assert result['capture_completeness']['managed']['memory_copy']['status'] == 'complete'
     std_copybuffer = sum(item['std_count'] for item in result['kernel_evidence']['copyBuffer'])
     managed_copybuffer = sum(
-        item['managed_count'] for item in result['kernel_evidence']['copyBuffer'])
+        item['managed_count'] for item in result['kernel_evidence']['copyBuffer']
+    )
     assert std_copybuffer == 2316
     assert managed_copybuffer == 3930
     assert result['unresolved_kernel_evidence']

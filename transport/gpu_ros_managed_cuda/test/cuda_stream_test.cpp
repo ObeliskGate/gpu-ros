@@ -34,13 +34,13 @@ int main()
   uint8_t first_b = 0;
   {
     auto reader = buffer->get_read_handle(consumer_a);
-    assert(cudaMemcpyAsync(
-        &first_a, reader.data(), 1, cudaMemcpyDeviceToHost, consumer_a.get()) == cudaSuccess);
+    assert(cudaMemcpyAsync(&first_a, reader.data(), 1, cudaMemcpyDeviceToHost, consumer_a.get()) ==
+           cudaSuccess);
   }
   {
     auto reader = buffer->get_read_handle(consumer_b);
-    assert(cudaMemcpyAsync(
-        &first_b, reader.data(), 1, cudaMemcpyDeviceToHost, consumer_b.get()) == cudaSuccess);
+    assert(cudaMemcpyAsync(&first_b, reader.data(), 1, cudaMemcpyDeviceToHost, consumer_b.get()) ==
+           cudaSuccess);
   }
   assert(cudaStreamSynchronize(consumer_a.get()) == cudaSuccess);
   assert(cudaStreamSynchronize(consumer_b.get()) == cudaSuccess);
@@ -52,12 +52,13 @@ int main()
   int external_owner_releases = 0;
   void * external_memory = nullptr;
   assert(cudaMalloc(&external_memory, 64) == cudaSuccess);
-  auto external_owner = std::shared_ptr<void>(external_memory, [&external_owner_releases](void * p) {
+  auto external_owner =
+    std::shared_ptr<void>(external_memory, [&external_owner_releases](void * p) {
       ++external_owner_releases;
       static_cast<void>(cudaFree(p));
     });
-  auto externally_owned = gpu_ros_managed::cuda::adopt_synchronized_external(
-    external_memory, 64, 0, external_owner);
+  auto externally_owned =
+    gpu_ros_managed::cuda::adopt_synchronized_external(external_memory, 64, 0, external_owner);
   external_owner.reset();
   assert(external_owner_releases == 0);
   externally_owned.reset();

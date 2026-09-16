@@ -13,7 +13,7 @@ export GPU_ROS_REPO_ROOT
 EXPECTED_OBJECT_DETECTION_COMMIT="060ced887bd8a3a0be60b1fa454365942eefd128"
 EXPECTED_BENCHMARK_COMMIT="f46699e124262c5bfb6f00099061f6718f026b3f"
 
-cd "${ROOT_DIR}"
+cd "${ROOT_DIR}" || exit
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
 
 check_pins() {
@@ -33,16 +33,18 @@ report_repo_state() {
   local untracked_paths
   echo "${label} HEAD: $(git -C "${repository}" rev-parse HEAD)"
   echo "${label} diff HEAD --binary sha256: $(
-    git -C "${repository}" diff HEAD --binary | sha256sum | awk '{print $1}')"
+    git -C "${repository}" diff HEAD --binary | sha256sum | awk '{print $1}'
+  )"
   untracked_paths="$(git -C "${repository}" ls-files --others --exclude-standard)"
   if [[ -n "${untracked_paths}" ]]; then
     echo "${label} untracked paths:"
     printf '%s\n' "${untracked_paths}"
     echo "${label} untracked content sha256: $(
       git -C "${repository}" ls-files --others --exclude-standard -z |
-      while IFS= read -r -d '' path; do
-        sha256sum "${repository}/${path}"
-      done | sha256sum | awk '{print $1}')"
+        while IFS= read -r -d '' path; do
+          sha256sum "${repository}/${path}"
+        done | sha256sum | awk '{print $1}'
+    )"
   else
     echo "${label} untracked paths: none"
     echo "${label} untracked content sha256: none"
@@ -69,9 +71,11 @@ check_host() {
   }
   local object_detection_commit benchmark_commit
   object_detection_commit="$(
-    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection" rev-parse HEAD)"
+    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection" rev-parse HEAD
+  )"
   benchmark_commit="$(
-    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark" rev-parse HEAD)"
+    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark" rev-parse HEAD
+  )"
   [[ "${object_detection_commit}" == "${EXPECTED_OBJECT_DETECTION_COMMIT}" ]] || {
     echo "ERROR: external isaac_ros_object_detection is not at the manifest commit." >&2
     exit 1

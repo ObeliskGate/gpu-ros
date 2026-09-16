@@ -46,7 +46,6 @@ if [[ ! ${AUDIT_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 
 WORKSPACE_ROOT="${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}"
-APP_ROOT="${GPU_ROS_REPO_ROOT:-${WORKSPACE_ROOT}/src/gpu-ros}"
 RESULTS_ROOT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}"
 AUDIT_PARENT="${CAPTURE_AUDIT_ROOT:-${RESULTS_ROOT}/phase2b_audits}"
 AUDIT_ROOT="${AUDIT_PARENT}/${AUDIT_NAME}"
@@ -133,13 +132,13 @@ run_capture() {
   local binding_path="$5"
 
   CAPTURE_OUTPUT_ROOT="${BAG_ROOT}" \
-  CAPTURE_ORT_PROFILE_PREFIX="${profile_prefix}" \
-  CAPTURE_ORT_PROFILE_FRAMES="${ORT_PROFILE_FRAMES}" \
-  CAPTURE_BINDING_REPORT_PATH="${binding_path}" \
-  CAPTURE_NSYS_OUTPUT="${nsys_prefix}" \
-  CAPTURE_STOP_GRACE_SECONDS=60 \
-  CAPTURE_STOP_TERM_SECONDS=20 \
-  "${CAPTURE_RUNNER}" "${lane}" "${output_name}"
+    CAPTURE_ORT_PROFILE_PREFIX="${profile_prefix}" \
+    CAPTURE_ORT_PROFILE_FRAMES="${ORT_PROFILE_FRAMES}" \
+    CAPTURE_BINDING_REPORT_PATH="${binding_path}" \
+    CAPTURE_NSYS_OUTPUT="${nsys_prefix}" \
+    CAPTURE_STOP_GRACE_SECONDS=60 \
+    CAPTURE_STOP_TERM_SECONDS=20 \
+    "${CAPTURE_RUNNER}" "${lane}" "${output_name}"
 }
 
 echo "Capturing ${MODEL} Config C (ORT CUDA + NITROS)..."

@@ -17,9 +17,9 @@ namespace gpu_ros_managed::cuda
 class CudaStream
 {
 public:
-  const DeviceStream & stream() const noexcept {return stream_;}
+  const DeviceStream & stream() const noexcept { return stream_; }
   cudaStream_t get() const;
-  operator const DeviceStream &() const noexcept {return stream_;}
+  operator const DeviceStream &() const noexcept { return stream_; }
 
 private:
   explicit CudaStream(DeviceStream stream) : stream_(std::move(stream)) {}
@@ -36,8 +36,7 @@ std::shared_ptr<DeviceBuffer> adopt_external(
   void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner);
 std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
   void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner);
-FixedDeviceMemoryPool make_fixed_device_pool(
-  size_t block_size, size_t block_count, int device_id);
+FixedDeviceMemoryPool make_fixed_device_pool(size_t block_size, size_t block_count, int device_id);
 bool wait_for_pending_releases(std::chrono::milliseconds timeout);
-}  // namespace gpu_ros_managed::cuda
+} // namespace gpu_ros_managed::cuda
 #endif

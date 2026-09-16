@@ -29,28 +29,34 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             'Report the providers that executed ONNX Runtime node kernels and '
-            'list any nodes assigned to CPUExecutionProvider.'))
+            'list any nodes assigned to CPUExecutionProvider.'
+        )
+    )
     parser.add_argument('profiles', nargs='+', type=Path, help='ORT profile JSON files')
     parser.add_argument(
-        '--expected-provider',
-        help='Fail if this provider has no recorded kernel events')
+        '--expected-provider', help='Fail if this provider has no recorded kernel events'
+    )
     parser.add_argument(
         '--require-no-cpu-nodes',
         action='store_true',
-        help='Fail if CPUExecutionProvider kernel events are present')
+        help='Fail if CPUExecutionProvider kernel events are present',
+    )
     parser.add_argument(
         '--require-same-provider-layout',
         action='store_true',
-        help='Fail unless every profile has the same provider-to-node mapping')
+        help='Fail unless every profile has the same provider-to-node mapping',
+    )
     parser.add_argument(
         '--ignore-cpu-provider-layout',
         action='store_true',
-        help='When comparing layouts, ignore CPUExecutionProvider node differences')
+        help='When comparing layouts, ignore CPUExecutionProvider node differences',
+    )
     parser.add_argument(
         '--max-node-names',
         type=int,
         default=50,
-        help='Maximum unique node names printed per provider (default: 50)')
+        help='Maximum unique node names printed per provider (default: 50)',
+    )
     parser.add_argument('--output-json', type=Path, help='Optional machine-readable report')
     return parser.parse_args()
 
@@ -93,20 +99,15 @@ def summarize_profile(path):
         }
         for provider, data in sorted(providers.items())
     }
-    total_kernel_events = sum(
-        data['kernel_events'] for data in provider_report.values())
-    all_unique_nodes = {
-        node
-        for data in provider_report.values()
-        for node in data['unique_nodes']
-    }
+    total_kernel_events = sum(data['kernel_events'] for data in provider_report.values())
+    all_unique_nodes = {node for data in provider_report.values() for node in data['unique_nodes']}
     for data in provider_report.values():
         data['kernel_event_fraction'] = (
-            data['kernel_events'] / total_kernel_events
-            if total_kernel_events else 0.0)
+            data['kernel_events'] / total_kernel_events if total_kernel_events else 0.0
+        )
         data['unique_node_fraction'] = (
-            len(data['unique_nodes']) / len(all_unique_nodes)
-            if all_unique_nodes else 0.0)
+            len(data['unique_nodes']) / len(all_unique_nodes) if all_unique_nodes else 0.0
+        )
     return {
         'path': str(path),
         'provider_kernel_events_found': bool(provider_report),
@@ -127,7 +128,8 @@ def print_report(report, max_node_names):
     for provider, data in providers.items():
         print(
             f"    {provider}: {len(data['unique_nodes'])} unique nodes, "
-            f"{data['kernel_events']} kernel events, {data['duration_us']:.3f} us")
+            f"{data['kernel_events']} kernel events, {data['duration_us']:.3f} us"
+        )
 
     cpu_nodes = providers.get(CPU_PROVIDER, {}).get('unique_nodes', [])
     if not cpu_nodes:
@@ -139,7 +141,8 @@ def print_report(report, max_node_names):
     print(
         f"  CPU fallback share: {cpu_data['kernel_events']} kernel events "
         f"({cpu_data['kernel_event_fraction']:.2%}), {len(cpu_nodes)} unique nodes "
-        f"({cpu_data['unique_node_fraction']:.2%})")
+        f"({cpu_data['unique_node_fraction']:.2%})"
+    )
     for node_name in cpu_nodes[:max_node_names]:
         print(f'    - {node_name}')
     omitted = len(cpu_nodes) - max_node_names
@@ -171,19 +174,21 @@ def compare_provider_layouts(reports, ignored_providers=()):
         candidate = provider_layout(report, ignored_providers)
         if candidate == reference:
             continue
-        differences.append({
-            'profile': report['path'],
-            'missing_from_candidate': {
-                provider: sorted(set(nodes) - set(candidate.get(provider, [])))
-                for provider, nodes in reference.items()
-                if set(nodes) - set(candidate.get(provider, []))
-            },
-            'extra_in_candidate': {
-                provider: sorted(set(nodes) - set(reference.get(provider, [])))
-                for provider, nodes in candidate.items()
-                if set(nodes) - set(reference.get(provider, []))
-            },
-        })
+        differences.append(
+            {
+                'profile': report['path'],
+                'missing_from_candidate': {
+                    provider: sorted(set(nodes) - set(candidate.get(provider, [])))
+                    for provider, nodes in reference.items()
+                    if set(nodes) - set(candidate.get(provider, []))
+                },
+                'extra_in_candidate': {
+                    provider: sorted(set(nodes) - set(reference.get(provider, [])))
+                    for provider, nodes in candidate.items()
+                    if set(nodes) - set(reference.get(provider, []))
+                },
+            }
+        )
     return {
         'match': not differences,
         'reference_profile': reports[0]['path'],
@@ -218,7 +223,8 @@ def main():
             print(
                 f"ERROR: expected provider '{args.expected_provider}' has no kernel "
                 f'events in {path}',
-                file=sys.stderr)
+                file=sys.stderr,
+            )
             expected_provider_missing = True
 
     ignored_providers = {CPU_PROVIDER} if args.ignore_cpu_provider_layout else set()
@@ -227,21 +233,27 @@ def main():
         if len(reports) < 2:
             print(
                 'ERROR: --require-same-provider-layout requires at least two valid profiles',
-                file=sys.stderr)
+                file=sys.stderr,
+            )
         elif not layout_comparison['match']:
             print('ERROR: provider-to-node layouts differ', file=sys.stderr)
 
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
-        args.output_json.write_text(json.dumps({
-            'profiles': reports,
-            'provider_layout_comparison': layout_comparison,
-            'ignored_layout_providers': sorted(ignored_providers),
-        }, indent=2) + '\n')
+        args.output_json.write_text(
+            json.dumps(
+                {
+                    'profiles': reports,
+                    'provider_layout_comparison': layout_comparison,
+                    'ignored_layout_providers': sorted(ignored_providers),
+                },
+                indent=2,
+            )
+            + '\n'
+        )
 
-    layout_requirement_failed = (
-        args.require_same_provider_layout and
-        (len(reports) < 2 or not layout_comparison['match'])
+    layout_requirement_failed = args.require_same_provider_layout and (
+        len(reports) < 2 or not layout_comparison['match']
     )
     if invalid_profile or expected_provider_missing or layout_requirement_failed:
         return 2

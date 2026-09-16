@@ -45,9 +45,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='NvidiaTensorListToTensorBundle',
         namespace=ns,
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         remappings=[
             ('tensor_input', 'reshaped_tensor'),
             ('tensor_output', 'tensor_bundle_input'),
@@ -59,7 +57,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_rtdetr',
         plugin='gpu_ros::rtdetr::RtDetrPreprocessorNode',
-        remappings=[('encoded_tensor', 'tensor_bundle_input')]
+        remappings=[('encoded_tensor', 'tensor_bundle_input')],
     )
 
     bridge_node = ComposableNode(
@@ -67,11 +65,13 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::TensorBundleBridgeNode',
-        parameters=[{
-            'input_transport': 'std',
-            'enable_timing': False,
-        }],
-        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'bridged_tensor')]
+        parameters=[
+            {
+                'input_transport': 'std',
+                'enable_timing': False,
+            }
+        ],
+        remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'bridged_tensor')],
     )
 
     tensor_rt_node = ComposableNode(
@@ -79,28 +79,28 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_tensor_rt',
         plugin='nvidia::isaac_ros::dnn_inference::TensorRTNode',
-        parameters=[{
-            'engine_file_path': common.TRT_FP32_ENGINE_FILE_PATH,
-            'input_tensor_names': ['images', 'orig_target_sizes'],
-            'input_binding_names': ['images', 'orig_target_sizes'],
-            'output_binding_names': ['labels', 'boxes', 'scores'],
-            'output_tensor_names': ['labels', 'boxes', 'scores'],
-            'verbose': False,
-            'force_engine_update': False
-        }],
+        parameters=[
+            {
+                'engine_file_path': common.TRT_FP32_ENGINE_FILE_PATH,
+                'input_tensor_names': ['images', 'orig_target_sizes'],
+                'input_binding_names': ['images', 'orig_target_sizes'],
+                'output_binding_names': ['labels', 'boxes', 'scores'],
+                'output_tensor_names': ['labels', 'boxes', 'scores'],
+                'verbose': False,
+                'force_engine_update': False,
+            }
+        ],
         remappings=[
             ('tensor_pub', 'bridged_tensor'),
             ('tensor_sub', 'nvidia_tensor_output'),
-        ]
+        ],
     )
 
     tensor_bundle_adapter_node = ComposableNode(
         name='NvidiaTensorListToTensorBundle',
         namespace=ns,
         package='gpu_ros_nvidia_tensor_bundle_compat',
-        plugin=(
-            'gpu_ros::nvidia_tensor_bundle_compat::'
-            'NvidiaTensorListToTensorBundleNode'),
+        plugin=('gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode'),
         remappings=[
             ('tensor_input', 'nvidia_tensor_output'),
             ('tensor_output', 'tensor_bundle_output'),
@@ -126,8 +126,12 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns),
-            tensor_list_adapter_node, preprocessor_node, bridge_node, tensor_rt_node,
-            tensor_bundle_adapter_node, decoder_node,
+            tensor_list_adapter_node,
+            preprocessor_node,
+            bridge_node,
+            tensor_rt_node,
+            tensor_bundle_adapter_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -137,14 +141,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 def generate_test_description():
     model_path = os.path.join(
-        TestGpuRosRtDetrConfigBFp32.get_assets_root_path(), 'models',
-        common.MODEL_FILE_NAME)
+        TestGpuRosRtDetrConfigBFp32.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+    )
     if not os.path.isfile(common.TRT_FP32_ENGINE_FILE_PATH):
-        TRTConverter()([
-            f'--onnx={model_path}',
-            f'--saveEngine={common.TRT_FP32_ENGINE_FILE_PATH}',
-            '--skipInference',
-        ])
+        TRTConverter()(
+            [
+                f'--onnx={model_path}',
+                f'--saveEngine={common.TRT_FP32_ENGINE_FILE_PATH}',
+                '--skipInference',
+            ]
+        )
     return TestGpuRosRtDetrConfigBFp32.generate_test_description_with_nsys(launch_setup)
 
 
@@ -162,7 +168,7 @@ class TestGpuRosRtDetrConfigBFp32(ROS2BenchmarkTest):
             'data_resolution': common.IMAGE_RESOLUTION,
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
-        }
+        },
     )
 
     def test_benchmark(self):

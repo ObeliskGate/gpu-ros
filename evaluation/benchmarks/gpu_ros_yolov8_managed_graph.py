@@ -35,14 +35,17 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosYoloV8Managed.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME,
-            ),
-            'execution_provider': 'cuda',
-            'transport': 'managed',
-        }],
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosYoloV8Managed.get_assets_root_path(),
+                    'models',
+                    common.MODEL_FILE_NAME,
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'managed',
+            }
+        ],
         remappings=[
             ('tensor_input', 'managed_tensor_input'),
             ('tensor_output', 'managed_tensor_output'),
@@ -64,12 +67,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_yolov8',
         plugin='nvidia::isaac_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }],
+        parameters=[
+            {
+                'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
     container = ComposableNodeContainer(
         name='container',

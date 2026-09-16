@@ -20,7 +20,6 @@
 #include "gpu_ros_managed_core/buffer.hpp"
 
 std::shared_ptr<gpu_ros_managed::DeviceBuffer> MakeHipBufferInProducerDso();
-void ReadHipBufferInConsumerDso(
-  const std::shared_ptr<gpu_ros_managed::DeviceBuffer> & buffer);
+void ReadHipBufferInConsumerDso(const std::shared_ptr<gpu_ros_managed::DeviceBuffer> & buffer);
 
-#endif  // GPU_ROS_MANAGED_HIP__TEST__HIP_DSO_TEST_API_HPP_
+#endif // GPU_ROS_MANAGED_HIP__TEST__HIP_DSO_TEST_API_HPP_

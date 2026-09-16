@@ -25,11 +25,7 @@ from vision_msgs.msg import Detection2D, ObjectHypothesisWithPose
 from vision_msgs.msg import Detection2DArray
 
 
-SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1] /
-    'scripts' /
-    'compare_detection2d_bags.py'
-)
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / 'scripts' / 'compare_detection2d_bags.py'
 SPEC = importlib.util.spec_from_file_location('compare_detection2d_bags', SCRIPT_PATH)
 compare = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(compare)
@@ -178,14 +174,22 @@ def test_formal_class_aware_pair_thresholds_are_per_detection():
         max_pair_score_delta=0.001,
         class_aware_matching=True,
     )
-    reference = frame(0, 1, [
-        make_detection(10, 10, 4, 4, score=0.9, class_id='cup'),
-        make_detection(20, 20, 4, 4, score=0.8, class_id='box'),
-    ])
-    candidate = frame(0, 1, [
-        make_detection(10, 10, 4, 4, score=0.9005, class_id='cup'),
-        make_detection(20.1, 20, 4, 4, score=0.8, class_id='box'),
-    ])
+    reference = frame(
+        0,
+        1,
+        [
+            make_detection(10, 10, 4, 4, score=0.9, class_id='cup'),
+            make_detection(20, 20, 4, 4, score=0.8, class_id='box'),
+        ],
+    )
+    candidate = frame(
+        0,
+        1,
+        [
+            make_detection(10, 10, 4, 4, score=0.9005, class_id='cup'),
+            make_detection(20.1, 20, 4, 4, score=0.8, class_id='box'),
+        ],
+    )
     result = compare.compare_frame(reference, candidate, strict)
     assert not result.passed
     assert result.unmatched_count == 0
@@ -196,7 +200,8 @@ def test_pair_frames_by_index():
     reference = [frame(0, 10, []), frame(1, 20, [])]
     candidate = [frame(0, 99, [])]
     pairs, unpaired_reference, unpaired_candidate = compare.pair_frames(
-        reference, candidate, 'index')
+        reference, candidate, 'index'
+    )
     assert len(pairs) == 1
     assert unpaired_reference == 1
     assert unpaired_candidate == 0
@@ -206,7 +211,8 @@ def test_pair_frames_by_stamp():
     reference = [frame(0, 10, []), frame(1, 20, [])]
     candidate = [frame(0, 20, []), frame(1, 30, [])]
     pairs, unpaired_reference, unpaired_candidate = compare.pair_frames(
-        reference, candidate, 'stamp')
+        reference, candidate, 'stamp'
+    )
     assert [(ref.index, cand.index) for ref, cand in pairs] == [(1, 0)]
     assert unpaired_reference == 1
     assert unpaired_candidate == 1
@@ -216,7 +222,8 @@ def test_pair_frames_by_stamp_preserves_fifo_for_duplicate_stamps():
     reference = [frame(0, 10, []), frame(1, 10, [])]
     candidate = [frame(0, 10, []), frame(1, 10, [])]
     pairs, unpaired_reference, unpaired_candidate = compare.pair_frames(
-        reference, candidate, 'stamp')
+        reference, candidate, 'stamp'
+    )
     assert [(ref.index, cand.index) for ref, cand in pairs] == [(0, 0), (1, 1)]
     assert unpaired_reference == 0
     assert unpaired_candidate == 0
@@ -345,12 +352,18 @@ def test_cli_compares_detection_bags(tmp_path):
         [
             sys.executable,
             str(SCRIPT_PATH),
-            '--reference-bag', str(reference_bag),
-            '--candidate-bag', str(candidate_bag),
-            '--match-policy', 'index',
-            '--storage-id', 'sqlite3',
-            '--min-paired-frames', '1',
-            '--output-json', str(output_json),
+            '--reference-bag',
+            str(reference_bag),
+            '--candidate-bag',
+            str(candidate_bag),
+            '--match-policy',
+            'index',
+            '--storage-id',
+            'sqlite3',
+            '--min-paired-frames',
+            '1',
+            '--output-json',
+            str(output_json),
         ],
         capture_output=True,
         text=True,
@@ -384,12 +397,17 @@ def test_cli_report_only_uses_fixed_method_and_has_full_frame_metrics(tmp_path):
         [
             sys.executable,
             str(SCRIPT_PATH),
-            '--reference-bag', str(reference_bag),
-            '--candidate-bag', str(candidate_bag),
-            '--match-policy', 'stamp',
-            '--storage-id', 'sqlite3',
+            '--reference-bag',
+            str(reference_bag),
+            '--candidate-bag',
+            str(candidate_bag),
+            '--match-policy',
+            'stamp',
+            '--storage-id',
+            'sqlite3',
             '--report-only',
-            '--output-json', str(output_json),
+            '--output-json',
+            str(output_json),
         ],
         capture_output=True,
         text=True,

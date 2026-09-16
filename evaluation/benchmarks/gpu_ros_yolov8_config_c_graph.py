@@ -38,14 +38,16 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='gpu_ros_onnx_inference',
         plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
-        parameters=[{
-            'model_file_path': os.path.join(
-                TestGpuRosYoloV8ConfigC.get_assets_root_path(),
-                'models', common.MODEL_FILE_NAME),
-            'execution_provider': 'cuda',
-            'transport': 'nitros',
-        }],
-        remappings=[('tensor_input', 'reshaped_tensor'), ('tensor_output', 'tensor_sub')]
+        parameters=[
+            {
+                'model_file_path': os.path.join(
+                    TestGpuRosYoloV8ConfigC.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
+                ),
+                'execution_provider': 'cuda',
+                'transport': 'nitros',
+            }
+        ],
+        remappings=[('tensor_input', 'reshaped_tensor'), ('tensor_output', 'tensor_sub')],
     )
 
     decoder_node = ComposableNode(
@@ -53,12 +55,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=ns,
         package='isaac_ros_yolov8',
         plugin='nvidia::isaac_ros::yolov8::YoloV8DecoderNode',
-        parameters=[{
-            'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
-            'confidence_threshold': 0.25,
-            'nms_threshold': 0.45,
-            'num_classes': 80,
-        }]
+        parameters=[
+            {
+                'tensor_name': common.ORT_OUTPUT_TENSOR_NAME,
+                'confidence_threshold': 0.25,
+                'nms_threshold': 0.45,
+                'num_classes': 80,
+            }
+        ],
     )
 
     container = ComposableNodeContainer(
@@ -72,7 +76,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
             common.make_data_loader_node(ns),
             common.make_playback_node(ns),
             *common.make_preprocessing_nodes(ns, common.ORT_INPUT_TENSOR_NAME),
-            onnx_node, decoder_node,
+            onnx_node,
+            decoder_node,
             common.make_monitor_node(ns),
         ],
         output='screen',
@@ -99,7 +104,7 @@ class TestGpuRosYoloV8ConfigC(ROS2BenchmarkTest):
             'network_resolution': common.NETWORK_RESOLUTION,
             'build_type': 'Release',
             'inference_precision': 'FP32',
-        }
+        },
     )
 
     def test_benchmark(self):

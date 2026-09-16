@@ -35,9 +35,8 @@ struct YoloV8ImageEncoderConfig
 // RGB8, aspect-ratio-preserving resize, bottom/right zero padding, NCHW
 // float32, and a fixed 1/255 normalization.
 gpu_ros_tensor_bundle_msgs::msg::TensorBundle EncodeYoloV8Image(
-  const sensor_msgs::msg::Image & image,
-  const YoloV8ImageEncoderConfig & config);
+  const sensor_msgs::msg::Image & image, const YoloV8ImageEncoderConfig & config);
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8
 
-#endif  // GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_HPP_
+#endif // GPU_ROS_YOLOV8__YOLOV8_IMAGE_ENCODER_HPP_

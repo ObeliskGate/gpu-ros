@@ -28,7 +28,7 @@ namespace detail
 {
 struct BufferState;
 class DeviceBufferFactory;
-}  // namespace detail
+} // namespace detail
 
 class WriteHandle
 {
@@ -159,6 +159,6 @@ public:
   static std::shared_ptr<DeviceBuffer> make_ready(
     DeviceId, void *, size_t, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
 };
-}  // namespace detail
-}  // namespace gpu_ros_managed
+} // namespace detail
+} // namespace gpu_ros_managed
 #endif

@@ -59,6 +59,6 @@ private:
   bool output_probe_runtime_logged_{false};
 };
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference
 
-#endif  // GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE__ONNX_INFERENCE_NODE_HPP_

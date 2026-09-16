@@ -34,38 +34,36 @@ from ros2_benchmark import ROS2BenchmarkConfig  # noqa: E402
 
 RESULTS_DIR = os.environ.get("OVG_RESULTS_ROOT", "/workspaces/ovg-results")
 RESULTS_FILE = os.environ.get("R2B_RESULT_FILE") or (
-    "gpu_ros_yolov8_phase2b_amd_staged_control.json")
+    "gpu_ros_yolov8_phase2b_amd_staged_control.json"
+)
 
 
 def launch_setup(container_prefix, container_sigterm_timeout):
     """Build the YOLOv8 staged-control graph."""
     namespace = TestGpuRosYoloV8Phase2bAmdStagedControl.generate_namespace()
-    model_path = managed_graph.model_path_for_test(
-        TestGpuRosYoloV8Phase2bAmdStagedControl)
+    model_path = managed_graph.model_path_for_test(TestGpuRosYoloV8Phase2bAmdStagedControl)
 
     encoder = ComposableNode(
         name="Yolov8ManagedHipImageEncoder",
         namespace=namespace,
         package="gpu_ros_yolov8",
-        plugin=(
-            "gpu_ros::yolov8::"
-            "YoloV8ManagedHipImageEncoderNode"),
-        parameters=[{
-            "tensor_name": common.ORT_INPUT_TENSOR_NAME,
-            "output_width": common.NETWORK_RESOLUTION["width"],
-            "output_height": common.NETWORK_RESOLUTION["height"],
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::yolov8::YoloV8ManagedHipImageEncoderNode"),
+        parameters=[
+            {
+                "tensor_name": common.ORT_INPUT_TENSOR_NAME,
+                "output_width": common.NETWORK_RESOLUTION["width"],
+                "output_height": common.NETWORK_RESOLUTION["height"],
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
     )
     managed_to_std_input = ComposableNode(
         name="ManagedHipToStdInput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "ManagedHipToStdTensorBundleNode"),
+        plugin=("gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode"),
         parameters=[{"gpu_device_id": 0}],
         remappings=[
             ("tensor_input", "managed_tensor_output"),
@@ -76,14 +74,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="StdToManagedHipInput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "StdToManagedHipTensorBundleNode"),
-        parameters=[{
-            "gpu_device_id": 0,
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        plugin=("gpu_ros::onnx_inference::StdToManagedHipTensorBundleNode"),
+        parameters=[
+            {
+                "gpu_device_id": 0,
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("tensor_input", "staged_std_input"),
             ("tensor_output", "staged_managed_input"),
@@ -94,17 +92,19 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_onnx_inference",
         plugin="gpu_ros::onnx_inference::OnnxInferenceNode",
-        parameters=[{
-            "model_file_path": model_path,
-            "execution_provider": "migraphx",
-            "gpu_device_id": 0,
-            "transport": "managed",
-            "managed_io_contract": "hip_managed_strict",
-            "managed_input_contracts": ["images=float32[1,3,640,640]"],
-            "managed_output_contracts": ["output0=float32[1,84,8400]"],
-            "managed_pool_capacity": 16,
-            "managed_pool_wait_timeout_ms": 100,
-        }],
+        parameters=[
+            {
+                "model_file_path": model_path,
+                "execution_provider": "migraphx",
+                "gpu_device_id": 0,
+                "transport": "managed",
+                "managed_io_contract": "hip_managed_strict",
+                "managed_input_contracts": ["images=float32[1,3,640,640]"],
+                "managed_output_contracts": ["output0=float32[1,84,8400]"],
+                "managed_pool_capacity": 16,
+                "managed_pool_wait_timeout_ms": 100,
+            }
+        ],
         remappings=[
             ("tensor_input", "staged_managed_input"),
             ("tensor_output", "staged_managed_output"),
@@ -114,9 +114,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name="ManagedHipToStdOutput",
         namespace=namespace,
         package="gpu_ros_onnx_inference",
-        plugin=(
-            "gpu_ros::onnx_inference::"
-            "ManagedHipToStdTensorBundleNode"),
+        plugin=("gpu_ros::onnx_inference::ManagedHipToStdTensorBundleNode"),
         parameters=[{"gpu_device_id": 0}],
         remappings=[
             ("tensor_input", "staged_managed_output"),
@@ -128,12 +126,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         namespace=namespace,
         package="gpu_ros_yolov8",
         plugin="gpu_ros::yolov8::YoloV8DecoderNode",
-        parameters=[{
-            "tensor_name": common.ORT_OUTPUT_TENSOR_NAME,
-            "confidence_threshold": 0.25,
-            "nms_threshold": 0.45,
-            "num_classes": 80,
-        }],
+        parameters=[
+            {
+                "tensor_name": common.ORT_OUTPUT_TENSOR_NAME,
+                "confidence_threshold": 0.25,
+                "nms_threshold": 0.45,
+                "num_classes": 80,
+            }
+        ],
         remappings=[("tensor_sub", "staged_std_output")],
     )
 
@@ -162,19 +162,14 @@ def launch_setup(container_prefix, container_sigterm_timeout):
 
 def generate_test_description():
     """Generate the staged-control launch-test description."""
-    return TestGpuRosYoloV8Phase2bAmdStagedControl.generate_test_description_with_nsys(
-        launch_setup)
+    return TestGpuRosYoloV8Phase2bAmdStagedControl.generate_test_description_with_nsys(launch_setup)
 
 
-class TestGpuRosYoloV8Phase2bAmdStagedControl(
-    managed_graph.TestGpuRosYoloV8Phase2bAmdManaged):
+class TestGpuRosYoloV8Phase2bAmdStagedControl(managed_graph.TestGpuRosYoloV8Phase2bAmdManaged):
     """Benchmark the intentional Managed<->standard control lane."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name=(
-            "GPU ROS YOLOv8 Phase 2B AMD "
-            "(ORT MIGraphX + staged control)"
-        ),
+        benchmark_name=("GPU ROS YOLOv8 Phase 2B AMD (ORT MIGraphX + staged control)"),
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=1.0,
@@ -190,8 +185,7 @@ class TestGpuRosYoloV8Phase2bAmdStagedControl(
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorBundle with std control lane",
             "staging": (
-                "Managed->std->Managed before ORT; "
-                "Managed->std->standard decoder after ORT"
+                "Managed->std->Managed before ORT; Managed->std->standard decoder after ORT"
             ),
             "managed_io_contract": "hip_managed_strict",
             "build_type": "Release",

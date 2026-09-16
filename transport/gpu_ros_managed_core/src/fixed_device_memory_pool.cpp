@@ -28,15 +28,14 @@ struct PoolState
   std::vector<size_t> free_blocks;
   bool stopping{false};
 };
-}  // namespace gpu_ros_managed::detail
+} // namespace gpu_ros_managed::detail
 
 namespace gpu_ros_managed
 {
 namespace
 {
-std::unique_ptr<PoolBlock> acquire_impl(
-  const std::shared_ptr<detail::PoolState> & state, const DeviceStream & stream,
-  std::chrono::milliseconds * timeout)
+std::unique_ptr<PoolBlock> acquire_impl(const std::shared_ptr<detail::PoolState> & state,
+  const DeviceStream & stream, std::chrono::milliseconds * timeout)
 {
   if (stream.device_id() != state->device) {
     throw std::invalid_argument("Pool and stream backend/device mismatch");
@@ -44,20 +43,23 @@ std::unique_ptr<PoolBlock> acquire_impl(
   size_t index;
   {
     std::unique_lock<std::mutex> lock(state->mutex);
-    const auto ready = [&] {return state->stopping || !state->free_blocks.empty();};
+    const auto ready = [&] { return state->stopping || !state->free_blocks.empty(); };
     if (timeout) {
-      if (!state->cv.wait_for(lock, *timeout, ready)) {return nullptr;}
+      if (!state->cv.wait_for(lock, *timeout, ready)) {
+        return nullptr;
+      }
     } else {
       state->cv.wait(lock, ready);
     }
-    if (state->stopping) {throw std::runtime_error("Pool is shutting down");}
+    if (state->stopping) {
+      throw std::runtime_error("Pool is shutting down");
+    }
     index = state->free_blocks.back();
     state->free_blocks.pop_back();
   }
 
-  auto block_token = std::shared_ptr<void>(
-    state->base + index * state->block_size,
-    [state, index](void *) {
+  auto block_token =
+    std::shared_ptr<void>(state->base + index * state->block_size, [state, index](void *) {
       {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->free_blocks.push_back(index);
@@ -71,26 +73,28 @@ std::unique_ptr<PoolBlock> acquire_impl(
 }
 
 std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_impl(
-  const std::shared_ptr<detail::PoolState> & state,
-  std::chrono::milliseconds * timeout)
+  const std::shared_ptr<detail::PoolState> & state, std::chrono::milliseconds * timeout)
 {
   size_t index;
   {
     std::unique_lock<std::mutex> lock(state->mutex);
-    const auto ready = [&] {return state->stopping || !state->free_blocks.empty();};
+    const auto ready = [&] { return state->stopping || !state->free_blocks.empty(); };
     if (timeout) {
-      if (!state->cv.wait_for(lock, *timeout, ready)) {return nullptr;}
+      if (!state->cv.wait_for(lock, *timeout, ready)) {
+        return nullptr;
+      }
     } else {
       state->cv.wait(lock, ready);
     }
-    if (state->stopping) {throw std::runtime_error("Pool is shutting down");}
+    if (state->stopping) {
+      throw std::runtime_error("Pool is shutting down");
+    }
     index = state->free_blocks.back();
     state->free_blocks.pop_back();
   }
 
-  auto block_token = std::shared_ptr<void>(
-    state->base + index * state->block_size,
-    [state, index](void *) {
+  auto block_token =
+    std::shared_ptr<void>(state->base + index * state->block_size, [state, index](void *) {
       {
         std::lock_guard<std::mutex> lock(state->mutex);
         state->free_blocks.push_back(index);
@@ -100,10 +104,9 @@ std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_impl(
   auto * pointer = static_cast<uint8_t *>(block_token.get());
   auto buffer = detail::DeviceBufferFactory::make_fresh(
     state->device, pointer, state->block_size, std::move(block_token), state->ops);
-  return std::make_unique<SynchronizedPoolBlock>(
-    buffer, buffer->get_synchronized_write_handle());
+  return std::make_unique<SynchronizedPoolBlock>(buffer, buffer->get_synchronized_write_handle());
 }
-}  // namespace
+} // namespace
 
 PoolBlock FixedDeviceMemoryPool::acquire(const DeviceStream & stream)
 {
@@ -130,14 +133,17 @@ size_t FixedDeviceMemoryPool::available() const noexcept
   std::lock_guard<std::mutex> lock(state_->mutex);
   return state_->free_blocks.size();
 }
-size_t FixedDeviceMemoryPool::capacity() const noexcept {return state_->block_count;}
+size_t FixedDeviceMemoryPool::capacity() const noexcept
+{
+  return state_->block_count;
+}
 bool FixedDeviceMemoryPool::shutdown(std::chrono::milliseconds timeout)
 {
   std::unique_lock<std::mutex> lock(state_->mutex);
   state_->stopping = true;
   state_->cv.notify_all();
   const bool drained = state_->cv.wait_for(
-    lock, timeout, [&] {return state_->free_blocks.size() == state_->block_count;});
+    lock, timeout, [&] { return state_->free_blocks.size() == state_->block_count; });
   if (drained) {
     state_->allocation.reset();
     state_->base = nullptr;
@@ -146,8 +152,7 @@ bool FixedDeviceMemoryPool::shutdown(std::chrono::milliseconds timeout)
 }
 
 FixedDeviceMemoryPool detail::PoolFactory::make(
-  DeviceId device, size_t block_size, size_t block_count,
-  std::shared_ptr<BackendOps> ops)
+  DeviceId device, size_t block_size, size_t block_count, std::shared_ptr<BackendOps> ops)
 {
   if (block_size == 0 || block_count == 0) {
     throw std::invalid_argument("Pool block size and count must be non-zero");
@@ -166,7 +171,9 @@ FixedDeviceMemoryPool detail::PoolFactory::make(
   state->allocation = state->ops->allocate_device(device.ordinal, block_size * block_count);
   state->base = static_cast<uint8_t *>(state->allocation.get());
   state->free_blocks.reserve(block_count);
-  for (size_t i = 0; i < block_count; ++i) {state->free_blocks.push_back(i);}
+  for (size_t i = 0; i < block_count; ++i) {
+    state->free_blocks.push_back(i);
+  }
   return FixedDeviceMemoryPool(std::move(state));
 }
-}  // namespace gpu_ros_managed
+} // namespace gpu_ros_managed

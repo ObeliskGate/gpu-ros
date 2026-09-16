@@ -19,8 +19,7 @@ import pathlib
 
 
 _POL_MODULE_PATH = pathlib.Path(__file__).with_name('gpu_ros_onnx_rtdetr_pol_test.py')
-_POL_SPEC = importlib.util.spec_from_file_location('gpu_ros_onnx_rtdetr_pol_test',
-                                                   _POL_MODULE_PATH)
+_POL_SPEC = importlib.util.spec_from_file_location('gpu_ros_onnx_rtdetr_pol_test', _POL_MODULE_PATH)
 if _POL_SPEC is None or _POL_SPEC.loader is None:
     raise ImportError(f'Unable to load shared POL module from {_POL_MODULE_PATH}')
 _POL_MODULE = importlib.util.module_from_spec(_POL_SPEC)

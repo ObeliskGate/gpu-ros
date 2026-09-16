@@ -30,6 +30,6 @@ using NvidiaTensor = isaac_ros_tensor_list_interfaces::msg::Tensor;
 TensorBundle ToTensorBundle(const NvidiaTensorList & source);
 NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source);
 
-}  // namespace gpu_ros::nvidia_tensor_bundle_compat
+} // namespace gpu_ros::nvidia_tensor_bundle_compat
 
-#endif  // GPU_ROS_NVIDIA_TENSOR_BUNDLE_COMPAT__TENSOR_BUNDLE_CONVERSION_HPP_
+#endif // GPU_ROS_NVIDIA_TENSOR_BUNDLE_COMPAT__TENSOR_BUNDLE_CONVERSION_HPP_

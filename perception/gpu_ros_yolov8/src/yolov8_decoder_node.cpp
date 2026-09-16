@@ -30,7 +30,7 @@ namespace gpu_ros::yolov8
 {
 
 YoloV8DecoderNode::YoloV8DecoderNode(const rclcpp::NodeOptions options)
-: rclcpp::Node("yolov8_decoder_node", options)
+    : rclcpp::Node("yolov8_decoder_node", options)
 {
   config_.tensor_name = declare_parameter<std::string>("tensor_name", "output_tensor");
   config_.confidence_threshold = declare_parameter<double>("confidence_threshold", 0.25);
@@ -38,9 +38,8 @@ YoloV8DecoderNode::YoloV8DecoderNode(const rclcpp::NodeOptions options)
   config_.num_classes = declare_parameter<int64_t>("num_classes", 80);
 
   pub_ = create_publisher<vision_msgs::msg::Detection2DArray>("detections_output", 10);
-  sub_ = create_subscription<TensorBundle>(
-    "tensor_sub", rclcpp::QoS(10),
-    [this](TensorBundle::SharedPtr msg) {InputCallback(std::move(msg));});
+  sub_ = create_subscription<TensorBundle>("tensor_sub", rclcpp::QoS(10),
+    [this](TensorBundle::SharedPtr msg) { InputCallback(std::move(msg)); });
 }
 
 void YoloV8DecoderNode::InputCallback(const TensorBundle::SharedPtr msg)
@@ -52,6 +51,6 @@ void YoloV8DecoderNode::InputCallback(const TensorBundle::SharedPtr msg)
   }
 }
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8
 
 RCLCPP_COMPONENTS_REGISTER_NODE(gpu_ros::yolov8::YoloV8DecoderNode)

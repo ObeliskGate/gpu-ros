@@ -92,7 +92,6 @@ def match_frame(dets_a, dets_b):
 
 
 class DetectionComparator(Node):
-
     def __init__(
         self,
         topic_a,
@@ -109,21 +108,24 @@ class DetectionComparator(Node):
         self.min_paired_frames = min_paired_frames
         self.buf_a = {}
         self.buf_b = {}
-        self.frame_ious = []      # mean IoU per paired frame
-        self.frame_deltas = []    # mean score delta per paired frame
+        self.frame_ious = []  # mean IoU per paired frame
+        self.frame_deltas = []  # mean score delta per paired frame
         self.frame_unmatched = []
         self.frame_passes = []
         self.create_subscription(
-            Detection2DArray, topic_a, lambda m: self._on(m, self.buf_a, self.buf_b), 10)
+            Detection2DArray, topic_a, lambda m: self._on(m, self.buf_a, self.buf_b), 10
+        )
         self.create_subscription(
-            Detection2DArray, topic_b, lambda m: self._on(m, self.buf_b, self.buf_a), 10)
+            Detection2DArray, topic_b, lambda m: self._on(m, self.buf_b, self.buf_a), 10
+        )
 
     def _on(self, msg, own_buf, other_buf):
         key = stamp_key(msg)
         if key in other_buf:
             other = other_buf.pop(key)
             ious, deltas, unmatched_count = match_frame(
-                list(msg.detections), list(other.detections))
+                list(msg.detections), list(other.detections)
+            )
             if not ious and unmatched_count == 0:
                 self.frame_ious.append(1.0)
                 self.frame_deltas.append(0.0)
@@ -141,9 +143,10 @@ class DetectionComparator(Node):
                 self.frame_deltas.append(mean_delta)
                 self.frame_unmatched.append(unmatched_count)
                 self.frame_passes.append(
-                    unmatched_count == 0 and
-                    mean_iou >= self.min_mean_iou and
-                    mean_delta <= self.max_mean_score_delta)
+                    unmatched_count == 0
+                    and mean_iou >= self.min_mean_iou
+                    and mean_delta <= self.max_mean_score_delta
+                )
         else:
             own_buf[key] = msg
 
@@ -161,23 +164,29 @@ class DetectionComparator(Node):
         frame_pass = np.mean(np.array(self.frame_passes, dtype=bool))
         unmatched_frames = int(np.count_nonzero(unmatched))
         print(f'Paired frames: {len(ious)}')
-        print(f'IoU   mean={ious.mean():.4f} median={np.median(ious):.4f} '
-              f'p95={np.percentile(ious, 95):.4f}')
-        print(f'Score mean={delta_mean:.4f} median={delta_median:.4f} '
-              f'p95={delta_p95:.4f}')
-        print(f'Unmatched detections: total={int(unmatched.sum())} '
-              f'frames={unmatched_frames}/{len(unmatched)}')
+        print(
+            f'IoU   mean={ious.mean():.4f} median={np.median(ious):.4f} '
+            f'p95={np.percentile(ious, 95):.4f}'
+        )
+        print(f'Score mean={delta_mean:.4f} median={delta_median:.4f} p95={delta_p95:.4f}')
+        print(
+            f'Unmatched detections: total={int(unmatched.sum())} '
+            f'frames={unmatched_frames}/{len(unmatched)}'
+        )
         print(f'Frames passing per-frame threshold: {frame_pass * 100:.1f}%')
-        print('Thresholds: '
-              f'min_paired_frames={self.min_paired_frames}, '
-              f'min_mean_iou={self.min_mean_iou:.4f}, '
-              f'max_mean_score_delta={self.max_mean_score_delta:.4f}, '
-              f'min_frame_pass_rate={self.min_frame_pass_rate:.4f}')
+        print(
+            'Thresholds: '
+            f'min_paired_frames={self.min_paired_frames}, '
+            f'min_mean_iou={self.min_mean_iou:.4f}, '
+            f'max_mean_score_delta={self.max_mean_score_delta:.4f}, '
+            f'min_frame_pass_rate={self.min_frame_pass_rate:.4f}'
+        )
         ok = (
-            len(ious) >= self.min_paired_frames and
-            ious.mean() >= self.min_mean_iou and
-            delta_mean <= self.max_mean_score_delta and
-            frame_pass >= self.min_frame_pass_rate)
+            len(ious) >= self.min_paired_frames
+            and ious.mean() >= self.min_mean_iou
+            and delta_mean <= self.max_mean_score_delta
+            and frame_pass >= self.min_frame_pass_rate
+        )
         print('PASS' if ok else 'FAIL')
         return ok
 
@@ -186,16 +195,27 @@ def main():
     parser = argparse.ArgumentParser(description='Compare two detection topics.')
     parser.add_argument('--topic-a', default='/a/detections_output')
     parser.add_argument('--topic-b', default='/d/detections_output')
-    parser.add_argument('--duration', type=float, default=30.0,
-                        help='Seconds to collect before reporting')
-    parser.add_argument('--min-mean-iou', type=float, default=0.95,
-                        help='Minimum mean IoU across paired frames')
-    parser.add_argument('--max-mean-score-delta', type=float, default=0.05,
-                        help='Maximum mean score delta across paired frames')
-    parser.add_argument('--min-frame-pass-rate', type=float, default=0.90,
-                        help='Minimum fraction of paired frames passing per-frame thresholds')
-    parser.add_argument('--min-paired-frames', type=int, default=1,
-                        help='Minimum number of paired frames required')
+    parser.add_argument(
+        '--duration', type=float, default=30.0, help='Seconds to collect before reporting'
+    )
+    parser.add_argument(
+        '--min-mean-iou', type=float, default=0.95, help='Minimum mean IoU across paired frames'
+    )
+    parser.add_argument(
+        '--max-mean-score-delta',
+        type=float,
+        default=0.05,
+        help='Maximum mean score delta across paired frames',
+    )
+    parser.add_argument(
+        '--min-frame-pass-rate',
+        type=float,
+        default=0.90,
+        help='Minimum fraction of paired frames passing per-frame thresholds',
+    )
+    parser.add_argument(
+        '--min-paired-frames', type=int, default=1, help='Minimum number of paired frames required'
+    )
     args = parser.parse_args()
 
     rclpy.init()

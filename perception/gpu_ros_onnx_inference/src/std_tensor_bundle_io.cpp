@@ -34,8 +34,7 @@ using TensorBundleMsg = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 class StdTensorBundleIO : public ITensorBundleIO
 {
 public:
-  explicit StdTensorBundleIO(rclcpp::Node * node, bool publish_output)
-  : node_{node}
+  explicit StdTensorBundleIO(rclcpp::Node * node, bool publish_output) : node_{node}
   {
     if (publish_output) {
       pub_ = node_->create_publisher<TensorBundleMsg>("tensor_output", 10);
@@ -46,14 +45,10 @@ public:
   {
     callback_ = std::move(callback);
     sub_ = node_->create_subscription<TensorBundleMsg>(
-      "tensor_input", 10,
-      [this](const TensorBundleMsg::SharedPtr msg) {OnMsg(msg);});
+      "tensor_input", 10, [this](const TensorBundleMsg::SharedPtr msg) { OnMsg(msg); });
   }
 
-  OutputPlacement output_placement() const noexcept override
-  {
-    return OutputPlacement::kHost;
-  }
+  OutputPlacement output_placement() const noexcept override { return OutputPlacement::kHost; }
 
   void Publish(TensorBundleOutput && output) override
   {
@@ -86,13 +81,12 @@ private:
     inputs.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
       std::vector<int64_t> shape(t.shape.begin(), t.shape.end());
-      inputs.push_back(gpu_ros_managed::ManagedTensor::from_host_external(
-          t.name, static_cast<gpu_ros_managed::TensorDataType>(t.data_type),
-          std::move(shape), std::static_pointer_cast<const void>(msg),
-          t.data.data(), t.data.size()));
+      inputs.push_back(gpu_ros_managed::ManagedTensor::from_host_external(t.name,
+        static_cast<gpu_ros_managed::TensorDataType>(t.data_type), std::move(shape),
+        std::static_pointer_cast<const void>(msg), t.data.data(), t.data.size()));
     }
-    auto list = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
-      msg->header, std::move(inputs));
+    auto list =
+      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(msg->header, std::move(inputs));
     callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
   }
 
@@ -102,12 +96,11 @@ private:
   rclcpp::Publisher<TensorBundleMsg>::SharedPtr pub_;
 };
 
-}  // namespace
+} // namespace
 
-std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(
-  rclcpp::Node * node, bool publish_output)
+std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node, bool publish_output)
 {
   return std::make_unique<StdTensorBundleIO>(node, publish_output);
 }
 
-}  // namespace gpu_ros::onnx_inference
+} // namespace gpu_ros::onnx_inference

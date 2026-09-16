@@ -14,8 +14,7 @@ TEST(ImagePreprocessPlan, ComputesLetterboxGeometry)
   image.encoding = "rgb8";
   image.data.resize(image.step * image.height, 1U);
   const auto plan = gpu_ros::detection_common::MakeImagePreprocessPlan(
-    image, 8, 8,
-    gpu_ros::detection_common::PreprocessNormalization::kNone);
+    image, 8, 8, gpu_ros::detection_common::PreprocessNormalization::kNone);
   EXPECT_EQ(plan.resized_width, 8);
   EXPECT_EQ(plan.resized_height, 4);
   EXPECT_EQ(gpu_ros::detection_common::SourceRowBytes(plan), 12U);
@@ -29,10 +28,8 @@ TEST(ImagePreprocessPlan, RejectsShortStepAndBuffer)
   image.step = 11;
   image.encoding = "rgb8";
   image.data.resize(22);
-  EXPECT_THROW(
-    gpu_ros::detection_common::MakeImagePreprocessPlan(
-      image, 8, 8,
-      gpu_ros::detection_common::PreprocessNormalization::kNone),
+  EXPECT_THROW(gpu_ros::detection_common::MakeImagePreprocessPlan(
+                 image, 8, 8, gpu_ros::detection_common::PreprocessNormalization::kNone),
     std::invalid_argument);
 }
 
@@ -45,8 +42,7 @@ TEST(ImagePreprocessPlan, CpuReferenceUsesRgbNchwAndExactZeroPadding)
   image.encoding = "bgr8";
   image.data = {10U, 20U, 30U, 40U, 50U, 60U, 99U, 99U};
   const auto plan = gpu_ros::detection_common::MakeImagePreprocessPlan(
-    image, 2, 2,
-    gpu_ros::detection_common::PreprocessNormalization::kUnitRange);
+    image, 2, 2, gpu_ros::detection_common::PreprocessNormalization::kUnitRange);
   const auto values = gpu_ros::detection_common::ExecuteCpuPreprocess(image, plan);
 
   ASSERT_EQ(values.size(), 12U);
@@ -71,8 +67,7 @@ TEST(ImagePreprocessPlan, CpuReferenceReplicatesMonoChannel)
   image.encoding = "mono8";
   image.data = {17U};
   const auto plan = gpu_ros::detection_common::MakeImagePreprocessPlan(
-    image, 1, 1,
-    gpu_ros::detection_common::PreprocessNormalization::kNone);
+    image, 1, 1, gpu_ros::detection_common::PreprocessNormalization::kNone);
   const auto values = gpu_ros::detection_common::ExecuteCpuPreprocess(image, plan);
   ASSERT_EQ(values.size(), 3U);
   EXPECT_FLOAT_EQ(values[0], 17.0F);

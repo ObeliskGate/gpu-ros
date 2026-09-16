@@ -64,18 +64,17 @@ private:
 class YoloV8ManagedHipDecoderNode final : public rclcpp::Node
 {
 public:
-  explicit YoloV8ManagedHipDecoderNode(
-    const rclcpp::NodeOptions options = rclcpp::NodeOptions());
+  explicit YoloV8ManagedHipDecoderNode(const rclcpp::NodeOptions options = rclcpp::NodeOptions());
 
 private:
   void InputCallback(gpu_ros_managed::ManagedTensorBundleView message);
   gpu_ros_managed::hip::HipStream read_stream_;
   YoloV8DecoderConfig config_;
   rclcpp::Publisher<vision_msgs::msg::Detection2DArray>::SharedPtr publisher_;
-  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<
-      gpu_ros_managed::ManagedTensorBundleView>> subscriber_;
+  std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
+    subscriber_;
 };
 
-}  // namespace gpu_ros::yolov8
+} // namespace gpu_ros::yolov8
 
-#endif  // GPU_ROS_YOLOV8__YOLOV8_MANAGED_HIP_NODES_HPP_
+#endif // GPU_ROS_YOLOV8__YOLOV8_MANAGED_HIP_NODES_HPP_

@@ -54,21 +54,17 @@ struct ImagePreprocessPlan
   PreprocessNormalization normalization{PreprocessNormalization::kNone};
 };
 
-ImagePreprocessPlan MakeImagePreprocessPlan(
-  const sensor_msgs::msg::Image & image,
-  int64_t output_width,
-  int64_t output_height,
-  PreprocessNormalization normalization);
+ImagePreprocessPlan MakeImagePreprocessPlan(const sensor_msgs::msg::Image & image,
+  int64_t output_width, int64_t output_height, PreprocessNormalization normalization);
 
 // CPU reference implementation. The result is contiguous NCHW float32 with
 // channel order RGB and top-left placement with zero bottom/right padding.
 std::vector<float> ExecuteCpuPreprocess(
-  const sensor_msgs::msg::Image & image,
-  const ImagePreprocessPlan & plan);
+  const sensor_msgs::msg::Image & image, const ImagePreprocessPlan & plan);
 
 size_t SourceRowBytes(const ImagePreprocessPlan & plan);
 const char * ImageEncodingName(ImageEncoding encoding) noexcept;
 
-}  // namespace gpu_ros::detection_common
+} // namespace gpu_ros::detection_common
 
-#endif  // GPU_ROS_DETECTION_COMMON__IMAGE_PREPROCESS_HPP_
+#endif // GPU_ROS_DETECTION_COMMON__IMAGE_PREPROCESS_HPP_
