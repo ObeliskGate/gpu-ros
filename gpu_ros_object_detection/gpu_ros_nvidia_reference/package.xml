@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gpu_ros_nvidia_reference</name>
+  <version>0.1.0</version>
+  <description>NVIDIA/Isaac-specific reference launch graphs for GPU ROS object detection.</description>
+  <maintainer email="unnamets@gmail.com">Boshen Chen</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>gpu_ros_onnx_inference</exec_depend>
+  <exec_depend>gpu_ros_rtdetr</exec_depend>
+  <exec_depend>gpu_ros_nvidia_tensor_bundle_compat</exec_depend>
+  <exec_depend>isaac_ros_image_proc</exec_depend>
+  <exec_depend>isaac_ros_tensor_proc</exec_depend>
+  <exec_depend>isaac_ros_rtdetr</exec_depend>
+  <exec_depend>isaac_ros_yolov8</exec_depend>
+  <exec_depend>isaac_ros_tensor_rt</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -8,4 +8,4 @@
 *.plan  binary
 
 # Unified diffs require a single context marker on otherwise blank lines.
-docker/patches/*.patch whitespace=-blank-at-eol
+gpu_ros_object_detection/docker/patches/*.patch whitespace=-blank-at-eol

@@ -16,4 +16,4 @@ When sharing a reproduction, use a fresh external state directory and redact
 `OVG_*` values that identify a private deployment. Preserve the one-repository
 contract and do not weaken provider, digest, permission, device, or asset gates
 to make a run succeed. See `CONTRIBUTING.md` for ordinary changes and
-`docs/experiments/amd-runtime-contract.md` for the public runtime boundary.
+`skills/gpu-ros-experiments/references/amd-runtime-contract.md` for the public runtime boundary.

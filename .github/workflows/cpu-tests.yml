@@ -25,7 +25,7 @@ jobs:
           persist-credentials: false
       - name: Build and test transport core
         run: |
-          cmake -S transport -B "${RUNNER_TEMP}/gpu-ros-transport-core" \
+          cmake -S gpu_ros_managed -B "${RUNNER_TEMP}/gpu-ros-transport-core" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_DISABLE_FIND_PACKAGE_ament_cmake=TRUE \
             -DBUILD_TESTING=ON \
@@ -64,9 +64,9 @@ jobs:
           uv run --no-project --isolated --python 3.12 \
             --with pytest==9.0.3 \
             python -m pytest -q -p no:cacheprovider \
-            tools/test_edit_isaac_ros_tensor_list_interfaces_package.py \
-            perception/gpu_ros_onnx_inference/test/test_summarize_ort_profile.py \
-            perception/gpu_ros_onnx_inference/test/test_compare_nsys_cuda_traces.py \
-            perception/gpu_ros_onnx_inference/test/test_compare_nvidia_copy_traces.py \
-            perception/gpu_ros_onnx_inference/test/test_analyze_rocprof_traces.py \
-            evaluation/gpu_ros_detection_validation/test/test_capture_runner.py
+            gpu_ros_object_detection/tools/edit_isaac_ros_tensor_list_interfaces_package.py \
+            gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_summarize_ort_profile.py \
+            gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nsys_cuda_traces.py \
+            gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nvidia_copy_traces.py \
+            gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_analyze_rocprof_traces.py \
+            gpu_ros_object_detection/gpu_ros_detection_validation/test/test_capture_runner.py

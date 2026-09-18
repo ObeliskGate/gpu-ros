@@ -1,0 +1,46 @@
+build:
+  base-paths:
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_cuda
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_ros
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_tensor_bundle_msgs
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_common
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_onnx_inference
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_rtdetr
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_yolov8
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_nvidia_tensor_bundle_compat
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_validation
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_nvidia_reference
+    - src/nvidia_external/isaac_ros_object_detection/isaac_ros_yolov8
+  cmake-args:
+    - --no-warn-unused-cli
+    - -DCMAKE_BUILD_TYPE=Release
+    - -DORT_ENABLE_CUDA=ON
+    - -DORT_ENABLE_ROCM=OFF
+    - -DORT_ENABLE_MIGRAPHX=OFF
+    - -DBUILD_NITROS_TRANSPORT=ON
+    - -DBUILD_TESTING=ON
+  symlink-install: true
+test:
+  base-paths:
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_core
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_cuda
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_ros
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_tensor_bundle_msgs
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_common
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_onnx_inference
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_rtdetr
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_yolov8
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_nvidia_tensor_bundle_compat
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_validation
+    - src/gpu-ros/gpu_ros_object_detection/gpu_ros_nvidia_reference
+  packages-select:
+    - gpu_ros_managed_core
+    - gpu_ros_managed_cuda
+    - gpu_ros_managed_ros
+    - gpu_ros_managed_tensor_bundle
+    - gpu_ros_tensor_bundle_msgs
+    - gpu_ros_onnx_inference
+    - gpu_ros_nvidia_tensor_bundle_compat

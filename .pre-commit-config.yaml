@@ -1,4 +1,4 @@
-exclude: '(^docs/results/|^docker/patches/|(?:^|/)(?:LICENSE|LICENSES|THIRD_PARTY_NOTICES)(?:$|/|\.)|(?:^|/)AGENTS\.md$)'
+exclude: '(^docs/results/|^gpu_ros_object_detection/docker/patches/|(?:^|/)(?:LICENSE|LICENSES|THIRD_PARTY_NOTICES)(?:$|/|\.)|(?:^|/)AGENTS\.md$)'
 default_language_version:
   python: python3.12
 repos:
@@ -32,11 +32,11 @@ repos:
     hooks:
       - id: ruff
         types_or: [python, pyi]
-        files: '(\.pyi?$|^tools/phase2-assets$)'
+        files: '(\.pyi?$|^gpu_ros_object_detection/tools/phase2-assets$)'
         args: [--config=ruff.toml, --no-cache]
       - id: ruff-format
         types_or: [python, pyi]
-        files: '(\.pyi?$|^tools/phase2-assets$)'
+        files: '(\.pyi?$|^gpu_ros_object_detection/tools/phase2-assets$)'
         args: [--config=ruff.toml, --no-cache]
 
   - repo: local

@@ -11,13 +11,13 @@ The following local files are derived from file-level Apache-2.0 source in
 NVIDIA Isaac ROS NITROS `v4.5-0`, commit
 `82310fce298d3d9db26945a3a988d5c471d14973`:
 
-- `transport/gpu_ros_managed_core/include/gpu_ros_managed_core/buffer.hpp`
-- `transport/gpu_ros_managed_core/src/buffer.cpp`
-- `transport/gpu_ros_managed_core/include/gpu_ros_managed_core/fixed_device_memory_pool.hpp`
-- `transport/gpu_ros_managed_core/src/fixed_device_memory_pool.cpp`
-- `transport/gpu_ros_managed_tensor_bundle/include/gpu_ros_managed_tensor_bundle/tensor_bundle.hpp`
-- `transport/gpu_ros_managed_tensor_bundle/src/tensor_bundle.cpp`
-- `transport/gpu_ros_managed_ros/include/gpu_ros_managed_ros/managed_pub_sub.hpp`
+- `gpu_ros_managed/gpu_ros_managed_core/include/gpu_ros_managed_core/buffer.hpp`
+- `gpu_ros_managed/gpu_ros_managed_core/src/buffer.cpp`
+- `gpu_ros_managed/gpu_ros_managed_core/include/gpu_ros_managed_core/fixed_device_memory_pool.hpp`
+- `gpu_ros_managed/gpu_ros_managed_core/src/fixed_device_memory_pool.cpp`
+- `gpu_ros_managed/gpu_ros_managed_tensor_bundle/include/gpu_ros_managed_tensor_bundle/tensor_bundle.hpp`
+- `gpu_ros_managed/gpu_ros_managed_tensor_bundle/src/tensor_bundle.cpp`
+- `gpu_ros_managed/gpu_ros_managed_ros/include/gpu_ros_managed_ros/managed_pub_sub.hpp`
 
 The exact upstream file attribution is retained in each derived file, and the
 files contain a notice describing the local backend-neutral or GXF-free
@@ -25,14 +25,14 @@ modification. NITROS repository/package metadata is not treated as a blanket
 Apache license for all of NITROS.
 
 The managed package uses the independent `gpu_ros_tensor_bundle_msgs` message
-package at `interfaces/gpu_ros_tensor_bundle_msgs` in this monorepo. Its
+package at `gpu_ros_managed/gpu_ros_tensor_bundle_msgs` in this monorepo. Its
 TypeAdapter is project-authored and does not depend on NVIDIA's `TensorList`
 message package; the NVIDIA conversion boundary lives in the monorepo's
-`compat/gpu_ros_nvidia_tensor_bundle_compat` package.
+`gpu_ros_managed/gpu_ros_nvidia_tensor_bundle_compat` package.
 
 ## NVIDIA Isaac ROS object-detection sources
 
-The opt-in `external/nvidia-isaac-ros.repos` manifest records
+The opt-in `gpu_ros_object_detection/external/nvidia-isaac-ros.repos` manifest records
 `isaac_ros_object_detection` at commit
 `060ced887bd8a3a0be60b1fa454365942eefd128`. The following local groups are
 derived from its file-level Apache-2.0 sources and retain the NVIDIA
@@ -42,9 +42,9 @@ parallel Boshen copyright for local original additions; benchmark composition
 files do not mechanically claim one:
 
 - RT-DETR decoder, decoder node, and preprocessor sources and headers under
-  `perception/gpu_ros_rtdetr/`;
+  `gpu_ros_object_detection/gpu_ros_rtdetr/`;
 - YOLOv8 decoder and decoder-node sources and headers under
-  `perception/gpu_ros_yolov8/`.
+  `gpu_ros_object_detection/gpu_ros_yolov8/`.
 
 The local image encoders, Managed HIP nodes, and ONNX Runtime integration were
 reviewed as project-original application code where no exact one-to-one
@@ -77,7 +77,7 @@ License 2.0 in `LICENSE`.
 ## NVIDIA Isaac ROS benchmark sources
 
 The opt-in external manifest records `isaac_ros_benchmark` at commit
-`f46699e124262c5bfb6f00099061f6718f026b3f`. `evaluation/benchmarks/rtdetr_common.py`
+`f46699e124262c5bfb6f00099061f6718f026b3f`. `gpu_ros_object_detection/benchmarks/rtdetr_common.py`
 and the RT-DETR benchmark compositions are adapted from the file-level
 Apache-2.0 RT-DETR benchmark graph at that commit. The local YOLOv8 benchmark
 composition has no exact upstream YOLOv8 benchmark counterpart in the pinned
@@ -93,20 +93,20 @@ remains an external checkout and is not covered by the root Apache declaration.
 
 The Docker/build workflow fetches ONNX Runtime `v1.23.1` at commit
 `d9b2048791efb5804fe3d53a04b4971256addebf` and applies the three MIGraphX
-patches under `docker/patches/`. ONNX Runtime is MIT-licensed; the applicable
+patches under `gpu_ros_object_detection/docker/patches/`. ONNX Runtime is MIT-licensed; the applicable
 copy is preserved in `LICENSES/ONNXRUNTIME-MIT.txt`. The Linux unused-helper
 patch also records Microsoft upstream commit
 `935affb848b1635be7d48d9c21c625300e7a3571`.
 
 ## Isaac ROS common and ros2_benchmark patches
 
-`docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch` now
+`gpu_ros_object_detection/docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch` now
 contains only the file-level Apache-licensed CMake change. Its package
 dependency change is performed by the XML-aware semantic editor against the
 user's verified exact checkout; no proprietary package XML or long context is
 embedded in this repository.
 
-`docker/patches/ros2-benchmark-v4.5-standalone.patch` is a source patch for the
+`gpu_ros_object_detection/docker/patches/ros2-benchmark-v4.5-standalone.patch` is a source patch for the
 external benchmark checkout. Its file-level Apache source boundary and the
 external package's own license metadata remain separate from this root
 license.
@@ -115,8 +115,8 @@ license.
 
 The following unchanged test image copies are from NVIDIA-ISAAC-ROS/isaac_ros_object_detection, commit `060ced887bd8a3a0be60b1fa454365942eefd128`, upstream path `isaac_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`:
 
-- `perception/gpu_ros_onnx_inference/test/test_cases/single_detection/color_000000.jpg`
-- `perception/gpu_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`
+- `gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_cases/single_detection/color_000000.jpg`
+- `gpu_ros_object_detection/gpu_ros_rtdetr/test/test_cases/single_detection/color_000000.jpg`
 
 The fixture is distributed under Apache-2.0, with upstream attribution to NVIDIA CORPORATION & AFFILIATES. Image contents are unchanged. SHA-256: `84b21f989fca7b98ca4cfb902346401a0c2d917cff2fbf4f207bad98b30bbdd1`.
 

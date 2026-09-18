@@ -1,0 +1,32 @@
+services:
+  dev:
+    build:
+      context: ../..
+      dockerfile: gpu_ros_object_detection/docker/Dockerfile
+    network_mode: host
+    # The NVIDIA reference profile uses CUDA, NITROS, and TensorRT-backed
+    # upstream components.  Device reservations alone can leave an existing
+    # Compose container on runc without the NVIDIA driver hook.
+    runtime: nvidia
+    stdin_open: true
+    tty: true
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets
+      GPU_ROS_REPO_ROOT: /workspaces/isaac_ros-dev/src/gpu-ros
+      COLCON_DEFAULTS_FILE: /workspaces/isaac_ros-dev/src/gpu-ros/gpu_ros_object_detection/docker/colcon-defaults-phase2b-nvidia.yaml
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    volumes:
+      - ../..:/workspaces/isaac_ros-dev/src/gpu-ros
+      - ${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:?set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection:/workspaces/isaac_ros-dev/src/nvidia_external/isaac_ros_object_detection:ro
+      - ${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:?set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark:/workspaces/isaac_ros-dev/src/nvidia_external/isaac_ros_benchmark:ro
+      - assets:/workspaces/isaac_ros-dev/assets
+    working_dir: /workspaces/isaac_ros-dev
+
+volumes:
+  assets:

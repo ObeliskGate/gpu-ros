@@ -2,162 +2,112 @@
 
 ## Project overview
 
-GPU ROS is a ROS 2 monorepo for RT-DETRv2 and YOLOv8 object detection and
-explicit GPU-buffer transport. It targets ROS 2 Jazzy on Ubuntu 24.04 with
-ROCm 7.1.1, the selected AMD GPU target, and the ONNX Runtime/MIGraphX build
-locked in `config/onnxruntime.lock`. NVIDIA reference work uses the pinned
-Isaac ROS 4.5-compatible runtime. These are compatibility targets, not a claim
-that every ROS, GPU, driver, or provider combination is supported.
+GPU ROS is one ROS 2 monorepo with two library collections:
+`gpu_ros_managed/` and `gpu_ros_object_detection/`. The compatibility targets
+are ROS 2 Jazzy, Ubuntu 24.04, ROCm 7.1.1 and the selected AMD device target,
+with the external ORT/MIGraphX build locked in
+`gpu_ros_object_detection/config/onnxruntime.lock`; NVIDIA reference work uses
+the pinned Isaac ROS 4.5-compatible runtime. Other combinations are not implied
+by these targets.
 
-The project works without an agent skill. The optional public skill at
-[`skills/gpu-ros-experiments/SKILL.md`](skills/gpu-ros-experiments/SKILL.md)
-only points agents to the checked-out runbooks and existing commands.
+Read the checked-out [experiment skill](skills/gpu-ros-experiments/SKILL.md)
+and its references before runtime work. These files are the method authority;
+installing a skill is optional.
 
-## Monorepo architecture and ownership
+## Collection ownership
 
-Top-level directories classify components. Do not rename, shorten, split, or
-relocate the actual package directories or ROS package names:
+- `gpu_ros_managed/` contains seven packages: core, CUDA, HIP, ROS wrappers,
+  managed TensorBundle, TensorBundle messages, and NVIDIA TensorList conversion.
+  Its parent CMake project builds only core and optional CUDA/HIP. Do not add
+  an aggregate package.xml or include ROS/message/compat packages in that build.
+- `gpu_ros_object_detection/` contains six packages: detection common, ONNX
+  inference, RT-DETR, YOLOv8, validation, and NVIDIA reference compositions.
+  Its benchmarks directory is not a ROS package. Detection tools, config,
+  external manifests, Docker, and Apptainer facilities belong to this collection.
+- `gpu_ros_nvidia_tensor_bundle_compat` owns generic conversions and the
+  boundary launch. It is the only project package with a direct NVIDIA
+  TensorList interface dependency. Full NVIDIA detection launches belong to
+  `gpu_ros_nvidia_reference`. AMD excludes both packages. Core model packages
+  must not acquire Isaac runtime dependencies; existing test dependencies are
+  a separate boundary.
+- Root `tools/` owns repository release and namespace-boundary checks.
+  Methods belong under `skills/gpu-ros-experiments/`; results belong in `docs/`.
 
-- `transport/` contains the standalone `gpu_ros_managed_*` C++17 core and
-  optional CUDA/HIP/ROS/TensorBundle adapters.
-- `interfaces/` contains `gpu_ros_tensor_bundle_msgs`.
-- `perception/` contains `gpu_ros_detection_common`,
-  `gpu_ros_onnx_inference`, `gpu_ros_rtdetr`, and `gpu_ros_yolov8`.
-- `compat/` contains the optional
-  `gpu_ros_nvidia_tensor_bundle_compat` package. It is the only project package
-  allowed to depend on NVIDIA TensorList interfaces and is excluded from AMD
-  profiles.
-- `evaluation/` contains validation tools and `benchmarks/`; the latter is a
-  graph-definition directory, not a ROS package.
-- `docker/`, `apptainer/`, `config/`, and `external/` contain runtime,
-  configuration, and pinned external-source inputs.
+Preserve package basenames and ROS names, C++ namespaces, public includes,
+CMake targets/aliases, plugin identifiers, message schemas, and model contracts.
+Do not recreate the old classification roots, duplicate launches, or path
+aliases. Update every caller when an owning path changes. Do not change
+algorithms, kernels, compiler flags, provider/model policy, graphs, QoS,
+executors, warmup, benchmark parameters, or output schemas during a layout change.
 
-The managed transport is an intra-process ownership and synchronization layer.
-It does not own model logic, preprocessing, decoding, provider policy, or an
-inter-process zero-copy promise. ROS serialization of device-backed tensors
-performs a host copy. Keep the project TensorBundle schema distinct from the
-NVIDIA TensorList compatibility types.
-
-When changing a public `ITensorBundleIO` or managed-buffer contract, update all
-callers and the affected transport/application packages together. Preserve
-model input/output names, shapes, provider selection, stream/device rules,
-plugins, CMake targets, and package exports.
+Managed transport owns buffer lifetime and synchronization, not preprocessing,
+inference, decoding, or an inter-process zero-copy promise. ROS serialization
+of device storage performs a host copy. Keep project TensorBundle messages
+separate from NVIDIA TensorList types. A public `ITensorBundleIO` or buffer
+contract change must update all affected callers and packages together.
 
 ## Repository and runtime paths
 
-From the AMD runtime, the one source checkout is:
+The monorepo root identifies source and releases. The detection root owns
+facilities. Neither replaces the runtime workspace:
 
-```text
-/workspaces/gpu-ros
-```
+- AMD: `/workspaces/gpu-ros`, also `GPU_ROS_REPO_ROOT` and `OVG_WORKSPACE_ROOT`.
+- NVIDIA: `/workspaces/isaac_ros-dev`, with the repository at `src/gpu-ros` and
+  pinned external sources at `src/nvidia_external`.
 
-`GPU_ROS_REPO_ROOT` and `OVG_WORKSPACE_ROOT` refer to that repository path in
-the AMD runtime. Assets, MIGraphX cache, results, external ORT state,
-colcon build/install/log state, and home state use separate mounts. Do not add
-a sibling checkout or a second source bind. AMD launchers require the external
-ORT install selected by `OVG_ORT_ROOT`; `/opt/onnxruntime` in an image is not a
-formal runtime fallback.
+Use one checkout bind, with assets, cache, results, ORT, build/install/log, and
+home state on separate mounts. Never restore sibling-checkout variables or
+redefine unrelated `OVG_*` fields. AMD requires the complete external install
+selected by `OVG_ORT_ROOT`; image `/opt/onnxruntime` content is not a formal
+runtime fallback.
 
-The NVIDIA runtime deliberately retains an outer workspace:
+The standalone source is `cmake -S gpu_ros_managed` from the repository root,
+or `cmake -S .` from the managed directory. Use fresh out-of-tree build state.
+Colcon must receive explicit package directories, not the managed parent CMake
+project. Runtime defaults are in `gpu_ros_object_detection/docker/`.
 
-```text
-/workspaces/isaac_ros-dev
-/workspaces/isaac_ros-dev/src/gpu-ros
-/workspaces/isaac_ros-dev/src/nvidia_external
-```
+## Execution and evidence
 
-The NVIDIA Compose file mounts this repository once at `src/gpu-ros`, keeps
-`/workspaces/isaac_ros-dev` as the working directory, and preserves pinned
-external checkouts and runtime hooks. NVIDIA scripts use
-`GPU_ROS_REPO_ROOT` or default it to
-`${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}/src/gpu-ros`.
+Use existing project commands and the selected method reference. AMD defaults
+to explicit `OVG_RUNTIME=docker`. A site without Docker may select Apptainer
+inside an authorized compute allocation. Never run GPU workloads on a login
+node. Reuse verified dependency images, external sources, models, and data;
+rebuild or export only when required and authorized.
 
-Do not reintroduce obsolete managed-checkout variables, sibling checkout
-checks, or old-path aliases. Do not change unrelated `OVG_*` meanings. Keep all
-model/data/runtime outputs outside the source tree.
+Run acceptance payloads non-interactively. Keep the same external Compose
+override on every command; do not call a launcher branch that drops it and
+starts another container. Apptainer payloads use the launcher's bind/environment
+contract and the mounted checkout entrypoint. `shell` is for human debugging,
+not a verification prerequisite. The helper at
+`gpu_ros_object_detection/tools/phase2` has only `env`, `assets`, `cache`, and
+`build` groups, not `test`, `smoke`, or `benchmark`.
 
-## Build and run commands
+Run focused checks and preserve their actual exit codes and raw logs.
+Benchmark `launch_test` commands measure performance and require an explicit
+request. A wrapper exit of zero or valid JSON does not prove clean component
+teardown. Keep numeric correctness, copy evidence, lifecycle status, and
+throughput separate. Do not weaken thresholds, drop unmatched frames, or use
+cross-lane REPORT_ONLY evidence to pass a failed same-lane migration gate.
+Use [result acceptance](skills/gpu-ros-experiments/references/result-acceptance.md).
 
-Use the existing launchers rather than duplicating their orchestration. From
-the repository root, the AMD sequence is:
+Record the executed revision, dirty/untracked fingerprints, runtime identity,
+loaded ORT/provider, model/data hashes, commands, and raw artifact IDs. Matrix
+manifests use schema 3 and one monorepo identity. Capture logs and promoted
+summaries remain unversioned. Legacy records keep their original identities;
+historical result files remain byte-for-byte unchanged. Documentation written
+after a run must not replace its executed-source fingerprints.
 
-```bash
-./docker/phase2-amd.sh preflight
-./docker/phase2-amd.sh up
-./docker/phase2-amd.sh colcon
-./docker/phase2-amd.sh verify
-./docker/phase2-amd.sh shell
-```
+## Assets, licenses, and privacy
 
-Use `build` or `bootstrap` only when the existing dependency image/SIF is not
-usable. Inside the runtime, run `phase2 env --verify` and
-`phase2 assets status`; `tools/phase2` has only its existing `env`, `assets`,
-`cache`, and `build` groups. Capture and benchmark scripts retain their
-existing arguments and thresholds under `evaluation/`.
+Do not commit models, checkpoints, ONNX files, engines, datasets, bags, traces,
+profiles, logs, caches, runtime images, external source trees, or generated
+results. The offline asset helper is
+`gpu_ros_object_detection/tools/phase2-assets`. A digest establishes identity,
+not a redistribution license. Never substitute an asset or provider silently.
 
-For NVIDIA, resolve the Compose file from the repository checkout, then use:
-
-```bash
-docker compose -f docker-compose.yaml config
-./docker/phase1-nvidia.sh up
-./docker/phase1-nvidia.sh colcon
-./docker/phase1-nvidia.sh verify
-./docker/phase1-nvidia.sh shell
-```
-
-Inside the NVIDIA shell, work from `/workspaces/isaac_ros-dev`; repository
-scripts and benchmark definitions are under `src/gpu-ros/`.
-
-The standalone transport core has no ROS or GPU SDK dependency. From the
-monorepo root configure with `cmake -S transport`; from `transport/` configure
-with `cmake -S .`. Use a fresh out-of-tree build directory. ROS adapter builds
-must include the `transport` and `interfaces` roots in the same monorepo.
-
-## Documentation and experiment rules
-
-Read the relevant canonical runbook before changing or running a lane:
-
-- `docs/experiments/amd-runtime-contract.md` for AMD mounts, devices,
-  environment, ORT, and optional site allocation gates;
-- `docs/experiments/phase2a-amd.md` for standard ROS 2 plus MIGraphX;
-- `docs/experiments/phase2b-managed.md` for managed HIP topology;
-- `docs/experiments/phase1-nvidia.md` and `phase2b-nvidia.md` for NVIDIA;
-- `docs/experiments/rtdetrv2-validation.md` for the external RT-DETR export;
-- `docs/results/README.md` for provenance and promotion semantics.
-
-The public skill and these runbooks never contain Slurm allocation commands,
-private hostnames, accounts, deployment paths, driver repair, or model bytes.
-Those are external prerequisites. Do not add a scheduler adapter or claim a
-smoke run reestablished a published performance result.
-
-New matrix manifests use schema 3 and one `monorepo_revision`. Fixed-input
-capture logs and promoted summaries remain unversioned and use
-`monorepo_revision`/`monorepo_worktree_diff_sha256` as specified in the result
-documentation. Matrix v2 and legacy capture records retain their historical
-two-identity interpretation. Historical result archives remain byte-for-byte
-unchanged.
-
-## Assets, licenses, and security
-
-The repository does not redistribute model weights, checkpoints, ONNX files,
-engines, datasets, bags, traces, profiles, logs, caches, SIF images, or
-external source trees. Import user-held assets with `tools/phase2-assets` and
-record their configured hashes. A hash is a compatibility check, not a license
-grant. Do not silently substitute a model or provider when an asset/provider
-gate fails.
-
-Preserve file-level copyright and modification notices. The root Apache-2.0
-license, component notices, and external licenses remain authoritative. Never
-commit credentials, private paths, scheduler/device identifiers, or generated
-runtime output. Follow `CONTRIBUTING.md` for changes and `SECURITY.md` for
-private vulnerability reports.
-
-## Change and verification discipline
-
-Keep a change within its owning top-level directory where possible. Update
-relative documentation links and package resource paths when a file moves, but
-do not refactor algorithms or benchmark parameters as part of a path migration.
-Run focused checks for the affected layer, and report only commands actually
-run. For runtime work record the monorepo commit, dirty/untracked fingerprints,
-image or SIF identity, ORT/provider identity, model/data hashes, command, and
-external result location.
+Preserve file-level copyright and modification notices. Root/component notices
+and external licenses remain authoritative. Public methods and results must
+not include credentials, private users/hosts/IPs, scheduler or device-instance
+identifiers, allocation commands, driver repair, or absolute deployment paths.
+Public GPU models, driver versions, and runtime digests are scientific identity,
+not deployment secrets. Follow CONTRIBUTING.md and SECURITY.md.
