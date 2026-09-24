@@ -34,8 +34,7 @@ def fixture_project(tmp_path):
     project.mkdir()
     (project / 'CMakeLists.txt').write_text(
         'cmake_minimum_required(VERSION 3.22.1)\n'
-        'project(ort_find_fixture LANGUAGES NONE)\n\n'
-        + source[start:end],
+        'project(ort_find_fixture LANGUAGES NONE)\n\n' + source[start:end],
         encoding='utf-8',
     )
     return project
@@ -54,13 +53,20 @@ def installation(path, *, header=True, library=True):
 def configure(project, build, *options):
     env = os.environ.copy()
     for name in (
-        'ONNXRUNTIME_ROOT', 'ONNXRUNTIME_INCLUDE_DIR', 'ONNXRUNTIME_LIBRARY',
-        'CMAKE_PREFIX_PATH', 'CMAKE_INCLUDE_PATH', 'CMAKE_LIBRARY_PATH',
+        'ONNXRUNTIME_ROOT',
+        'ONNXRUNTIME_INCLUDE_DIR',
+        'ONNXRUNTIME_LIBRARY',
+        'CMAKE_PREFIX_PATH',
+        'CMAKE_INCLUDE_PATH',
+        'CMAKE_LIBRARY_PATH',
     ):
         env.pop(name, None)
     return subprocess.run(
         ['cmake', '-S', str(project), '-B', str(build), *options],
-        capture_output=True, text=True, env=env, check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
     )
 
 
@@ -103,7 +109,9 @@ def test_independent_explicit_paths_survive_reconfigure(tmp_path):
     include = headers / 'include'
     library = libraries / 'lib' / LIBRARY
     result = configure(
-        project, build, f'-DONNXRUNTIME_INCLUDE_DIR={include}',
+        project,
+        build,
+        f'-DONNXRUNTIME_INCLUDE_DIR={include}',
         f'-DONNXRUNTIME_LIBRARY={library}',
     )
     assert_selection(result, build, include, library)
@@ -117,7 +125,9 @@ def test_root_with_explicit_library_override(tmp_path):
     build = tmp_path / 'build'
     library = other / 'lib' / LIBRARY
     result = configure(
-        project, build, f'-DONNXRUNTIME_ROOT={root}',
+        project,
+        build,
+        f'-DONNXRUNTIME_ROOT={root}',
         f'-DONNXRUNTIME_LIBRARY={library}',
     )
     assert_selection(result, build, root / 'include', library)
@@ -130,7 +140,9 @@ def test_incomplete_root_cannot_use_other_installation(tmp_path, header, library
     root = installation(tmp_path / 'root', header=header, library=library)
     decoy = installation(tmp_path / 'decoy')
     result = configure(
-        project, tmp_path / 'build', f'-DONNXRUNTIME_ROOT={root}',
+        project,
+        tmp_path / 'build',
+        f'-DONNXRUNTIME_ROOT={root}',
         f'-DCMAKE_PREFIX_PATH={decoy}',
     )
     assert result.returncode != 0, result.stdout + result.stderr
