@@ -3,5 +3,6 @@
 int main()
 {
   return gpu_ros_managed::detail::pending_release_count(gpu_ros_managed::BackendKind::kCuda) == 0
-           ? 0 : 1;
+           ? 0
+           : 1;
 }
