@@ -20,19 +20,30 @@ find_package(gpu_ros_managed_tensor_bundle REQUIRED)
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
 set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation root")
-set(ONNXRUNTIME_INCLUDE_DIR "" CACHE PATH "Directory containing onnxruntime_cxx_api.h")
-set(ONNXRUNTIME_LIBRARY "" CACHE FILEPATH "Path to libonnxruntime.so")
+
+# Empty cache entries (including those left by older configurations) prevent
+# find_path/find_library from searching. Preserve nonempty explicit paths.
+if(DEFINED CACHE{ONNXRUNTIME_INCLUDE_DIR} AND "$CACHE{ONNXRUNTIME_INCLUDE_DIR}" STREQUAL "")
+  unset(ONNXRUNTIME_INCLUDE_DIR CACHE)
+endif()
+if(DEFINED CACHE{ONNXRUNTIME_LIBRARY} AND "$CACHE{ONNXRUNTIME_LIBRARY}" STREQUAL "")
+  unset(ONNXRUNTIME_LIBRARY CACHE)
+endif()
 
 if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
   set(ONNXRUNTIME_ROOT "$ENV{ONNXRUNTIME_ROOT}")
 endif()
-if(NOT ONNXRUNTIME_INCLUDE_DIR AND DEFINED ENV{ONNXRUNTIME_INCLUDE_DIR})
+if(NOT ONNXRUNTIME_INCLUDE_DIR AND DEFINED ENV{ONNXRUNTIME_INCLUDE_DIR}
+    AND NOT "$ENV{ONNXRUNTIME_INCLUDE_DIR}" STREQUAL "")
   set(ONNXRUNTIME_INCLUDE_DIR "$ENV{ONNXRUNTIME_INCLUDE_DIR}")
 endif()
-if(NOT ONNXRUNTIME_LIBRARY AND DEFINED ENV{ONNXRUNTIME_LIBRARY})
+if(NOT ONNXRUNTIME_LIBRARY AND DEFINED ENV{ONNXRUNTIME_LIBRARY}
+    AND NOT "$ENV{ONNXRUNTIME_LIBRARY}" STREQUAL "")
   set(ONNXRUNTIME_LIBRARY "$ENV{ONNXRUNTIME_LIBRARY}")
 endif()
 
+# A selected installation is authoritative for unresolved components; only
+# individually specified include/library paths may come from elsewhere.
 if(ONNXRUNTIME_ROOT)
   find_path(ONNXRUNTIME_INCLUDE_DIR
     NAMES onnxruntime_cxx_api.h
@@ -46,22 +57,24 @@ if(ONNXRUNTIME_ROOT)
     NO_DEFAULT_PATH)
 endif()
 
-# NVIDIA Isaac ROS compatibility fallback: the CUDA-matched ORT library often
-# ships inside Triton's backend while headers are unpacked separately.
-if(NOT ONNXRUNTIME_INCLUDE_DIR AND EXISTS "/opt/onnxruntime/include/onnxruntime_cxx_api.h")
-  set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
-endif()
-if(NOT ONNXRUNTIME_LIBRARY AND EXISTS "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
-  set(ONNXRUNTIME_LIBRARY "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
-endif()
+if(NOT ONNXRUNTIME_ROOT)
+  # NVIDIA Isaac ROS compatibility fallback: the CUDA-matched ORT library often
+  # ships inside Triton's backend while headers are unpacked separately.
+  if(NOT ONNXRUNTIME_INCLUDE_DIR AND EXISTS "/opt/onnxruntime/include/onnxruntime_cxx_api.h")
+    set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
+  endif()
+  if(NOT ONNXRUNTIME_LIBRARY AND EXISTS "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
+    set(ONNXRUNTIME_LIBRARY "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
+  endif()
 
-if(NOT ONNXRUNTIME_INCLUDE_DIR)
-  find_path(ONNXRUNTIME_INCLUDE_DIR
-    NAMES onnxruntime_cxx_api.h
-    PATH_SUFFIXES include include/onnxruntime include/onnxruntime/core/session)
-endif()
-if(NOT ONNXRUNTIME_LIBRARY)
-  find_library(ONNXRUNTIME_LIBRARY NAMES onnxruntime)
+  if(NOT ONNXRUNTIME_INCLUDE_DIR)
+    find_path(ONNXRUNTIME_INCLUDE_DIR
+      NAMES onnxruntime_cxx_api.h
+      PATH_SUFFIXES include include/onnxruntime include/onnxruntime/core/session)
+  endif()
+  if(NOT ONNXRUNTIME_LIBRARY)
+    find_library(ONNXRUNTIME_LIBRARY NAMES onnxruntime)
+  endif()
 endif()
 
 if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIBRARY)
@@ -232,6 +245,9 @@ if(BUILD_TESTING)
   endif()
 
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_onnxruntime_configure
+    test/test_onnxruntime_configure.py
+  )
   ament_add_pytest_test(test_summarize_ort_profile
     test/test_summarize_ort_profile.py
   )
