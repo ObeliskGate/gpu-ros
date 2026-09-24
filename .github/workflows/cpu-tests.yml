@@ -65,6 +65,7 @@ jobs:
             --with pytest==9.0.3 \
             python -m pytest -q -p no:cacheprovider \
             gpu_ros_object_detection/tools/edit_isaac_ros_tensor_list_interfaces_package.py \
+            gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_onnxruntime_configure.py \
             gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_summarize_ort_profile.py \
             gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nsys_cuda_traces.py \
             gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nvidia_copy_traces.py \
