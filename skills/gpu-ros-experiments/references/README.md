@@ -144,6 +144,12 @@ from the phase runbook and inspect the complete result with:
 colcon test-result --all --verbose
 ```
 
+The `cpu-tests.yml` workflow installs the standalone core before building and
+running its external consumer against the installed CMake export. Its Jazzy job
+builds the eight explicitly selected CPU-safe ROS packages without HIP, runs all
+tests registered by those packages, then runs the detection bag comparator's
+pytest directly. This gate does not run model, GPU, or benchmark workloads.
+
 These checks cover managed lifecycle/orphan behavior, device selection, staging
 limits, compatibility boundaries, YOLO class-aware NMS/float boxes, result
 comparison, capture topology, and provenance metadata. They do not replace a
