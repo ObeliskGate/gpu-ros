@@ -2,6 +2,7 @@
 
 int main()
 {
-  const auto readiness = gpu_ros_managed::BufferReadiness::kNotReady;
-  return readiness == gpu_ros_managed::BufferReadiness::kNotReady ? 0 : 1;
+  return gpu_ros_managed::detail::pending_release_count(gpu_ros_managed::BackendKind::kCuda) == 0
+           ? 0
+           : 1;
 }
