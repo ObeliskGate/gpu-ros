@@ -48,6 +48,30 @@ if [[ ! ${MATRIX_NAME} =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   echo "ERROR: matrix-name may contain only letters, numbers, '.', '_' and '-'" >&2
   exit 2
 fi
+if [[ ${CAPTURE_MODEL_PATH+x} == x ]]; then
+  echo "ERROR: CAPTURE_MODEL_PATH is only supported by the fixed-input capture runner." >&2
+  exit 2
+fi
+if [[ ${CAPTURE_INPUT_BAG+x} == x ]]; then
+  echo "ERROR: CAPTURE_INPUT_BAG is only supported by the fixed-input capture runner." >&2
+  exit 2
+fi
+if [[ ${ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH+x} == x ]]; then
+  echo "ERROR: ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH cannot override the fixed matrix bag." >&2
+  exit 2
+fi
+
+if [[ -n ${OVG_ASSETS_ROOT:-} && -n ${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-} ]]; then
+  if ! OVG_ASSETS_ROOT_REAL=$(realpath -m -- "${OVG_ASSETS_ROOT}") ||
+    ! ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT_REAL=$(realpath -m -- "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}"); then
+    echo "ERROR: could not resolve both explicitly selected assets roots." >&2
+    exit 1
+  fi
+  if [[ ${OVG_ASSETS_ROOT_REAL} != "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT_REAL}" ]]; then
+    echo "ERROR: OVG_ASSETS_ROOT and ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT point to different directories." >&2
+    exit 1
+  fi
+fi
 
 WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 ASSETS_ROOT="${OVG_ASSETS_ROOT:-${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-/workspaces/ovg-assets}}"
@@ -55,11 +79,11 @@ RESULT_PARENT="${OVG_RESULTS_ROOT:-/workspaces/ovg-results}/phase2b-benchmark-ma
 OUTPUT_ROOT="${RESULT_PARENT}/${MATRIX_NAME}"
 BENCHMARK_ROOT="${WORKSPACE_ROOT}/gpu_ros_object_detection/benchmarks"
 if [[ ${MODEL} == yolov8 ]]; then
-  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/yolov8/yolov8s.onnx}"
+  MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
 else
-  MODEL_PATH="${CAPTURE_MODEL_PATH:-${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx}"
+  MODEL_PATH="${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx"
 fi
-DATASET_PATH="${CAPTURE_INPUT_BAG:-${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm}"
+DATASET_PATH="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
 RUN_LOG_ROOT="${OUTPUT_ROOT}/logs"
 ACTIVE_PID=""
@@ -97,41 +121,51 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   source "${WORKSPACE_ROOT}/install/setup.bash"
   set -u
 fi
+ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT="${ASSETS_ROOT}"
+export ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT
 
-for command_name in awk date env find git launch_test mkdir sha256sum sort tee xargs; do
+for command_name in awk date env find git launch_test mkdir realpath sha256sum sort tee xargs; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
   fi
 done
 
-mkdir -p "${RUN_LOG_ROOT}"
-
 hash_path() {
   local path="$1"
   if [[ -f ${path} ]]; then
-    sha256sum "${path}" | awk '{print $1}'
-    return 0
-  fi
-  if [[ -d ${path} ]]; then
-    find "${path}" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}'
-    return 0
-  fi
-  echo "MISSING"
-}
-
-repo_revision() {
-  local path="$1"
-  if [[ -d ${path}/.git ]]; then
-    git -C "${path}" rev-parse HEAD
+    sha256sum -- "${path}" | awk '{print $1}'
+  elif [[ -d ${path} ]]; then
+    (
+      cd "${path}" || exit 1
+      find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum -- | sha256sum
+    ) | awk '{print $1}'
   else
     echo "MISSING"
   fi
 }
 
+if [[ ! -f ${MODEL_PATH} || ! -s ${MODEL_PATH} ]]; then
+  echo "ERROR: required model file is missing or empty: ${MODEL_PATH}" >&2
+  exit 1
+fi
+if [[ ! -d ${DATASET_PATH} ]]; then
+  echo "ERROR: required dataset directory is missing: ${DATASET_PATH}" >&2
+  exit 1
+fi
+if ! MODEL_SHA256=$(hash_path "${MODEL_PATH}") || [[ ! ${MODEL_SHA256} =~ ^[[:xdigit:]]{64}$ ]]; then
+  echo "ERROR: could not hash required model file: ${MODEL_PATH}" >&2
+  exit 1
+fi
+if ! DATASET_TREE_SHA256=$(hash_path "${DATASET_PATH}") || [[ ! ${DATASET_TREE_SHA256} =~ ^[[:xdigit:]]{64}$ ]]; then
+  echo "ERROR: could not hash required dataset directory: ${DATASET_PATH}" >&2
+  exit 1
+fi
+mkdir -p "${RUN_LOG_ROOT}"
+
 repo_diff_hash() {
   local path="$1"
-  if [[ -d ${path}/.git ]]; then
+  if [[ $(git -C "${path}" rev-parse --is-inside-work-tree 2>/dev/null) == true ]]; then
     git -C "${path}" diff HEAD --binary | sha256sum | awk '{print $1}'
   else
     echo "MISSING"
@@ -140,7 +174,7 @@ repo_diff_hash() {
 
 repo_untracked_paths() {
   local path="$1"
-  if [[ ! -d ${path}/.git ]]; then
+  if [[ $(git -C "${path}" rev-parse --is-inside-work-tree 2>/dev/null) != true ]]; then
     echo "MISSING"
     return 0
   fi
@@ -155,7 +189,7 @@ repo_untracked_paths() {
 
 repo_untracked_content_hash() {
   local path="$1"
-  if [[ ! -d ${path}/.git ]]; then
+  if [[ $(git -C "${path}" rev-parse --is-inside-work-tree 2>/dev/null) != true ]]; then
     echo "MISSING"
     return 0
   fi
@@ -170,7 +204,7 @@ repo_untracked_content_hash() {
 
 repo_dirty() {
   local path="$1"
-  if [[ ! -d ${path}/.git ]]; then
+  if [[ $(git -C "${path}" rev-parse --is-inside-work-tree 2>/dev/null) != true ]]; then
     echo "MISSING"
   elif [[ -n $(git -C "${path}" status --porcelain) ]]; then
     echo "true"
@@ -200,9 +234,10 @@ trap 'exit 130' INT TERM
   echo "workspace_root=${WORKSPACE_ROOT}"
   echo "assets_root=${ASSETS_ROOT}"
   echo "model_path=${MODEL_PATH}"
-  echo "model_sha256=$(hash_path "${MODEL_PATH}")"
+  echo "model_sha256=${MODEL_SHA256}"
   echo "dataset_path=${DATASET_PATH}"
-  echo "dataset_tree_sha256=$(hash_path "${DATASET_PATH}")"
+  echo "dataset_tree_sha256=${DATASET_TREE_SHA256}"
+  echo "dataset_tree_hash_algorithm=sha256sum-sorted-relative-path-v1"
   echo "ort_root=${ONNXRUNTIME_ROOT:-}"
   echo "ort_library_sha256=$(hash_path "${ONNXRUNTIME_LIBRARY:-${ONNXRUNTIME_ROOT:-}/lib/libonnxruntime.so}")"
   echo "monorepo_revision=$(git -C "${WORKSPACE_ROOT}" rev-parse HEAD)"

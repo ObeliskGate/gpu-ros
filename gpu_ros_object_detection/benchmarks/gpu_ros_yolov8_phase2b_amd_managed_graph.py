@@ -181,7 +181,6 @@ class TestGpuRosYoloV8Phase2bAmdManaged(ROS2BenchmarkTest):
             "data_resolution": common.IMAGE_RESOLUTION,
             "network_resolution": common.NETWORK_RESOLUTION,
             "model": common.MODEL_FILE_NAME,
-            "model_sha256": ("d6e22418dd1acc69a232a1b297c01dfc785842fd11a4a84546c84e14cdeb235c"),
             "inference_backend": "ONNX Runtime MIGraphX EP",
             "transport": "Managed HIP TensorBundle",
             "staging": "none; direct Managed HIP TensorBundle",
