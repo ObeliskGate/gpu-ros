@@ -38,6 +38,10 @@
 #include "gpu_ros_managed_hip/hip_backend.hpp"
 #endif
 
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+#include "onnx_inference_cancellation_test_peer.hpp"
+#endif
+
 namespace gpu_ros::onnx_inference
 {
 
@@ -588,6 +592,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
 
   std::vector<std::unique_ptr<gpu_ros_managed::SynchronizedPoolBlock>> reservations;
   std::vector<Ort::Value> bound_output_values;
+  std::vector<BindingTensorReport> output_reports;
+  output_reports.reserve(managed_output_contracts_.size());
   reservations.reserve(managed_output_contracts_.size());
   bound_output_values.reserve(managed_output_contracts_.size());
   auto cancel_reservations = [&]() noexcept {
@@ -596,6 +602,7 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
         try {
           reservation->writer.cancel();
         } catch (...) {
+          reservation->writer.fail();
         }
       }
     }
@@ -617,6 +624,11 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
       }
       reservations.push_back(std::move(reservation));
       auto & reserved = *reservations.back();
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+      if (index == 0) {
+        OnnxInferenceCancellationTestPeer::AfterFirstWriter(reserved.buffer);
+      }
+#endif
       const auto & contract = managed_output_contracts_[index];
       const size_t bytes = ManagedTensorByteSize(contract);
       if (reserved.writer.size() < bytes) {
@@ -635,8 +647,6 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
     throw;
   }
 
-  std::vector<BindingTensorReport> output_reports;
-  output_reports.reserve(managed_output_contracts_.size());
   bool submitted_to_ort = false;
   try {
     Ort::IoBinding binding(*session_);
@@ -644,6 +654,11 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
       binding.BindInput(input_name_ptrs[index], ort_inputs[index]);
     }
     for (size_t index = 0; index < bound_output_values.size(); ++index) {
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+      if (index == 1) {
+        OnnxInferenceCancellationTestPeer::BeforeSecondBind(reservations[index]->buffer);
+      }
+#endif
       binding.BindOutput(output_name_ptrs[index], bound_output_values[index]);
     }
 
@@ -653,6 +668,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
     // synchronization do not write the reserved outputs, so those failures
     // can still safely cancel the reservations.
     submitted_to_ort = true;
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+    OnnxInferenceCancellationTestPeer::AfterSubmissionBoundary();
+#endif
     session_->Run(Ort::RunOptions{nullptr}, binding);
     binding.SynchronizeOutputs();
 
@@ -866,135 +884,188 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   if (stage_timing != nullptr) {
     stage_timing->input_setup_ns = DurationNanoseconds(input_setup_start, ort_session_run_start);
   }
-  if (output_placement == OutputPlacement::kDevice) {
-    Ort::MemoryInfo device_memory_info =
-      execution_provider_ == ExecutionProvider::kCuda
-        ? Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault)
-        : MakeHipDeviceMemoryInfo(execution_provider_, gpu_device_id_);
-    const char * expected_allocator_name =
-      execution_provider_ == ExecutionProvider::kRocm ? "Rocm" : "Cuda";
-    const uint32_t expected_vendor_id =
-      execution_provider_ == ExecutionProvider::kCuda ? kNvidiaPciVendorId : kAmdPciVendorId;
-    ValidateDeviceMemoryInfo(device_memory_info, expected_allocator_name, gpu_device_id_,
-      "Managed output binding", expected_vendor_id);
-
-    auto binding = std::make_unique<Ort::IoBinding>(*session_);
-    for (size_t i = 0; i < ort_inputs.size(); ++i) {
-      binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
-    }
-
-    const bool try_managed_hip_preallocation = execution_provider_ == ExecutionProvider::kMigraphx;
-    bool preallocation_failed = false;
-    std::string preallocation_failure;
-    if (try_managed_hip_preallocation) {
-#ifdef GPU_ROS_MANAGED_HIP
-      if (!hip_output_stream_) {
-        auto hip_stream = gpu_ros_managed::hip::make_stream(gpu_device_id_);
-        hip_output_stream_ = hip_stream.stream();
-      }
-      bound_output_values.reserve(output_names_.size());
-      try {
-        for (size_t i = 0; i < output_names_.size(); ++i) {
-          if (!output_binding_probes_[i].metadata_shape_is_static && !strict_managed_) {
-            binding->BindOutput(output_name_ptrs[i], device_memory_info);
-            continue;
-          }
-
-          std::vector<int64_t> shape;
-          ONNXTensorElementDataType dtype;
-          size_t byte_count;
-          if (strict_managed_) {
-            // Some valid RT-DETRv2 exports use symbolic output metadata even
-            // though the postprocessor contract is fixed. Use that explicit
-            // contract for preallocation so symbolic metadata does not force
-            // an ORT-owned output and break the Managed HIP path.
-            const auto & contract = managed_output_contracts_.at(i);
-            shape = contract.shape;
-            dtype = contract.dtype;
-            byte_count = ManagedTensorByteSize(contract);
-          } else {
-            // TensorTypeAndShapeInfo does not own the underlying OrtTypeInfo.
-            const auto output_type_info = session_->GetOutputTypeInfo(i);
-            const auto metadata = output_type_info.GetTensorTypeAndShapeInfo();
-            shape = metadata.GetShape();
-            dtype = metadata.GetElementType();
-            const size_t element_count = metadata.GetElementCount();
-            const size_t element_size = DtypeSize(dtype);
-            if (element_count > std::numeric_limits<size_t>::max() / element_size) {
-              throw std::overflow_error(
-                "Output tensor byte size overflows size_t: " + output_names_[i]);
-            }
-            byte_count = element_count * element_size;
-          }
-          auto buffer = gpu_ros_managed::hip::allocate(byte_count, gpu_device_id_);
-          auto writer = buffer->get_write_handle(hip_output_stream_);
-          bound_output_values.push_back(Ort::Value::CreateTensor(
-            device_memory_info, writer.data(), byte_count, shape.data(), shape.size(), dtype));
-          if (bound_output_values.back().GetTensorMutableRawData() != writer.data()) {
-            throw std::runtime_error("MIGraphX preallocated output '" + output_names_[i] +
-                                     "' lost pointer identity during ORT binding");
-          }
-          managed_output_buffers[i] = std::move(buffer);
-          managed_output_writers[i] =
-            std::make_unique<gpu_ros_managed::WriteHandle>(std::move(writer));
-          binding->BindOutput(output_name_ptrs[i], bound_output_values.back());
-        }
-      } catch (const std::exception & error) {
-        preallocation_failed = true;
-        preallocation_failure = error.what();
-      }
-#else
-      preallocation_failed = true;
-      preallocation_failure = "gpu_ros_managed_hip backend is not compiled";
-#endif
-    }
-
-    if (preallocation_failed) {
-      for (auto & probe : output_binding_probes_) {
-        if (probe.metadata_shape_is_static) {
-          probe.decision = "preallocated output binding probe failed: " + preallocation_failure +
-                           "; using ORT-owned output";
+  auto cancel_managed_output_writers = [&]() noexcept {
+    for (auto & writer : managed_output_writers) {
+      if (writer) {
+        try {
+          writer->cancel();
+        } catch (...) {
+          writer->fail();
         }
       }
-      managed_output_writers.clear();
-      for (auto & buffer : managed_output_buffers) {
-        buffer.reset();
-      }
-      managed_output_buffers.assign(output_names_.size(), nullptr);
-      bound_output_values.clear();
-      binding = std::make_unique<Ort::IoBinding>(*session_);
+    }
+  };
+  bool may_have_submitted = false;
+  try {
+    if (output_placement == OutputPlacement::kDevice) {
+      Ort::MemoryInfo device_memory_info =
+        execution_provider_ == ExecutionProvider::kCuda
+          ? Ort::MemoryInfo("Cuda", OrtArenaAllocator, gpu_device_id_, OrtMemTypeDefault)
+          : MakeHipDeviceMemoryInfo(execution_provider_, gpu_device_id_);
+      const char * expected_allocator_name =
+        execution_provider_ == ExecutionProvider::kRocm ? "Rocm" : "Cuda";
+      const uint32_t expected_vendor_id =
+        execution_provider_ == ExecutionProvider::kCuda ? kNvidiaPciVendorId : kAmdPciVendorId;
+      ValidateDeviceMemoryInfo(device_memory_info, expected_allocator_name, gpu_device_id_,
+        "Managed output binding", expected_vendor_id);
+
+      auto binding = std::make_unique<Ort::IoBinding>(*session_);
       for (size_t i = 0; i < ort_inputs.size(); ++i) {
         binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
       }
-      for (const auto * output_name : output_name_ptrs) {
-        binding->BindOutput(output_name, device_memory_info);
-      }
-    } else if (!try_managed_hip_preallocation) {
-      for (const auto * output_name : output_name_ptrs) {
-        binding->BindOutput(output_name, device_memory_info);
-      }
-    }
 
-    binding->SynchronizeInputs();
-    session_->Run(Ort::RunOptions{nullptr}, *binding);
-    binding->SynchronizeOutputs();
+      const bool try_managed_hip_preallocation = execution_provider_ == ExecutionProvider::kMigraphx;
+      bool preallocation_failed = false;
+      std::string preallocation_failure;
+      if (try_managed_hip_preallocation) {
+#ifdef GPU_ROS_MANAGED_HIP
+        if (!hip_output_stream_) {
+          auto hip_stream = gpu_ros_managed::hip::make_stream(gpu_device_id_);
+          hip_output_stream_ = hip_stream.stream();
+        }
+        bound_output_values.reserve(output_names_.size());
+        try {
+          for (size_t i = 0; i < output_names_.size(); ++i) {
+            if (!output_binding_probes_[i].metadata_shape_is_static && !strict_managed_) {
+              binding->BindOutput(output_name_ptrs[i], device_memory_info);
+              continue;
+            }
+
+            std::vector<int64_t> shape;
+            ONNXTensorElementDataType dtype;
+            size_t byte_count;
+            if (strict_managed_) {
+              // Some valid RT-DETRv2 exports use symbolic output metadata even
+              // though the postprocessor contract is fixed. Use that explicit
+              // contract for preallocation so symbolic metadata does not force
+              // an ORT-owned output and break the Managed HIP path.
+              const auto & contract = managed_output_contracts_.at(i);
+              shape = contract.shape;
+              dtype = contract.dtype;
+              byte_count = ManagedTensorByteSize(contract);
+            } else {
+              // TensorTypeAndShapeInfo does not own the underlying OrtTypeInfo.
+              const auto output_type_info = session_->GetOutputTypeInfo(i);
+              const auto metadata = output_type_info.GetTensorTypeAndShapeInfo();
+              shape = metadata.GetShape();
+              dtype = metadata.GetElementType();
+              const size_t element_count = metadata.GetElementCount();
+              const size_t element_size = DtypeSize(dtype);
+              if (element_count > std::numeric_limits<size_t>::max() / element_size) {
+                throw std::overflow_error(
+                  "Output tensor byte size overflows size_t: " + output_names_[i]);
+              }
+              byte_count = element_count * element_size;
+            }
+            auto buffer = gpu_ros_managed::hip::allocate(byte_count, gpu_device_id_);
+            auto writer = buffer->get_write_handle(hip_output_stream_);
+            try {
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+              if (i == 0) {
+                OnnxInferenceCancellationTestPeer::AfterFirstWriter(buffer, writer);
+              }
+#endif
+              bound_output_values.push_back(Ort::Value::CreateTensor(
+                device_memory_info, writer.data(), byte_count, shape.data(), shape.size(), dtype));
+              if (bound_output_values.back().GetTensorMutableRawData() != writer.data()) {
+                throw std::runtime_error("MIGraphX preallocated output '" + output_names_[i] +
+                                         "' lost pointer identity during ORT binding");
+              }
+              managed_output_writers[i] =
+                std::make_unique<gpu_ros_managed::WriteHandle>(std::move(writer));
+            } catch (...) {
+              try {
+                writer.cancel();
+              } catch (...) {
+                writer.fail();
+              }
+              throw;
+            }
+            managed_output_buffers[i] = std::move(buffer);
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+            if (i == 1) {
+              OnnxInferenceCancellationTestPeer::BeforeSecondBind(
+                managed_output_buffers[i], *managed_output_writers[i]);
+            }
+#endif
+            binding->BindOutput(output_name_ptrs[i], bound_output_values.back());
+          }
+        } catch (const std::exception & error) {
+          // Release the old binding before its values and buffers. In particular,
+          // cancel before building diagnostics, which may themselves allocate.
+          cancel_managed_output_writers();
+          binding.reset();
+          bound_output_values.clear();
+          managed_output_writers.clear();
+          for (auto & buffer : managed_output_buffers) {
+            buffer.reset();
+          }
+          preallocation_failed = true;
+          preallocation_failure = error.what();
+        }
+#else
+        preallocation_failed = true;
+        preallocation_failure = "gpu_ros_managed_hip backend is not compiled";
+#endif
+      }
+
+      if (preallocation_failed) {
+        for (auto & probe : output_binding_probes_) {
+          if (probe.metadata_shape_is_static) {
+            probe.decision = "preallocated output binding probe failed: " + preallocation_failure +
+                             "; using ORT-owned output";
+          }
+        }
+        binding = std::make_unique<Ort::IoBinding>(*session_);
+        for (size_t i = 0; i < ort_inputs.size(); ++i) {
+          binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
+        }
+        for (const auto * output_name : output_name_ptrs) {
+          binding->BindOutput(output_name, device_memory_info);
+        }
+      } else if (!try_managed_hip_preallocation) {
+        for (const auto * output_name : output_name_ptrs) {
+          binding->BindOutput(output_name, device_memory_info);
+        }
+      }
+
+      binding->SynchronizeInputs();
+      // Even a throwing Run may have submitted GPU work.
+      may_have_submitted = true;
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+      OnnxInferenceCancellationTestPeer::AfterSubmissionBoundary();
+#endif
+      session_->Run(Ort::RunOptions{nullptr}, *binding);
+      binding->SynchronizeOutputs();
 
 #ifdef GPU_ROS_MANAGED_HIP
-    for (auto & writer : managed_output_writers) {
-      if (writer) {
-        writer->finalize();
+      for (auto & writer : managed_output_writers) {
+        if (writer) {
+          writer->finalize();
+        }
       }
-    }
 #endif
 
-    const auto bound_output_names = binding->GetOutputNames();
-    if (bound_output_names != output_names_) {
-      throw std::runtime_error("ONNX Runtime returned unexpected bound output names");
+      const auto bound_output_names = binding->GetOutputNames();
+      if (bound_output_names != output_names_) {
+        throw std::runtime_error("ONNX Runtime returned unexpected bound output names");
+      }
+      ort_outputs = binding->GetOutputValues();
+    } else {
+      ort_outputs = session_->Run(Ort::RunOptions{nullptr}, input_name_ptrs.data(), ort_inputs.data(),
+        ort_inputs.size(), output_name_ptrs.data(), output_name_ptrs.size());
     }
-    ort_outputs = binding->GetOutputValues();
-  } else {
-    ort_outputs = session_->Run(Ort::RunOptions{nullptr}, input_name_ptrs.data(), ort_inputs.data(),
-      ort_inputs.size(), output_name_ptrs.data(), output_name_ptrs.size());
+  } catch (...) {
+    if (may_have_submitted) {
+      for (auto & writer : managed_output_writers) {
+        if (writer) {
+          writer->fail();
+        }
+      }
+    } else {
+      cancel_managed_output_writers();
+    }
+    throw;
   }
   const auto output_materialize_start =
     stage_timing != nullptr ? SteadyClock::now() : SteadyClock::time_point{};

@@ -4,3 +4,4 @@
 onnxruntime-1.23.1-migraphx-linux-unused-helper.patch
 onnxruntime-1.23.1-migraphx-enable-gridsample.patch
 onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch
+onnxruntime-1.23.1-migraphx-linux-provider-lifetime.patch

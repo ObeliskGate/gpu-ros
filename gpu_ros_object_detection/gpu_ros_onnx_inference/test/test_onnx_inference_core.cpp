@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -28,6 +30,11 @@
 
 #include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
 #include "gpu_ros_onnx_inference/managed_io_contract.hpp"
+
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+#include "gpu_ros_managed_hip/hip_backend.hpp"
+#include "onnx_inference_cancellation_test_peer.hpp"
+#endif
 
 using gpu_ros::onnx_inference::ExecutionProvider;
 using gpu_ros::onnx_inference::OnnxInferenceCore;
@@ -162,5 +169,251 @@ TEST(OnnxInferenceCoreTest, CudaIoBindingOutputOwnerKeepsDeviceBufferAlive)
     cudaSuccess);
   outputs.clear();
   input_owner.reset();
+}
+#endif
+
+#ifdef GPU_ROS_ORT_CANCELLATION_TEST
+namespace
+{
+
+using CancellationPeer = gpu_ros::onnx_inference::OnnxInferenceCancellationTestPeer;
+using CancellationPoint = CancellationPeer::Point;
+using OutputTensor = gpu_ros::onnx_inference::OutputTensor;
+using namespace std::chrono_literals;
+
+class ManagedHipCancellationTest : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    const auto providers = Ort::GetAvailableProviders();
+    if (std::find(providers.begin(), providers.end(), "MIGraphXExecutionProvider") ==
+        providers.end())
+    {
+      GTEST_SKIP() << "The loaded ONNX Runtime has no MIGraphX provider.";
+    }
+    int count = 0;
+    const auto status = hipGetDeviceCount(&count);
+    if (status == hipErrorNoDevice || (status == hipSuccess && count == 0)) {
+      GTEST_SKIP() << "No HIP device is available.";
+    }
+    ASSERT_EQ(status, hipSuccess);
+    CancellationPeer::Arm(CancellationPoint::kNone);
+
+    const std::vector<float> pixels(12, 0.25F);
+    const std::vector<int64_t> sizes{2, 2};
+    auto images = gpu_ros_managed::hip::allocate(pixels.size() * sizeof(float), 0);
+    images->copy_from_host_blocking(pixels.data(), pixels.size() * sizeof(float));
+    auto target_sizes = gpu_ros_managed::hip::allocate(sizes.size() * sizeof(int64_t), 0);
+    target_sizes->copy_from_host_blocking(sizes.data(), sizes.size() * sizeof(int64_t));
+    std::vector<gpu_ros_managed::ManagedTensor> tensors;
+    tensors.emplace_back("images", gpu_ros_managed::TensorDataType::kFloat32,
+      std::vector<int64_t>{1, 3, 2, 2}, images);
+    tensors.emplace_back("orig_target_sizes", gpu_ros_managed::TensorDataType::kInt64,
+      std::vector<int64_t>{1, 2}, target_sizes);
+    inputs_ = std::make_shared<gpu_ros_managed::ManagedTensorBundle>(
+      std_msgs::msg::Header{}, std::move(tensors));
+  }
+
+  void TearDown() override
+  {
+    CancellationPeer::Arm(CancellationPoint::kNone);
+    inputs_.reset();
+    EXPECT_TRUE(gpu_ros_managed::hip::wait_for_pending_releases(5s));
+  }
+
+  static OnnxInferenceCore::Config Config(bool strict)
+  {
+    OnnxInferenceCore::Config cfg;
+    cfg.model_file_path = TEST_HIP_CANCELLATION_MODEL_PATH;
+    cfg.ep = ExecutionProvider::kMigraphx;
+    cfg.transport = "managed";
+    cfg.managed_pool_capacity = 1;
+    cfg.managed_pool_wait_timeout = 0ms;
+    if (strict) {
+      cfg.managed_io_contract = "hip_managed_strict";
+      cfg.managed_input_contracts =
+        {"images=float32[1,3,2,2]", "orig_target_sizes=int64[1,2]"};
+      cfg.managed_output_contracts =
+        {"labels=int64[1,300]", "boxes=float32[1,300,4]", "scores=float32[1,300]"};
+    }
+    return cfg;
+  }
+
+  std::vector<OutputTensor> Run(OnnxInferenceCore & core)
+  {
+    return core.RunInference(
+      gpu_ros_managed::ManagedTensorBundleView(inputs_), OutputPlacement::kDevice);
+  }
+
+  static void ExpectModelOutputs(const std::vector<OutputTensor> & outputs)
+  {
+    ASSERT_EQ(outputs.size(), 3U);
+    for (size_t i = 0; i < outputs.size(); ++i) {
+      const auto & output = outputs[i];
+      const auto * storage =
+        std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(&output.storage);
+      ASSERT_NE(storage, nullptr);
+      ASSERT_TRUE(*storage);
+      EXPECT_FALSE((*storage)->failed());
+      if (i == 0) {
+        EXPECT_EQ(output.name, "labels");
+        EXPECT_EQ(output.dtype, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64);
+        EXPECT_EQ(output.shape, (std::vector<int64_t>{1, 300}));
+        std::vector<int64_t> actual(300);
+        (*storage)->copy_to_host_blocking(actual.data(), actual.size() * sizeof(int64_t));
+        std::vector<int64_t> expected(300, 0);
+        expected[0] = 7;
+        EXPECT_EQ(actual, expected);
+      } else {
+        EXPECT_EQ(output.name, i == 1 ? "boxes" : "scores");
+        EXPECT_EQ(output.dtype, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+        EXPECT_EQ(output.shape,
+          i == 1 ? (std::vector<int64_t>{1, 300, 4}) : (std::vector<int64_t>{1, 300}));
+        std::vector<float> actual(i == 1 ? 1200 : 300);
+        (*storage)->copy_to_host_blocking(actual.data(), actual.size() * sizeof(float));
+        std::vector<float> expected(actual.size(), 0.0F);
+        if (i == 1) {
+          expected[0] = 10.0F;
+          expected[1] = 20.0F;
+          expected[2] = 30.0F;
+          expected[3] = 50.0F;
+        } else {
+          expected[0] = 0.95F;
+        }
+        for (size_t index = 0; index < actual.size(); ++index) {
+          EXPECT_FLOAT_EQ(actual[index], expected[index]) << output.name << "[" << index << "]";
+        }
+      }
+    }
+  }
+
+  std::shared_ptr<gpu_ros_managed::ManagedTensorBundle> inputs_;
+};
+
+class ManagedHipPreSubmissionTest : public ManagedHipCancellationTest,
+  public ::testing::WithParamInterface<CancellationPoint>
+{
+};
+
+TEST_P(ManagedHipPreSubmissionTest, StrictCancellationRestoresEveryPoolAndDrains)
+{
+  OnnxInferenceCore core(Config(true));
+  CancellationPeer::Arm(GetParam());
+  EXPECT_THROW(Run(core), std::runtime_error);
+  ASSERT_TRUE(CancellationPeer::fired);
+  ASSERT_TRUE(CancellationPeer::first_buffer);
+  EXPECT_FALSE(CancellationPeer::first_buffer->failed());
+  EXPECT_EQ(CancellationPeer::first_buffer->readiness(),
+    gpu_ros_managed::BufferReadiness::kNotReady);
+  if (GetParam() == CancellationPoint::kSecondBind) {
+    ASSERT_TRUE(CancellationPeer::second_buffer);
+    EXPECT_FALSE(CancellationPeer::second_buffer->failed());
+  }
+  std::weak_ptr<gpu_ros_managed::DeviceBuffer> released = CancellationPeer::first_buffer;
+  CancellationPeer::first_buffer.reset();
+  CancellationPeer::second_buffer.reset();
+  EXPECT_TRUE(released.expired());
+  EXPECT_EQ(CancellationPeer::Available(core), (std::vector<size_t>{1, 1, 1}));
+  EXPECT_TRUE(core.shutdown(5s));
+}
+
+TEST_P(ManagedHipPreSubmissionTest, CompatibilityCancelsAndRunsNumericFallback)
+{
+  OnnxInferenceCore core(Config(false));
+  CancellationPeer::Arm(GetParam());
+  auto outputs = Run(core);
+  ASSERT_TRUE(CancellationPeer::fired);
+  ExpectModelOutputs(outputs);
+  ASSERT_TRUE(CancellationPeer::first_buffer);
+  EXPECT_FALSE(CancellationPeer::first_buffer->failed());
+  EXPECT_EQ(CancellationPeer::first_buffer->readiness(),
+    gpu_ros_managed::BufferReadiness::kNotReady);
+  EXPECT_TRUE(CancellationPeer::retained_owner.expired());
+  if (GetParam() == CancellationPoint::kSecondBind) {
+    ASSERT_TRUE(CancellationPeer::second_buffer);
+    EXPECT_FALSE(CancellationPeer::second_buffer->failed());
+    EXPECT_EQ(CancellationPeer::second_buffer->readiness(),
+      gpu_ros_managed::BufferReadiness::kNotReady);
+    EXPECT_TRUE(CancellationPeer::second_retained_owner.expired());
+  }
+  // Fresh really is reusable, not merely a non-failed wrapper.
+  {
+    auto writer = CancellationPeer::first_buffer->get_synchronized_write_handle();
+    writer.cancel();
+  }
+  std::weak_ptr<gpu_ros_managed::DeviceBuffer> released = CancellationPeer::first_buffer;
+  CancellationPeer::first_buffer.reset();
+  CancellationPeer::second_buffer.reset();
+  EXPECT_TRUE(released.expired());
+  outputs.clear();
+  EXPECT_TRUE(gpu_ros_managed::hip::wait_for_pending_releases(5s));
+}
+
+INSTANTIATE_TEST_SUITE_P(BeforeRun, ManagedHipPreSubmissionTest,
+  ::testing::Values(CancellationPoint::kFirstWriter, CancellationPoint::kSecondBind));
+
+class ManagedHipSubmissionTest : public ManagedHipCancellationTest,
+  public ::testing::WithParamInterface<bool>
+{
+};
+
+TEST_P(ManagedHipSubmissionTest, PossibleSubmissionFailsInsteadOfCancelling)
+{
+  const bool strict = GetParam();
+  OnnxInferenceCore core(Config(strict));
+  CancellationPeer::Arm(CancellationPoint::kSubmissionBoundary);
+  EXPECT_THROW(Run(core), std::runtime_error);
+  ASSERT_TRUE(CancellationPeer::fired);
+  ASSERT_TRUE(CancellationPeer::first_buffer);
+  EXPECT_TRUE(CancellationPeer::first_buffer->failed());
+  EXPECT_THROW(CancellationPeer::first_buffer->get_synchronized_write_handle(), std::logic_error);
+  ASSERT_TRUE(CancellationPeer::second_buffer);
+  EXPECT_TRUE(CancellationPeer::second_buffer->failed());
+  CancellationPeer::first_buffer.reset();
+  CancellationPeer::second_buffer.reset();
+  EXPECT_TRUE(gpu_ros_managed::hip::wait_for_pending_releases(5s));
+  if (strict) {
+    EXPECT_FALSE(core.healthy());
+    EXPECT_EQ(CancellationPeer::Available(core), (std::vector<size_t>{0, 0, 0}));
+    EXPECT_FALSE(core.shutdown(0ms));
+  } else {
+    // The wrapper can disappear, but uncertain work must keep its source owner
+    // and allocation orphaned rather than taking the pre-submission rollback.
+    EXPECT_FALSE(CancellationPeer::retained_owner.expired());
+    EXPECT_FALSE(CancellationPeer::second_retained_owner.expired());
+  }
+}
+
+TEST_P(ManagedHipSubmissionTest, UninjectedRunSynchronizesAndReleasesOutputs)
+{
+  const bool strict = GetParam();
+  OnnxInferenceCore core(Config(strict));
+  auto outputs = Run(core);
+  EXPECT_FALSE(CancellationPeer::fired);
+  ExpectModelOutputs(outputs);
+  ASSERT_TRUE(CancellationPeer::first_buffer);
+  EXPECT_FALSE(CancellationPeer::first_buffer->failed());
+  outputs.clear();
+  CancellationPeer::first_buffer.reset();
+  CancellationPeer::second_buffer.reset();
+  EXPECT_TRUE(gpu_ros_managed::hip::wait_for_pending_releases(5s));
+  if (strict) {
+    EXPECT_EQ(CancellationPeer::Available(core), (std::vector<size_t>{1, 1, 1}));
+    EXPECT_TRUE(core.shutdown(5s));
+  } else {
+    EXPECT_TRUE(CancellationPeer::retained_owner.expired());
+    EXPECT_TRUE(CancellationPeer::second_retained_owner.expired());
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(StrictAndCompatibility, ManagedHipSubmissionTest, ::testing::Bool());
+
+} // namespace
+#else
+TEST(OnnxInferenceCoreTest, ManagedHipCancellationRequiresMigraphx)
+{
+  GTEST_SKIP() << "Real managed output cancellation tests require ORT_ENABLE_MIGRAPHX=ON "
+                 "and the HIP backend.";
 }
 #endif

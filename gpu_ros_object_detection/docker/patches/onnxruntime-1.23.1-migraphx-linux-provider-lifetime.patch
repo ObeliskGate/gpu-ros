@@ -1,0 +1,34 @@
+SPDX-FileCopyrightText: Microsoft Corporation
+SPDX-FileCopyrightText: 2026 gpu_ros_managed contributors
+SPDX-License-Identifier: MIT
+Upstream-Status: Pending
+
+Keep the Linux MIGraphX provider module resident through process teardown,
+following the existing CUDA/TensorRT ProviderLibrary lifetime policy. When HIP
+is initialized independently before the provider, unloading its dependencies
+can leave MIGraphX teardown callbacks pointing into unmapped code. Provider
+Shutdown still runs; this changes module lifetime, not session or tensor cleanup.
+
+Regression: initialize HIP, create/run/destroy a MIGraphX Ort::Session and its
+Ort::Env, then exit normally. No project buffer or ROS code is required.
+
+diff --git a/onnxruntime/core/session/provider_bridge_ort.cc b/onnxruntime/core/session/provider_bridge_ort.cc
+--- a/onnxruntime/core/session/provider_bridge_ort.cc
++++ b/onnxruntime/core/session/provider_bridge_ort.cc
+@@ -1938,7 +1938,15 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provid
+ #endif
+ );
+ static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);
+-static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
++static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION
++#if defined(__linux__)
++                                          ,
++                                          // Independently initialized HIP may outlive OrtEnv.
++                                          // Keep MIGraphX teardown callback code mapped until
++                                          // process exit, as for the CUDA/TensorRT providers.
++                                          false /* unload */
++#endif
++);
+ 
+ // QNN EP can be built either as a static library or a shared library. Can safely define s_library_qnn even if static.
+ static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION);

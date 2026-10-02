@@ -7,11 +7,14 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "gpu_ros_managed_core/buffer.hpp"
 #include "gpu_ros_managed_core/detail/backend_ops.hpp"
@@ -19,6 +22,41 @@
 
 namespace grm = gpu_ros_managed;
 using namespace std::chrono_literals;
+
+namespace
+{
+std::atomic<std::size_t> observed_new_size{0};
+std::atomic<std::size_t> observed_new_count{0};
+std::atomic<std::size_t> failing_new_size{0};
+std::atomic<std::size_t> failing_new_countdown{0};
+std::atomic<bool> allocation_failure_triggered{false};
+} // namespace
+
+bool should_fail_allocation(std::size_t size) noexcept
+{
+  if (size == observed_new_size.load(std::memory_order_relaxed)) {
+    observed_new_count.fetch_add(1, std::memory_order_relaxed);
+  }
+  if (size != failing_new_size.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  auto remaining = failing_new_countdown.load(std::memory_order_relaxed);
+  while (remaining != 0) {
+    if (failing_new_countdown.compare_exchange_weak(
+        remaining, remaining - 1, std::memory_order_relaxed))
+    {
+      if (remaining == 1) {
+        failing_new_size.store(0, std::memory_order_relaxed);
+        allocation_failure_triggered.store(true, std::memory_order_relaxed);
+        return true;
+      }
+      return false;
+    }
+  }
+  return false;
+}
+
+
 
 class FakeOps final : public grm::detail::BackendOps
 {
@@ -231,6 +269,13 @@ grm::DeviceStream make_stream(const grm::DeviceId & device, grm::detail::NativeS
 {
   return grm::detail::DeviceBufferFactory::make_stream(device, native, {}, ops);
 }
+grm::DeviceStream make_owned_stream(const grm::DeviceId & device,
+  grm::detail::NativeStream native, std::shared_ptr<void> owner,
+  const std::shared_ptr<FakeOps> & ops)
+{
+  return grm::detail::DeviceBufferFactory::make_stream(
+    device, native, std::move(owner), ops);
+}
 
 void wait_for_cleanup()
 {
@@ -360,33 +405,136 @@ void test_readiness_states_and_synchronized_writer()
   assert(sync_owner_releases == 1);
 }
 
-void test_producer_owner_is_retained_until_event_cleanup()
+void test_producer_stream_and_source_owners_survive_until_event_cleanup()
 {
   auto ops = std::make_shared<FakeOps>();
+  ops->allow_synchronize = false;
   std::atomic<int> allocation_releases{0};
+  std::atomic<int> stream_releases{0};
   std::atomic<int> source_releases{0};
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
-  auto producer = make_stream(device, 51, ops);
+  auto stream_owner = std::shared_ptr<void>(new int(1), [&stream_releases](void * value) {
+    ++stream_releases;
+    delete static_cast<int *>(value);
+  });
+  std::weak_ptr<void> stream_weak = stream_owner;
+  auto producer = make_owned_stream(device, 51, stream_owner, ops);
+  stream_owner.reset();
   auto memory = make_owned_memory(allocation_releases, 32);
   auto source_owner =
     std::shared_ptr<const void>(new int(7), [&source_releases](const void * value) {
       ++source_releases;
       delete static_cast<const int *>(value);
     });
+  std::weak_ptr<const void> source_weak = source_owner;
   auto buffer =
     grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 32, memory.owner, ops);
   {
     auto writer = buffer->get_write_handle(producer);
-    writer.retain_owner(source_owner);
-    writer.finalize();
+    auto moved_writer = std::move(writer);
+    moved_writer.retain_owner(source_owner);
+    moved_writer.finalize();
   }
   source_owner.reset();
-  assert(source_releases == 0);
+  producer = grm::DeviceStream{};
+  assert(!stream_weak.expired());
+  assert(!source_weak.expired());
   buffer.reset();
   memory.owner.reset();
+  assert(ops->wait_until_synchronize_entered(1s));
+  assert(grm::detail::pending_release_count(grm::BackendKind::kCuda) == 1);
+  assert(!stream_weak.expired());
+  assert(!source_weak.expired());
+  assert(stream_releases == 0);
+  assert(source_releases == 0);
+  assert(allocation_releases == 0);
+  ops->unblock_synchronize();
   wait_for_cleanup();
+  assert(stream_weak.expired());
+  assert(source_weak.expired());
+  assert(stream_releases == 1);
   assert(source_releases == 1);
   assert(allocation_releases == 1);
+}
+
+void test_cancel_releases_writer_owners_and_restores_fresh_state()
+{
+  auto ops = std::make_shared<FakeOps>();
+  std::atomic<int> allocation_releases{0};
+  std::atomic<int> stream_releases{0};
+  std::atomic<int> source_releases{0};
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto stream_owner = std::shared_ptr<void>(new int(1), [&stream_releases](void * value) {
+    ++stream_releases;
+    delete static_cast<int *>(value);
+  });
+  std::weak_ptr<void> stream_weak = stream_owner;
+  auto producer = make_owned_stream(device, 52, stream_owner, ops);
+  stream_owner.reset();
+  auto memory = make_owned_memory(allocation_releases, 32);
+  auto buffer =
+    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 32, memory.owner, ops);
+  auto source_owner =
+    std::shared_ptr<const void>(new int(9), [&source_releases](const void * value) {
+      ++source_releases;
+      delete static_cast<const int *>(value);
+    });
+  std::weak_ptr<const void> source_weak = source_owner;
+  {
+    auto writer = buffer->get_write_handle(producer);
+    auto moved_writer = std::move(writer);
+    moved_writer.retain_owner(source_owner);
+    producer = grm::DeviceStream{};
+    source_owner.reset();
+    assert(!stream_weak.expired());
+    assert(!source_weak.expired());
+
+    moved_writer.cancel();
+    assert(stream_weak.expired());
+    assert(source_weak.expired());
+    assert(stream_releases == 1);
+    assert(source_releases == 1);
+    assert(!buffer->failed());
+    auto retry_stream = make_stream(device, 53, ops);
+    auto retry = buffer->get_write_handle(retry_stream);
+    retry.cancel();
+  }
+  buffer.reset();
+  memory.owner.reset();
+  assert(allocation_releases == 1);
+}
+
+void test_failed_and_abandoned_writers_orphan_stream_owners()
+{
+  for (const bool explicitly_fail : {false, true}) {
+    auto ops = std::make_shared<FakeOps>();
+    std::atomic<int> allocation_releases{0};
+    std::atomic<int> stream_releases{0};
+    const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+    auto stream_owner = std::shared_ptr<void>(new int(1), [&stream_releases](void * value) {
+      ++stream_releases;
+      delete static_cast<int *>(value);
+    });
+    std::weak_ptr<void> stream_weak = stream_owner;
+    auto producer = make_owned_stream(device, 54, stream_owner, ops);
+    stream_owner.reset();
+    auto memory = make_owned_memory(allocation_releases, 32);
+    auto buffer =
+      grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 32, memory.owner, ops);
+    {
+      auto writer = buffer->get_write_handle(producer);
+      producer = grm::DeviceStream{};
+      if (explicitly_fail) {
+        writer.fail();
+      }
+    }
+    buffer.reset();
+    memory.owner.reset();
+    wait_for_cleanup();
+    assert(!stream_weak.expired());
+    assert(stream_releases == 0);
+    assert(allocation_releases == 0);
+  }
 }
 
 void test_synchronized_pool_cancel_and_failed_block_never_recycles()
@@ -553,8 +701,15 @@ void test_writer_event_failures_safe_orphan()
   for (const bool fail_during_record : {false, true}) {
     auto ops = std::make_shared<FakeOps>();
     std::atomic<int> owner_releases{0};
+    std::atomic<int> stream_releases{0};
     const grm::DeviceId device{grm::BackendKind::kCuda, 0};
-    auto producer = make_stream(device, 1, ops);
+    auto stream_owner = std::shared_ptr<void>(new int(1), [&stream_releases](void * value) {
+      ++stream_releases;
+      delete static_cast<int *>(value);
+    });
+    std::weak_ptr<void> stream_weak = stream_owner;
+    auto producer = make_owned_stream(device, 1, stream_owner, ops);
+    stream_owner.reset();
     auto memory = make_owned_memory(owner_releases);
     auto buffer =
       grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
@@ -567,10 +722,13 @@ void test_writer_event_failures_safe_orphan()
       }
       expect_throws<std::runtime_error>([&] { writer.finalize(); });
     }
+    producer = grm::DeviceStream{};
     buffer.reset();
     memory.owner.reset();
     wait_for_cleanup();
     assert(owner_releases == 0);
+    assert(!stream_weak.expired());
+    assert(stream_releases == 0);
     assert(ops->destroys == (fail_during_record ? 1 : 0));
     if (fail_during_record) {
       assert(ops->destroy_count(1) == 1);
@@ -634,8 +792,15 @@ void test_cleanup_failure_destroys_each_event_once_and_orphans()
 {
   auto ops = std::make_shared<FakeOps>();
   std::atomic<int> owner_releases{0};
+  std::atomic<int> stream_releases{0};
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
-  auto producer = make_stream(device, 1, ops);
+  auto stream_owner = std::shared_ptr<void>(new int(1), [&stream_releases](void * value) {
+    ++stream_releases;
+    delete static_cast<int *>(value);
+  });
+  std::weak_ptr<void> stream_weak = stream_owner;
+  auto producer = make_owned_stream(device, 1, stream_owner, ops);
+  stream_owner.reset();
   auto consumer_a = make_stream(device, 2, ops);
   auto consumer_b = make_stream(device, 3, ops);
   auto memory = make_owned_memory(owner_releases);
@@ -645,10 +810,13 @@ void test_cleanup_failure_destroys_each_event_once_and_orphans()
   buffer->get_read_handle(consumer_a).finish();
   buffer->get_read_handle(consumer_b).finish();
   ops->fail_synchronize(2);
+  producer = grm::DeviceStream{};
   buffer.reset();
   memory.owner.reset();
   wait_for_cleanup();
   assert(owner_releases == 0);
+  assert(!stream_weak.expired());
+  assert(stream_releases == 0);
   assert(ops->synchronizes == 3);
   assert(ops->destroy_count(1) == 1);
   assert(ops->destroy_count(2) == 1);
@@ -712,6 +880,121 @@ void test_pending_cleanup_drain()
   assert(owner_releases == 1);
 }
 
+int run_pool_wrapper_bad_alloc_child()
+{
+  auto ops = std::make_shared<FakeOps>();
+  const grm::DeviceId device{grm::BackendKind::kCuda, 0};
+  auto producer = make_stream(device, 71, ops);
+  auto pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  const auto target_size = sizeof(grm::PoolBlock);
+  observed_new_size.store(target_size, std::memory_order_relaxed);
+  observed_new_count.store(0, std::memory_order_relaxed);
+  auto baseline = pool.acquire_for(producer, 10ms);
+  if (!baseline) {
+    return 1;
+  }
+  const auto matching_allocations = observed_new_count.load(std::memory_order_relaxed);
+  baseline->writer.cancel();
+  baseline.reset();
+  if (matching_allocations == 0 || pool.available() != 1) {
+    return 2;
+  }
+
+  observed_new_count.store(0, std::memory_order_relaxed);
+  allocation_failure_triggered.store(false, std::memory_order_relaxed);
+  failing_new_size.store(target_size, std::memory_order_relaxed);
+  failing_new_countdown.store(matching_allocations, std::memory_order_relaxed);
+  bool threw_bad_alloc = false;
+  try {
+    auto unexpected = pool.acquire_for(producer, 10ms);
+    if (unexpected) {
+      unexpected->writer.cancel();
+    }
+  } catch (const std::bad_alloc &) {
+    threw_bad_alloc = true;
+  } catch (...) {
+    return 3;
+  }
+  if (!threw_bad_alloc || !allocation_failure_triggered.load(std::memory_order_relaxed)) {
+    return 4;
+  }
+  if (pool.available() != 1) {
+    return 5;
+  }
+
+  auto retry = pool.acquire_for(producer, 10ms);
+  if (!retry) {
+    return 6;
+  }
+  retry->writer.cancel();
+  retry.reset();
+  if (pool.available() != 1 || !pool.shutdown(10ms)) {
+    return 7;
+  }
+  auto synchronized_pool = grm::detail::PoolFactory::make(device, 32, 1, ops);
+  const auto synchronized_target_size = sizeof(grm::SynchronizedPoolBlock);
+  observed_new_size.store(synchronized_target_size, std::memory_order_relaxed);
+  observed_new_count.store(0, std::memory_order_relaxed);
+  auto synchronized_baseline = synchronized_pool.acquire_synchronized_for(10ms);
+  if (!synchronized_baseline) {
+    return 8;
+  }
+  const auto synchronized_matching_allocations =
+    observed_new_count.load(std::memory_order_relaxed);
+  synchronized_baseline->writer.cancel();
+  synchronized_baseline.reset();
+  if (synchronized_matching_allocations == 0 || synchronized_pool.available() != 1) {
+    return 9;
+  }
+
+  observed_new_count.store(0, std::memory_order_relaxed);
+  allocation_failure_triggered.store(false, std::memory_order_relaxed);
+  failing_new_size.store(synchronized_target_size, std::memory_order_relaxed);
+  failing_new_countdown.store(
+    synchronized_matching_allocations, std::memory_order_relaxed);
+  threw_bad_alloc = false;
+  try {
+    auto unexpected = synchronized_pool.acquire_synchronized_for(10ms);
+    if (unexpected) {
+      unexpected->writer.cancel();
+    }
+  } catch (const std::bad_alloc &) {
+    threw_bad_alloc = true;
+  } catch (...) {
+    return 10;
+  }
+  if (!threw_bad_alloc || !allocation_failure_triggered.load(std::memory_order_relaxed)) {
+    return 11;
+  }
+  if (synchronized_pool.available() != 1) {
+    return 12;
+  }
+
+  auto synchronized_retry = synchronized_pool.acquire_synchronized_for(10ms);
+  if (!synchronized_retry) {
+    return 13;
+  }
+  synchronized_retry->writer.cancel();
+  synchronized_retry.reset();
+  if (synchronized_pool.available() != 1 || !synchronized_pool.shutdown(10ms)) {
+    return 14;
+  }
+  return 0;
+}
+
+void test_pool_wrapper_bad_alloc_restores_reservation_in_subprocess()
+{
+  const pid_t child = ::fork();
+  assert(child >= 0);
+  if (child == 0) {
+    ::_exit(run_pool_wrapper_bad_alloc_child());
+  }
+  int status = 0;
+  assert(::waitpid(child, &status, 0) == child);
+  assert(WIFEXITED(status));
+  assert(WEXITSTATUS(status) == 0);
+}
+
 int main()
 {
   static_assert(std::is_move_constructible_v<grm::WriteHandle>);
@@ -722,6 +1005,7 @@ int main()
   static_assert(std::is_move_constructible_v<grm::SynchronizedWriteHandle>);
   static_assert(!std::is_move_assignable_v<grm::SynchronizedWriteHandle>);
 
+  test_pool_wrapper_bad_alloc_restores_reservation_in_subprocess();
   test_state_machine_and_multiple_readers();
   wait_for_cleanup();
   test_handle_retains_allocation();
@@ -737,7 +1021,9 @@ int main()
   test_synchronized_owner_releases_without_worker_thread();
   test_blocking_h2d_failure_safe_orphan();
   test_readiness_states_and_synchronized_writer();
-  test_producer_owner_is_retained_until_event_cleanup();
+  test_producer_stream_and_source_owners_survive_until_event_cleanup();
+  test_cancel_releases_writer_owners_and_restores_fresh_state();
+  test_failed_and_abandoned_writers_orphan_stream_owners();
   test_synchronized_pool_cancel_and_failed_block_never_recycles();
   test_synchronized_pool_timeout_and_capacity_recovery();
   test_failed_async_writer_never_recycles();

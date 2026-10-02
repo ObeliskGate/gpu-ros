@@ -69,7 +69,17 @@ std::unique_ptr<PoolBlock> acquire_impl(const std::shared_ptr<detail::PoolState>
   auto * pointer = static_cast<uint8_t *>(block_token.get());
   auto buffer = detail::DeviceBufferFactory::make_fresh(
     state->device, pointer, state->block_size, std::move(block_token), state->ops);
-  return std::make_unique<PoolBlock>(buffer, buffer->get_write_handle(stream));
+  auto writer = buffer->get_write_handle(stream);
+  try {
+    return std::make_unique<PoolBlock>(buffer, std::move(writer));
+  } catch (...) {
+    try {
+      writer.cancel();
+    } catch (...) {
+      writer.fail();
+    }
+    throw;
+  }
 }
 
 std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_impl(
@@ -104,7 +114,17 @@ std::unique_ptr<SynchronizedPoolBlock> acquire_synchronized_impl(
   auto * pointer = static_cast<uint8_t *>(block_token.get());
   auto buffer = detail::DeviceBufferFactory::make_fresh(
     state->device, pointer, state->block_size, std::move(block_token), state->ops);
-  return std::make_unique<SynchronizedPoolBlock>(buffer, buffer->get_synchronized_write_handle());
+  auto writer = buffer->get_synchronized_write_handle();
+  try {
+    return std::make_unique<SynchronizedPoolBlock>(buffer, std::move(writer));
+  } catch (...) {
+    try {
+      writer.cancel();
+    } catch (...) {
+      writer.fail();
+    }
+    throw;
+  }
 }
 } // namespace
 

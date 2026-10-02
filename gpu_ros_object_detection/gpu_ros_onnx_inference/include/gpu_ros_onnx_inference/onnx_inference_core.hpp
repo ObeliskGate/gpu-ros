@@ -90,6 +90,8 @@ public:
   bool shutdown(std::chrono::milliseconds timeout) noexcept;
 
 private:
+  friend class OnnxInferenceCancellationTestPeer;
+
   struct BindingTensorReport
   {
     std::string name;

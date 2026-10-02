@@ -43,7 +43,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(gpu_ros_managed_core_test test/core_test.cpp)
+  add_executable(gpu_ros_managed_core_test test/core_test.cpp test/allocation_failure.cpp)
   target_link_libraries(gpu_ros_managed_core_test PRIVATE gpu_ros_managed_core)
   target_compile_features(gpu_ros_managed_core_test PRIVATE cxx_std_17)
   target_compile_options(gpu_ros_managed_core_test PRIVATE -Wall -Wextra -Wpedantic)

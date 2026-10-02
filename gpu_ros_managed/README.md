@@ -187,6 +187,10 @@ hipStreamSynchronize(consumer.get());
 `finalize()` records producer completion on the producer stream. A read handle
 waits for that readiness on its consumer stream and records reader completion
 when `finish()` is called or the handle is destroyed.
+The buffer retains an owned producer stream through event cleanup, even after
+the caller drops the stream or writer. A borrowed stream without an owner
+still requires the caller to keep its native stream alive. Uncertain completion
+retains the stream owner with the orphaned allocation.
 
 Destroying an unfinished `WriteHandle` or `SynchronizedWriteHandle` marks the
 buffer failed and non-recyclable. It never makes an incomplete write visible
@@ -196,6 +200,10 @@ Use `copy_from_host_blocking()` or a `SynchronizedWriteHandle` only when the
 producer operation has completed synchronously. If work may have been
 submitted but completion cannot be established, call `fail()`. Use `cancel()`
 only before submitting work.
+Cancellation releases retained producer owners and restores a fresh buffer;
+a pooled block becomes available only after its handles and buffer references
+are also released. `tensor_from_pool()` cancels an unsubmitted reservation if
+tensor construction throws.
 
 Fixed pools are available through `make_fixed_device_pool()` in each backend.
 Pool acquisition is bounded and supports a timeout; it never falls back to an
