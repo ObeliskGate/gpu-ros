@@ -112,7 +112,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Preserve
 package interfaces, model contracts, provider settings, and external pins.
 Run checks for the affected layer and record the actual source, runtime,
 model/data identity, command, and result location. Keep command status,
-component teardown, numeric correctness, copy evidence, and throughput separate.
+component teardown, detection metrics and coverage, copy evidence, and
+throughput separate.
 Current acceptance and result records are linked from the
 [documentation index](docs/README.md); a historical PASS does not validate a
 new checkout.

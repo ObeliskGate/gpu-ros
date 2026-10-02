@@ -14,8 +14,9 @@ runbook copy in `docs/`.
 - [Method index](../skills/gpu-ros-experiments/references/README.md) covers
   preparation, runtime execution, capture, audit, and requested benchmarks.
 - [Acceptance rules](../skills/gpu-ros-experiments/references/result-acceptance.md)
-  define numeric and reproduction gates for evidence; they do not determine
-  whether this experimental source release may be published.
+  explain report interpretation, evidence collection, and performance
+  reproduction; they do not determine whether this experimental source release
+  may be published.
 
 Users can read the method files directly; no installation is required. The
 method index is the public entry point for runtime procedures.
@@ -48,14 +49,14 @@ do not replace the public identity fields.
 
 ## Reading a result
 
-A build, fixed-input comparison, transport audit, component teardown, and
+A build, fixed-input detection report, transport audit, component teardown, and
 throughput measurement establish different facts. Preserve each native status.
 A wrapper may return zero after a child crashes; inspect the component log.
-`REPORT_ONLY` is not a correctness PASS, and `INCONCLUSIVE` copy evidence is
-not proof of zero-copy.
+`REPORT_ONLY` means the detection report was generated; it does not claim
+numeric equality. `INCONCLUSIVE` copy evidence is not proof of zero-copy.
 
 Historical campaigns do not certify the current source or runtime. The current
-layout record keeps strict comparisons and lifecycle/copy evidence as
-observations, not as a promoted baseline. AMD Slurm measurements are unstable,
-and the documented AMD Docker path was not tested in that campaign. See the
-current record and acceptance rules rather than inferring support from JSON.
+layout record documents that campaign's detection reports alongside
+lifecycle/copy evidence. AMD Slurm measurements are unstable, and the documented
+AMD Docker path was not tested in that campaign. See the current record and
+acceptance rules rather than inferring support from JSON.

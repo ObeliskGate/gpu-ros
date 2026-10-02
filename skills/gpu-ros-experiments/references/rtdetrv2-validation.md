@@ -96,25 +96,21 @@ continue.
 
 ## Same-bag end-to-end comparison
 
-Capture CPU/reference and MIGraphX candidate outputs from the same input bag,
-then run the comparator with class-aware one-to-one matching:
+Capture CPU/reference and MIGraphX outputs from the same input bag, then create
+an observation report with the comparator's default matching:
 
 ```bash
 ros2 run gpu_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag /absolute/path/to/reference-bag \
   --candidate-bag /absolute/path/to/migraphx-bag \
-  --match-policy stamp --min-score 0.0 --max-detections-per-frame 0 \
-  --class-aware-matching --min-paired-frames 20 --min-class-match-rate 1.0 \
-  --min-mean-iou 0.99 \
-  --min-pair-iou 0.99 \
-  --max-mean-score-delta 0.001 \
-  --max-pair-score-delta 0.001 \
-  --min-frame-pass-rate 1.0 \
   --output-json /absolute/path/to/results/rtdetrv2-cpu-vs-migraphx.json
 ```
 
-No detection may remain unmatched. The full gate and identity requirements
-are defined in [result acceptance](result-acceptance.md).
+The output uses schema `phase2b_detection_report_only_v2` and status
+`REPORT_ONLY`. It records detection differences and coverage without numeric
+pass/fail thresholds; unmatched detections are observations, not errors.
+Malformed or unreadable input remains an error. Use the separate export and
+provider-contract checks above for their stated validation claims.
 
 ## COCO val2017
 

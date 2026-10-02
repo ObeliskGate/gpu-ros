@@ -93,12 +93,12 @@ requested asset work. The offline helper is
 `gpu_ros_object_detection/tools/phase2-assets`.
 
 Run native package tests and inspect `colcon test-result`. For captures and
-audits, use [detection validation](references/detection-validation.md) without
-changing model, provider, thresholds, geometry, or shutdown parameters. An
-explicitly requested full AMD matrix uses the existing
-`run_amd_phase2b_benchmark_matrix.sh` for each requested model, preserving its
-three-round rotation and fixed-rate configuration. Do not create a temporary
-graph or another player.
+audits, follow [detection validation](references/detection-validation.md)
+while preserving the selected model, provider, image geometry, runtime settings,
+and shutdown parameters. An explicitly requested full AMD matrix uses the
+existing `run_amd_phase2b_benchmark_matrix.sh` for each requested model,
+preserving its three-round rotation and fixed-rate configuration. Do not create
+a temporary graph or another player.
 
 The layout campaign exercised AMD through Apptainer. AMD Docker GPU execution
 and a fresh dependency-image build were not tested by that campaign; do not
@@ -135,20 +135,26 @@ from the AMD method.
 
 ## Interpret and report evidence
 
-Read [result acceptance](references/result-acceptance.md) before declaring a
-PASS. Preserve command exit, component startup/runtime/teardown, numeric
-comparison, copy evidence, and performance statistics separately. Native
-capture and launch-test wrappers can return zero after a component SIGSEGV.
-A copy parser PASS does not establish clean shutdown. Inspect component logs
-and post-exit process lists alongside wrapper return codes and JSON.
+Read [result acceptance](references/result-acceptance.md) before declaring an
+acceptance result. Preserve command exit, component startup/runtime/teardown,
+detection report metrics and coverage, copy evidence, and performance
+statistics separately. Native capture and launch-test wrappers can return zero
+after a component SIGSEGV. A copy parser PASS does not establish clean shutdown.
+Inspect component logs and post-exit process lists alongside wrapper return
+codes and JSON.
 
-Compare each migration lane with its own baseline using the strict stamp-based
-command. Keep cross-lane REPORT_ONLY evidence separate. Do not ignore unmatched
-frames, use index pairing, filter away score differences, or loosen thresholds
-to pass a migration. An unchanged-source control investigates repeatability;
-it does not erase a failed comparison. A known fault requires matching raw
-same-lane, same-parameter, same-stage evidence. New or unexplained faults block
-acceptance even if another graph has a similar historical crash.
+Compare each migration lane with its own baseline to characterize metric and
+coverage changes; numeric differences do not pass or fail the project. Use the
+default exact-stamp pairing, with repeated stamps paired FIFO and deterministic
+class-unconstrained IoU-greedy detection matching. Keep cross-lane observations
+separate. Use complete, unfiltered inputs for the primary report. Optional
+index-pairing or score/detection filters are diagnostic choices: retain their
+method metadata and make the resulting coverage clear. An unchanged-source
+control investigates repeatability but does not turn an observation into an
+equivalence claim or dismiss an independent error. A known fault requires
+matching raw same-lane, same-parameter, same-stage evidence. New or unexplained
+input-validity, model-contract, lifecycle, or copy faults block acceptance;
+numeric differences alone do not.
 
 For performance, retain per-round peak/mean, missed/sent, actual fixed-rate
 fields, latency, aggregation, and native lifecycle status. Missing fields stay
@@ -160,10 +166,12 @@ device as a control before attributing the difference to a migration.
 
 Show measured values, historical values, deltas, comparability, failures, and
 raw evidence locations before updating result summaries. Keep the executed
-source fingerprints even if documentation is edited afterward. A failed gate
-blocks promotion. Continue only diagnostics or measurements already within the
-documented scope. For a structure-only migration, preserve algorithms and
-runtime policy; behavioral fixes require separate scope.
+source fingerprints even if documentation is edited afterward. A failed
+independent acceptance check blocks promotion. Continue only diagnostics or
+measurements already within the documented scope.
+
+For a structure-only migration, preserve algorithms and runtime policy;
+behavioral fixes require separate scope.
 
 Methods belong in these references; public result summaries belong in
 `docs/results/`. Raw artifacts remain external. Preserve historical result

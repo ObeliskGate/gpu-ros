@@ -40,12 +40,14 @@ The following semantics apply to a new run against a published baseline:
    must be within **±2%** of the requested rate and have zero missed frames.
    These are internal same-hardware-model rules, not a claim that different GPUs
    have equal throughput.
-3. Correctness is evaluated separately from throughput. The formal same-bag
-   gate requires at least 20 paired frames, mean and pairwise IoU at least 0.99,
-   mean and pair score delta at most 0.001, 100% paired and overall frame pass
-   rates, class match 100%, and zero unmatched detections. A `REPORT_ONLY`
-   comparison keeps its numbers but never becomes a correctness `PASS` merely
-   because aggregate numbers look close.
+3. Fixed-input detection comparisons are observations, not numeric acceptance
+   gates. Offline bag-comparison reports use schema
+   `phase2b_detection_report_only_v2` and report score/IoU/class metrics,
+   matched and unmatched detections, and paired/unpaired frame coverage.
+   `REPORT_ONLY` means a report was generated, not that outputs are equal.
+   Numeric differences or unmatched coverage do not fail a valid comparison;
+   invalid inputs/data or report-writing errors remain errors.
+   Metrics without comparable samples are `null` with sample counts.
 4. A copy audit is a separate evidence claim. `INCONCLUSIVE` means the trace
    did not resolve the requested direction or ownership; it must not be rewritten
    as zero-copy or as a detection failure.
@@ -56,13 +58,14 @@ the canonical baseline or receive a `reproduced` label.
 
 ## Promotion rule
 
-Numbers become current only when the corresponding runbook gates pass and the
-summary points to immutable raw evidence. A matrix shell `PASS` without the
+Promote performance baselines only after their runbook gates pass and the
+summary points to immutable raw evidence. A matrix shell `PASS` without
 per-lane/per-round values is an execution result, not a promoted performance
 baseline. A failure or `INCONCLUSIVE` result remains visible; it is not replaced
-by a silent rerun or profile fallback.
+by a silent rerun or profile fallback. Detection reports record observations,
+not numerical acceptance verdicts.
 
-## Migration regressions and failures
+## Migration comparisons and independent failures
 
 Compare each lane with the same lane from the actual pre-change worktree,
 using identical model and input bytes, provider, runtime, parameters, and test
@@ -70,26 +73,32 @@ code. Preserve dirty and untracked source in an independent checkout with real
 Git metadata. Use separate empty build, install, log, and result directories;
 an old overlay must not satisfy a new package or launch path.
 
-Use stamp pairing without score filtering or a detection-count cap. Do not use
-index pairing, ignore unpaired frames, or substitute a cross-lane REPORT_ONLY
-comparison for the same-lane gate. Keep the thresholds above unchanged.
+Use the default exact-timestamp pairing with complete, unfiltered inputs;
+repeated timestamps pair FIFO, followed by deterministic class-unconstrained
+IoU-greedy detection matching. Optional index pairing or score/detection
+filtering is allowed for diagnostics, but record the method/options and make
+its coverage clear. A filtered or index-paired report is not the full-coverage
+default observation.
 
 Record command exit codes and component startup, runtime, and teardown logs
 separately. A capture or launch-test wrapper can return zero after its component
-exits with SIGSEGV. A copy report PASS does not establish clean teardown or
-numeric equivalence. Missing fixed-rate fields remain MISSING, not zero.
+exits with SIGSEGV. A copy report PASS does not establish clean teardown, and a
+detection report does not override lifecycle or copy evidence. Missing
+fixed-rate fields remain MISSING, not zero.
 
-A baseline failure needs matching raw evidence from the same lane, parameters,
-and failure stage. A new fault, a PASS-to-FAIL change, or newly missing output
-blocks acceptance. An unchanged-source control can investigate repeatability;
-it does not turn a failed migration comparison into PASS. Stop promotion when a
-required gate fails. Continue only diagnostics or measurements already within
-the documented scope, preserving the failure and every subsequent run.
+Preserve raw evidence for any baseline error using the same lane, parameters,
+and failure stage. New execution, input-validity, model-contract, lifecycle, or
+copy errors block acceptance. Numeric detection differences and coverage
+changes are observations, not comparator failures. An unchanged-source control
+can investigate repeatability; it does not dismiss an independent error. Stop
+promotion when a required independent gate fails, preserving the failure and
+every subsequent in-scope diagnostic or measurement.
 
-Compare historical numbers only after checking identity and aggregation. Keep
-missing driver, image, revision, and model identity fields explicit. If old
-numbers violate an existing tolerance, report the inconsistency rather than
-changing the rule. For an out-of-tolerance comparable throughput observation,
-run the same native command on the preserved source and current device before
-attributing the difference to a migration. Do not change algorithms, provider
-settings, warmup, or benchmark configuration to make a structural change pass.
+Compare historical performance numbers only after checking identity and
+aggregation. Keep missing driver, image, revision, and model identity fields
+explicit. If old performance numbers violate an existing tolerance, report the
+inconsistency rather than changing the rule. For an out-of-tolerance comparable
+throughput observation, run the same native command on the preserved source and
+current device before attributing the difference to a migration. Do not change
+algorithms, provider settings, warmup, or benchmark configuration to make a
+structural change pass.

@@ -83,6 +83,7 @@ image. AMD Docker GPU execution was not tested, and neither lane included a
 fresh dependency-image build. These observations do not establish a supported
 runtime release.
 
-[Result records](../docs/results/README.md) distinguish execution, correctness,
-copy closure, teardown, and performance reproduction. Running `launch_test` on
-a benchmark graph measures performance; it is not an ordinary smoke check.
+[Result records](../docs/results/README.md) distinguish execution, detection
+observations, input/model validity, copy evidence, teardown, and performance
+reproduction. Running `launch_test` on a benchmark graph measures performance;
+it is not an ordinary smoke check.

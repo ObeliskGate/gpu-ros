@@ -21,8 +21,8 @@ assets, then run cheap checks before a requested benchmark.
    applicable static checks.
 4. Validate the formal RT-DETRv2 export/provider contract when that profile is
    selected.
-5. Capture fixed-input outputs and complete the requested numeric,
-   provider, or copy audits.
+5. Capture fixed-input outputs and collect the requested detection,
+   provider, or copy observations.
 6. Run a formal performance matrix only when explicitly requested.
 7. Write the result archive and update a result summary without moving raw
    artifacts into Git.
@@ -33,9 +33,9 @@ assets, then run cheap checks before a requested benchmark.
 | [Phase 2B NVIDIA](phase2b-nvidia.md) | NVIDIA CUDA + Isaac ROS 4.5 | RT-DETR and YOLOv8 Config C versus managed transport |
 | [Phase 2A AMD](phase2a-amd.md) | AMD ROCm + MIGraphX, standard ROS 2 | RT-DETRv2 and YOLOv8 standard paths |
 | [Phase 2B Managed](phase2b-managed.md) | AMD ROCm + managed HIP | RT-DETRv2 and YOLOv8 direct, staged-control, and matrix lanes |
-| [RT-DETRv2 validation](rtdetrv2-validation.md) | External export environment plus provider runtime | export reproducibility, CPU parity, provider parity, same-bag, optional COCO |
-| [Detection validation](detection-validation.md) | Prepared AMD or NVIDIA runtime | capture, strict comparison, audit, HIP probe, and lifecycle evidence |
-| [Result acceptance](result-acceptance.md) | All lanes | identity, correctness, reproduction, and promotion rules |
+| [RT-DETRv2 validation](rtdetrv2-validation.md) | External export environment plus provider runtime | export reproducibility, CPU parity, provider parity, same-bag observation, optional COCO |
+| [Detection validation](detection-validation.md) | Prepared AMD or NVIDIA runtime | capture, observation-only comparison, audit, HIP probe, and lifecycle evidence |
+| [Result acceptance](result-acceptance.md) | All lanes | identity, observations, performance reproduction, and promotion rules |
 
 ## Shared preparation
 
@@ -166,12 +166,12 @@ convert unresolved evidence into a zero-copy claim. Mixed MIGraphX plus CPU
 placement is allowed when MIGraphX kernels are present and the CPU node list,
 count, and share are reported.
 
-Record wrapper exit, component lifecycle, numeric comparison, copy evidence,
-and throughput separately. A zero wrapper exit can hide SIGSEGV during
+Record wrapper exit, component lifecycle, detection metrics and coverage, copy
+evidence, and throughput separately. A zero wrapper exit can hide SIGSEGV during
 teardown. A report may lack a requested fixed-rate field. Record the crash or
 missing field directly, without changing it to PASS or zero. Follow
-[result acceptance](result-acceptance.md), and show measured values and
-historical comparability before updating a result summary.
+[result acceptance](result-acceptance.md), and show measured values and historical
+comparability before updating a result summary.
 
 A new matrix manifest is schema 3 and records one `monorepo_revision` plus the
 existing monorepo diff, untracked-path/content, and dirty-state fields. A new
