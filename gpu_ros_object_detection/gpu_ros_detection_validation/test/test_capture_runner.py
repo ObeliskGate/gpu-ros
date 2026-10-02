@@ -108,6 +108,7 @@ def _run_matrix(
     for name in (
         'CAPTURE_MODEL_PATH',
         'CAPTURE_INPUT_BAG',
+        'ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH',
         'OVG_ASSETS_ROOT',
         'ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT',
         'ONNXRUNTIME_ROOT',
@@ -326,14 +327,18 @@ def test_amd_matrix_records_fixed_assets_and_relative_dataset_hashes(tmp_path, m
     )
 
 
-def test_amd_matrix_rejects_capture_overrides_even_when_empty(tmp_path):
+def test_amd_matrix_rejects_input_overrides_even_when_empty(tmp_path):
     workspace = _create_matrix_workspace(tmp_path / 'workspace')
     assets = tmp_path / 'assets'
     _create_assets(assets, 'yolov8')
     bin_dir = _install_fake_launch_test(tmp_path)
 
-    for variable in ('CAPTURE_MODEL_PATH', 'CAPTURE_INPUT_BAG'):
-        for index, value in enumerate(('', str(tmp_path / 'capture-override'))):
+    for variable in (
+        'CAPTURE_MODEL_PATH',
+        'CAPTURE_INPUT_BAG',
+        'ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH',
+    ):
+        for index, value in enumerate(('', str(tmp_path / 'input-override'))):
             matrix_name = f'reject-{variable.lower()}-{index}'
             result, output_dir, launch_log = _run_matrix(
                 tmp_path,
@@ -375,13 +380,18 @@ def test_amd_matrix_rejects_conflicting_assets_roots_before_launch(tmp_path):
     assert not output_dir.exists()
 
 
-@pytest.mark.parametrize('missing_input', ('model', 'dataset'))
-def test_amd_matrix_rejects_missing_fixed_assets_before_launch(tmp_path, missing_input):
+@pytest.mark.parametrize('invalid_input', ('model', 'model-directory', 'dataset'))
+def test_amd_matrix_rejects_invalid_fixed_assets_before_launch(tmp_path, invalid_input):
     workspace = _create_matrix_workspace(tmp_path / 'workspace')
     assets = tmp_path / 'assets'
     model_path, dataset_path = _create_assets(assets, 'yolov8')
-    if missing_input == 'model':
+    if invalid_input == 'model':
         model_path.unlink()
+        expected_error = 'required model file'
+    elif invalid_input == 'model-directory':
+        model_path.unlink()
+        model_path.mkdir()
+        (model_path / 'not-an-onnx-file').write_bytes(b'not a model\n')
         expected_error = 'required model file'
     else:
         (dataset_path / 'sample.mcap').unlink()
@@ -394,7 +404,7 @@ def test_amd_matrix_rejects_missing_fixed_assets_before_launch(tmp_path, missing
         workspace,
         bin_dir,
         'yolov8',
-        f'reject-missing-{missing_input}',
+        f'reject-invalid-{invalid_input}',
         {'OVG_ASSETS_ROOT': str(assets)},
     )
     assert result.returncode == 1

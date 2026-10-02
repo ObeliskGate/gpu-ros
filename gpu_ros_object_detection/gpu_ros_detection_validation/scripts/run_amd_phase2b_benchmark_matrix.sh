@@ -56,6 +56,10 @@ if [[ ${CAPTURE_INPUT_BAG+x} == x ]]; then
   echo "ERROR: CAPTURE_INPUT_BAG is only supported by the fixed-input capture runner." >&2
   exit 2
 fi
+if [[ ${ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH+x} == x ]]; then
+  echo "ERROR: ROS2_BENCHMARK_OVERRIDE_INPUT_DATA_PATH cannot override the fixed matrix bag." >&2
+  exit 2
+fi
 
 if [[ -n ${OVG_ASSETS_ROOT:-} && -n ${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT:-} ]]; then
   if ! OVG_ASSETS_ROOT_REAL=$(realpath -m -- "${OVG_ASSETS_ROOT}") ||
@@ -141,7 +145,7 @@ hash_path() {
   fi
 }
 
-if [[ ! -s ${MODEL_PATH} ]]; then
+if [[ ! -f ${MODEL_PATH} || ! -s ${MODEL_PATH} ]]; then
   echo "ERROR: required model file is missing or empty: ${MODEL_PATH}" >&2
   exit 1
 fi
