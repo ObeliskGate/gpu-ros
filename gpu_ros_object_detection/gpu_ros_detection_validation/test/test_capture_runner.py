@@ -20,11 +20,7 @@ from pathlib import Path
 
 import pytest
 
-MATRIX_SCRIPT_PATH = (
-    Path(__file__).parents[1]
-    / 'scripts'
-    / 'run_amd_phase2b_benchmark_matrix.sh'
-)
+MATRIX_SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2b_benchmark_matrix.sh'
 MATRIX_GRAPH_NAMES = {
     'yolov8': (
         'gpu_ros_yolov8_phase2a_amd_graph.py',
@@ -56,9 +52,7 @@ def _create_matrix_workspace(path):
     path.mkdir(parents=True)
     benchmark_dir = path / 'gpu_ros_object_detection' / 'benchmarks'
     benchmark_dir.mkdir(parents=True)
-    for graph in sorted(
-        {graph for graphs in MATRIX_GRAPH_NAMES.values() for graph in graphs}
-    ):
+    for graph in sorted({graph for graphs in MATRIX_GRAPH_NAMES.values() for graph in graphs}):
         (benchmark_dir / graph).write_text('# matrix fixture graph\n')
     (path / 'tracked.txt').write_text('committed fixture\n')
     _git(path, 'init', '-b', 'main')
@@ -134,9 +128,7 @@ def _run_matrix(
         text=True,
         env=environment,
     )
-    output_dir = (
-        root / 'results' / 'phase2b-benchmark-matrix' / matrix_name
-    )
+    output_dir = root / 'results' / 'phase2b-benchmark-matrix' / matrix_name
     return result, output_dir, launch_log
 
 
@@ -145,9 +137,7 @@ def _read_matrix_manifest(output_dir):
         key: value
         for key, _, value in (
             line.partition('=')
-            for line in (output_dir / 'matrix_manifest.txt')
-            .read_text()
-            .splitlines()
+            for line in (output_dir / 'matrix_manifest.txt').read_text().splitlines()
         )
     }
 
@@ -167,10 +157,7 @@ def _expected_relative_tree_sha256(dataset_path):
 
 def _assert_matrix_invocation(result, output_dir, launch_log, model, assets_root):
     assert result.returncode == 0, f'{result.stdout}\n{result.stderr}'
-    records = [
-        line.split('\t')
-        for line in launch_log.read_text().splitlines()
-    ]
+    records = [line.split('\t') for line in launch_log.read_text().splitlines()]
     expected_indices = (0, 1, 2, 1, 2, 0, 2, 0, 1)
     assert len(records) == 9
     assert [record[0] for record in records] == [
@@ -180,24 +167,18 @@ def _assert_matrix_invocation(result, output_dir, launch_log, model, assets_root
     assert {record[1] for record in records} == {str(assets_root)}
     manifest = _read_matrix_manifest(output_dir)
     model_path = assets_root / MATRIX_MODEL_PATHS[model]
-    dataset_path = (
-        assets_root / 'datasets' / 'r2bdataset2024_v1' / 'r2b_robotarm'
-    )
+    dataset_path = assets_root / 'datasets' / 'r2bdataset2024_v1' / 'r2b_robotarm'
     assert manifest['schema_version'] == '3'
     assert manifest['assets_root'] == str(assets_root)
     assert manifest['model_path'] == str(model_path)
-    assert manifest['model_sha256'] == hashlib.sha256(
-        model_path.read_bytes()
-    ).hexdigest()
+    assert manifest['model_sha256'] == hashlib.sha256(model_path.read_bytes()).hexdigest()
     assert manifest['dataset_path'] == str(dataset_path)
-    assert (
-        manifest['dataset_tree_hash_algorithm']
-        == 'sha256sum-sorted-relative-path-v1'
-    )
+    assert manifest['dataset_tree_hash_algorithm'] == 'sha256sum-sorted-relative-path-v1'
     for result_file in output_dir.glob('round-*.json'):
         assert json.loads(result_file.read_text()) == {'fixture': True}
     assert len(list(output_dir.glob('round-*.json'))) == 9
     return manifest
+
 
 SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_nvidia_fixed_input_capture.sh'
 AMD_SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2a_fixed_input_capture.sh'
@@ -292,12 +273,8 @@ def test_amd_matrix_records_fixed_assets_and_relative_dataset_hashes(tmp_path, m
         f'{model}-assets-two',
         {'ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT': str(assets_two)},
     )
-    manifest_two = _assert_matrix_invocation(
-        result_two, output_two, log_two, model, assets_two
-    )
-    assert manifest_two['model_sha256'] == hashlib.sha256(
-        model_two.read_bytes()
-    ).hexdigest()
+    manifest_two = _assert_matrix_invocation(result_two, output_two, log_two, model, assets_two)
+    assert manifest_two['model_sha256'] == hashlib.sha256(model_two.read_bytes()).hexdigest()
     assert manifest_two['dataset_tree_sha256'] == expected_dataset_hash
     assert model_one.read_bytes() == model_two.read_bytes()
 
@@ -314,17 +291,10 @@ def test_amd_matrix_records_fixed_assets_and_relative_dataset_hashes(tmp_path, m
     manifest_three = _assert_matrix_invocation(
         result_three, output_three, log_three, model, assets_two
     )
-    assert manifest_three['model_sha256'] == hashlib.sha256(
-        model_two.read_bytes()
-    ).hexdigest()
+    assert manifest_three['model_sha256'] == hashlib.sha256(model_two.read_bytes()).hexdigest()
     assert manifest_three['model_sha256'] != manifest_two['model_sha256']
-    assert manifest_three['dataset_tree_sha256'] == (
-        _expected_relative_tree_sha256(dataset_two)
-    )
-    assert (
-        manifest_three['dataset_tree_sha256']
-        != manifest_two['dataset_tree_sha256']
-    )
+    assert manifest_three['dataset_tree_sha256'] == (_expected_relative_tree_sha256(dataset_two))
+    assert manifest_three['dataset_tree_sha256'] != manifest_two['dataset_tree_sha256']
 
 
 def test_amd_matrix_rejects_input_overrides_even_when_empty(tmp_path):
@@ -437,9 +407,7 @@ def test_amd_matrix_records_normal_and_linked_worktree_fingerprints(tmp_path):
             f'worktree-{name}',
             {'OVG_ASSETS_ROOT': str(assets)},
         )
-        manifest = _assert_matrix_invocation(
-            result, output_dir, launch_log, 'yolov8', assets
-        )
+        manifest = _assert_matrix_invocation(result, output_dir, launch_log, 'yolov8', assets)
 
         revision = _git(checkout, 'rev-parse', 'HEAD').strip()
         diff = subprocess.run(
@@ -457,12 +425,7 @@ def test_amd_matrix_records_normal_and_linked_worktree_fingerprints(tmp_path):
             b'untracked file.txt\0' + untracked_hash_line
         ).hexdigest()
         assert manifest['monorepo_revision'] == revision
-        assert manifest['monorepo_diff_head_binary_sha256'] == hashlib.sha256(
-            diff
-        ).hexdigest()
+        assert manifest['monorepo_diff_head_binary_sha256'] == hashlib.sha256(diff).hexdigest()
         assert manifest['monorepo_untracked_paths'] == 'untracked\\ file.txt'
-        assert (
-            manifest['monorepo_untracked_content_sha256']
-            == expected_untracked_hash
-        )
+        assert manifest['monorepo_untracked_content_sha256'] == expected_untracked_hash
         assert manifest['monorepo_dirty'] == 'true'

@@ -252,7 +252,6 @@ trap 'exit 130' INT TERM
   echo "lane_order_round_3=direct,std,staged"
 } >"${OUTPUT_ROOT}/matrix_manifest.txt"
 
-
 run_lane() {
   local round="$1"
   local lane="$2"
