@@ -111,6 +111,16 @@ ros2 run gpu_ros_detection_validation \
   yolov8 "yolov8_phase2b_matrix_${RUN_ID}"
 ```
 
+The matrix runner does not accept `CAPTURE_MODEL_PATH` or `CAPTURE_INPUT_BAG`,
+even when set to empty; those overrides belong to fixed-input capture. If both
+`OVG_ASSETS_ROOT` and `ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT` are set, they must
+refer to the same directory. The runner exports the selected assets root to
+the benchmark graphs and hashes their fixed model input
+(`models/yolov8/yolov8s.onnx` or
+`models/rtdetrv2_r50/rtdetrv2_r50.onnx`) and dataset input
+(`datasets/r2bdataset2024_v1/r2b_robotarm`) before starting a lane. A missing
+input or failed digest aborts before the manifest is written.
+
 A schema 3 manifest records the executed monorepo revision, dirty/untracked
 fingerprints, assets, and runtime. The matrix shell's PASS means its nine
 processes emitted JSON. Check component exit logs, actual fixed-rate fields,

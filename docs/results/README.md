@@ -103,7 +103,7 @@ A new manifest is written with `schema_version=3` and one monorepo identity:
 schema_version=3
 monorepo_revision=<checkout commit>
 monorepo_diff_head_binary_sha256=<repository diff fingerprint>
-monorepo_untracked_paths=<newline-separated paths or empty>
+monorepo_untracked_paths=<one-line semicolon-separated, shell-escaped paths or empty>
 monorepo_untracked_content_sha256=<untracked-content fingerprint>
 monorepo_dirty=<true|false>
 ```
@@ -119,6 +119,16 @@ When a consumer displays component revisions, a v3 record resolves both the
 application and transport components to `monorepo_revision` for display only.
 It does not rewrite the record or make two-layout and one-layout diff hashes
 interchangeable.
+
+New matrix manifests include
+`dataset_tree_hash_algorithm=sha256sum-sorted-relative-path-v1`. The runner
+sorts dataset files by their relative `./...` paths in the C locale, emits
+each file's `sha256sum` line from within the dataset directory, and hashes
+that stream. The absolute mount root does not enter this digest. Earlier
+matrix dataset hashes included absolute file paths and did not carry this
+algorithm marker; neither those hashes nor the different
+`phase2-assets.tree_digest` algorithm can be compared directly with the new
+`dataset_tree_sha256`. Historical manifests retain their original values.
 
 ## Fixed-input capture logs: unversioned format
 
