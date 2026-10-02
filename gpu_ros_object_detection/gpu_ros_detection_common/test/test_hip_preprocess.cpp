@@ -79,8 +79,8 @@ sensor_msgs::msg::Image MakeMonoImage(
   image.width = width;
   image.height = height;
   image.step = width + 3U;
-  image.encoding = gpu_ros::detection_common::ImageEncodingName(
-    gpu_ros::detection_common::ImageEncoding::kMono8);
+  image.encoding =
+    gpu_ros::detection_common::ImageEncodingName(gpu_ros::detection_common::ImageEncoding::kMono8);
   image.data.assign(static_cast<size_t>(image.step) * height, 0xEEU);
   for (uint32_t y = 0; y < height; ++y) {
     for (uint32_t x = 0; x < width; ++x) {
@@ -124,8 +124,7 @@ std::vector<float> RunHipPreprocess(const sensor_msgs::msg::Image & image,
   return hip;
 }
 
-std::vector<float> CompareHipAndCpu(
-  const sensor_msgs::msg::Image & image,
+std::vector<float> CompareHipAndCpu(const sensor_msgs::msg::Image & image,
   gpu_ros::detection_common::PreprocessNormalization normalization, int64_t output_width = 11,
   int64_t output_height = 9, bool require_exact = false)
 {
@@ -300,9 +299,8 @@ TEST(HipPreprocess, ResizeRoundingNeighborhoodMatchesCpuReference)
   using namespace gpu_ros::detection_common;
   const auto normalization = PreprocessNormalization::kNone;
   for (const auto & pixels :
-    {std::vector<uint8_t>{0U, 10U}, std::vector<uint8_t>{0U, 11U},
-      std::vector<uint8_t>{0U, 12U}, std::vector<uint8_t>{10U, 0U},
-      std::vector<uint8_t>{11U, 0U}, std::vector<uint8_t>{12U, 0U}})
+    {std::vector<uint8_t>{0U, 10U}, std::vector<uint8_t>{0U, 11U}, std::vector<uint8_t>{0U, 12U},
+      std::vector<uint8_t>{10U, 0U}, std::vector<uint8_t>{11U, 0U}, std::vector<uint8_t>{12U, 0U}})
   {
     SCOPED_TRACE(static_cast<int>(pixels[0]) * 256 + pixels[1]);
     const auto image = MakeMonoImage(2U, 1U, pixels);

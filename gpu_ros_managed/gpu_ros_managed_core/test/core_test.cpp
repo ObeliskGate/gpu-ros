@@ -43,7 +43,7 @@ bool should_fail_allocation(std::size_t size) noexcept
   auto remaining = failing_new_countdown.load(std::memory_order_relaxed);
   while (remaining != 0) {
     if (failing_new_countdown.compare_exchange_weak(
-        remaining, remaining - 1, std::memory_order_relaxed))
+          remaining, remaining - 1, std::memory_order_relaxed))
     {
       if (remaining == 1) {
         failing_new_size.store(0, std::memory_order_relaxed);
@@ -55,8 +55,6 @@ bool should_fail_allocation(std::size_t size) noexcept
   }
   return false;
 }
-
-
 
 class FakeOps final : public grm::detail::BackendOps
 {
@@ -269,12 +267,10 @@ grm::DeviceStream make_stream(const grm::DeviceId & device, grm::detail::NativeS
 {
   return grm::detail::DeviceBufferFactory::make_stream(device, native, {}, ops);
 }
-grm::DeviceStream make_owned_stream(const grm::DeviceId & device,
-  grm::detail::NativeStream native, std::shared_ptr<void> owner,
-  const std::shared_ptr<FakeOps> & ops)
+grm::DeviceStream make_owned_stream(const grm::DeviceId & device, grm::detail::NativeStream native,
+  std::shared_ptr<void> owner, const std::shared_ptr<FakeOps> & ops)
 {
-  return grm::detail::DeviceBufferFactory::make_stream(
-    device, native, std::move(owner), ops);
+  return grm::detail::DeviceBufferFactory::make_stream(device, native, std::move(owner), ops);
 }
 
 void wait_for_cleanup()
@@ -939,8 +935,7 @@ int run_pool_wrapper_bad_alloc_child()
   if (!synchronized_baseline) {
     return 8;
   }
-  const auto synchronized_matching_allocations =
-    observed_new_count.load(std::memory_order_relaxed);
+  const auto synchronized_matching_allocations = observed_new_count.load(std::memory_order_relaxed);
   synchronized_baseline->writer.cancel();
   synchronized_baseline.reset();
   if (synchronized_matching_allocations == 0 || synchronized_pool.available() != 1) {
@@ -950,8 +945,7 @@ int run_pool_wrapper_bad_alloc_child()
   observed_new_count.store(0, std::memory_order_relaxed);
   allocation_failure_triggered.store(false, std::memory_order_relaxed);
   failing_new_size.store(synchronized_target_size, std::memory_order_relaxed);
-  failing_new_countdown.store(
-    synchronized_matching_allocations, std::memory_order_relaxed);
+  failing_new_countdown.store(synchronized_matching_allocations, std::memory_order_relaxed);
   threw_bad_alloc = false;
   try {
     auto unexpected = synchronized_pool.acquire_synchronized_for(10ms);

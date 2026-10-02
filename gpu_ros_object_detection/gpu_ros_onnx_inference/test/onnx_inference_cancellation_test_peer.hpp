@@ -28,7 +28,13 @@ namespace gpu_ros::onnx_inference
 class OnnxInferenceCancellationTestPeer
 {
 public:
-  enum class Point { kNone, kFirstWriter, kSecondBind, kSubmissionBoundary };
+  enum class Point
+  {
+    kNone,
+    kFirstWriter,
+    kSecondBind,
+    kSubmissionBoundary
+  };
 
   static void Arm(Point point)
   {

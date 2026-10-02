@@ -715,7 +715,6 @@ if ! check_graph_lifecycle; then
   exit 1
 fi
 
-
 BAG_INFO="$(ros2 bag info "${OUTPUT_PATH}")"
 echo "${BAG_INFO}"
 

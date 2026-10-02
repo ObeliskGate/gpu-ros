@@ -232,10 +232,9 @@ protected:
     cfg.managed_pool_wait_timeout = 0ms;
     if (strict) {
       cfg.managed_io_contract = "hip_managed_strict";
-      cfg.managed_input_contracts =
-        {"images=float32[1,3,2,2]", "orig_target_sizes=int64[1,2]"};
-      cfg.managed_output_contracts =
-        {"labels=int64[1,300]", "boxes=float32[1,300,4]", "scores=float32[1,300]"};
+      cfg.managed_input_contracts = {"images=float32[1,3,2,2]", "orig_target_sizes=int64[1,2]"};
+      cfg.managed_output_contracts = {
+        "labels=int64[1,300]", "boxes=float32[1,300,4]", "scores=float32[1,300]"};
     }
     return cfg;
   }
@@ -292,7 +291,7 @@ protected:
 };
 
 class ManagedHipPreSubmissionTest : public ManagedHipCancellationTest,
-  public ::testing::WithParamInterface<CancellationPoint>
+                                    public ::testing::WithParamInterface<CancellationPoint>
 {
 };
 
@@ -304,8 +303,8 @@ TEST_P(ManagedHipPreSubmissionTest, StrictCancellationRestoresEveryPoolAndDrains
   ASSERT_TRUE(CancellationPeer::fired);
   ASSERT_TRUE(CancellationPeer::first_buffer);
   EXPECT_FALSE(CancellationPeer::first_buffer->failed());
-  EXPECT_EQ(CancellationPeer::first_buffer->readiness(),
-    gpu_ros_managed::BufferReadiness::kNotReady);
+  EXPECT_EQ(
+    CancellationPeer::first_buffer->readiness(), gpu_ros_managed::BufferReadiness::kNotReady);
   if (GetParam() == CancellationPoint::kSecondBind) {
     ASSERT_TRUE(CancellationPeer::second_buffer);
     EXPECT_FALSE(CancellationPeer::second_buffer->failed());
@@ -327,14 +326,14 @@ TEST_P(ManagedHipPreSubmissionTest, CompatibilityCancelsAndRunsNumericFallback)
   ExpectModelOutputs(outputs);
   ASSERT_TRUE(CancellationPeer::first_buffer);
   EXPECT_FALSE(CancellationPeer::first_buffer->failed());
-  EXPECT_EQ(CancellationPeer::first_buffer->readiness(),
-    gpu_ros_managed::BufferReadiness::kNotReady);
+  EXPECT_EQ(
+    CancellationPeer::first_buffer->readiness(), gpu_ros_managed::BufferReadiness::kNotReady);
   EXPECT_TRUE(CancellationPeer::retained_owner.expired());
   if (GetParam() == CancellationPoint::kSecondBind) {
     ASSERT_TRUE(CancellationPeer::second_buffer);
     EXPECT_FALSE(CancellationPeer::second_buffer->failed());
-    EXPECT_EQ(CancellationPeer::second_buffer->readiness(),
-      gpu_ros_managed::BufferReadiness::kNotReady);
+    EXPECT_EQ(
+      CancellationPeer::second_buffer->readiness(), gpu_ros_managed::BufferReadiness::kNotReady);
     EXPECT_TRUE(CancellationPeer::second_retained_owner.expired());
   }
   // Fresh really is reusable, not merely a non-failed wrapper.
@@ -354,7 +353,7 @@ INSTANTIATE_TEST_SUITE_P(BeforeRun, ManagedHipPreSubmissionTest,
   ::testing::Values(CancellationPoint::kFirstWriter, CancellationPoint::kSecondBind));
 
 class ManagedHipSubmissionTest : public ManagedHipCancellationTest,
-  public ::testing::WithParamInterface<bool>
+                                 public ::testing::WithParamInterface<bool>
 {
 };
 
@@ -414,6 +413,6 @@ INSTANTIATE_TEST_SUITE_P(StrictAndCompatibility, ManagedHipSubmissionTest, ::tes
 TEST(OnnxInferenceCoreTest, ManagedHipCancellationRequiresMigraphx)
 {
   GTEST_SKIP() << "Real managed output cancellation tests require ORT_ENABLE_MIGRAPHX=ON "
-                 "and the HIP backend.";
+                  "and the HIP backend.";
 }
 #endif

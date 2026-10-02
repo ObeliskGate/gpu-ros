@@ -914,7 +914,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
       }
 
-      const bool try_managed_hip_preallocation = execution_provider_ == ExecutionProvider::kMigraphx;
+      const bool try_managed_hip_preallocation =
+        execution_provider_ == ExecutionProvider::kMigraphx;
       bool preallocation_failed = false;
       std::string preallocation_failure;
       if (try_managed_hip_preallocation) {
@@ -1052,8 +1053,8 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       }
       ort_outputs = binding->GetOutputValues();
     } else {
-      ort_outputs = session_->Run(Ort::RunOptions{nullptr}, input_name_ptrs.data(), ort_inputs.data(),
-        ort_inputs.size(), output_name_ptrs.data(), output_name_ptrs.size());
+      ort_outputs = session_->Run(Ort::RunOptions{nullptr}, input_name_ptrs.data(),
+        ort_inputs.data(), ort_inputs.size(), output_name_ptrs.data(), output_name_ptrs.size());
     }
   } catch (...) {
     if (may_have_submitted) {

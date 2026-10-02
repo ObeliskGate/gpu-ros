@@ -107,13 +107,11 @@ public:
   {
     throw std::logic_error("Canceled reservation must not create an event");
   }
-  void record_event(gpu_ros_managed::detail::Event,
-    gpu_ros_managed::detail::NativeStream) override
+  void record_event(gpu_ros_managed::detail::Event, gpu_ros_managed::detail::NativeStream) override
   {
     throw std::logic_error("Canceled reservation must not record an event");
   }
-  void wait_event(gpu_ros_managed::detail::NativeStream,
-    gpu_ros_managed::detail::Event) override
+  void wait_event(gpu_ros_managed::detail::NativeStream, gpu_ros_managed::detail::Event) override
   {
     throw std::logic_error("Canceled reservation must not wait on an event");
   }
@@ -128,8 +126,8 @@ public:
   std::shared_ptr<void> allocate_device(int ordinal, size_t bytes) override
   {
     select_device(ordinal);
-    return std::shared_ptr<void>(new uint8_t[bytes],
-      [](void * data) { delete[] static_cast<uint8_t *>(data); });
+    return std::shared_ptr<void>(
+      new uint8_t[bytes], [](void * data) { delete[] static_cast<uint8_t *>(data); });
   }
   void copy_host_to_device(int, void * destination, const void * source, size_t bytes) override
   {
@@ -151,29 +149,24 @@ TEST(TypeAdapterProbe, InvalidPooledTensorReturnsUnsubmittedReservation)
   auto pool = grm::detail::PoolFactory::make(device, 4, 1, ops);
   const std::vector<std::vector<int64_t>> invalid_shapes{{2}, {}, {0}, {-1}};
   for (const auto & shape : invalid_shapes) {
-    EXPECT_THROW(
-      grm::tensor_from_pool("input", TensorDataType::kFloat32, shape, pool, stream),
+    EXPECT_THROW(grm::tensor_from_pool("input", TensorDataType::kFloat32, shape, pool, stream),
       std::invalid_argument);
     ASSERT_EQ(pool.available(), 1U);
   }
-  EXPECT_THROW(
-    grm::tensor_from_pool("input", static_cast<TensorDataType>(255), {1}, pool, stream),
+  EXPECT_THROW(grm::tensor_from_pool("input", static_cast<TensorDataType>(255), {1}, pool, stream),
     std::invalid_argument);
   ASSERT_EQ(pool.available(), 1U);
-  EXPECT_THROW(
-    grm::tensor_from_pool("input", TensorDataType::kFloat32,
-      {std::numeric_limits<int64_t>::max(), 3}, pool, stream),
+  EXPECT_THROW(grm::tensor_from_pool("input", TensorDataType::kFloat32,
+                 {std::numeric_limits<int64_t>::max(), 3}, pool, stream),
     std::overflow_error);
   ASSERT_EQ(pool.available(), 1U);
-  EXPECT_THROW(
-    grm::tensor_from_pool("input", TensorDataType::kFloat32,
-      {std::numeric_limits<int64_t>::max()}, pool, stream),
+  EXPECT_THROW(grm::tensor_from_pool("input", TensorDataType::kFloat32,
+                 {std::numeric_limits<int64_t>::max()}, pool, stream),
     std::overflow_error);
   ASSERT_EQ(pool.available(), 1U);
   for (int attempt = 0; attempt < 2; ++attempt) {
     {
-      auto tensor = grm::tensor_from_pool(
-        "input", TensorDataType::kFloat32, {1}, pool, stream);
+      auto tensor = grm::tensor_from_pool("input", TensorDataType::kFloat32, {1}, pool, stream);
       EXPECT_EQ(tensor.tensor.byte_size(), sizeof(float));
       tensor.writer.cancel();
       EXPECT_EQ(pool.available(), 0U);

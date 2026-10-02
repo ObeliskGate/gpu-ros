@@ -527,9 +527,7 @@ def _run_nvidia_capture(
             except ProcessLookupError:
                 pass
             stdout, stderr = process.communicate()
-        raise AssertionError(
-            f'NVIDIA capture fixture timed out:\n{stdout}\n{stderr}'
-        ) from timeout
+        raise AssertionError(f'NVIDIA capture fixture timed out:\n{stdout}\n{stderr}') from timeout
     finally:
         _kill_nvidia_fixture_processes(fixture_paths)
         if process.poll() is None:
@@ -552,10 +550,7 @@ def test_nvidia_capture_rejects_component_crash_hidden_by_zero_wrapper(tmp_path)
     assert result.returncode != 0, f'{result.stdout}\n{result.stderr}'
     assert 'PASS:' not in result.stdout
     assert fixture_paths['CAPTURE_FIXTURE_LAUNCH_STATUS_FILE'].read_text().strip() == '0'
-    assert (
-        '[ERROR] [component_container_mt-2]: process has died '
-        in launch_log.read_text()
-    )
+    assert '[ERROR] [component_container_mt-2]: process has died ' in launch_log.read_text()
     assert 'exit code 7' in result.stdout + result.stderr
 
 
@@ -643,9 +638,7 @@ def test_nvidia_capture_fails_when_recorder_stop_requires_escalation(
 
 
 def test_nvidia_capture_recorder_receives_int_without_installing_a_handler(tmp_path):
-    result, _output_root, _fixture_paths = _run_nvidia_capture(
-        tmp_path, record_mode='inherited'
-    )
+    result, _output_root, _fixture_paths = _run_nvidia_capture(tmp_path, record_mode='inherited')
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'PASS:' in result.stdout
     assert 'sending SIGTERM' not in result.stdout
