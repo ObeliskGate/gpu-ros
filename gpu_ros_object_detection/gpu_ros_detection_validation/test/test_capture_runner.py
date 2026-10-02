@@ -15,7 +15,9 @@
 import hashlib
 import json
 import os
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -183,6 +185,485 @@ def _assert_matrix_invocation(result, output_dir, launch_log, model, assets_root
 SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_nvidia_fixed_input_capture.sh'
 AMD_SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_amd_phase2a_fixed_input_capture.sh'
 AUDIT_SCRIPT_PATH = Path(__file__).parents[1] / 'scripts' / 'run_nvidia_yolov8_transport_audit.sh'
+
+
+_NVIDIA_ROS2_FIXTURE_SOURCE = r'''
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def _write_env_path(name, value):
+    Path(os.environ[name]).write_text(f'{value}\n')
+
+
+def _exit_on_signal(_signum, _frame):
+    raise SystemExit(0)
+
+
+def _wait_for_ready(name):
+    path = Path(os.environ[name])
+    deadline = time.monotonic() + 5
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f'fixture child did not become ready: {name}')
+        time.sleep(0.01)
+
+
+def _child(role, mode):
+    received = 0
+
+    def _count_signal(_signum, _frame):
+        nonlocal received
+        received += 1
+        _write_env_path('CAPTURE_FIXTURE_COMPONENT_SIGNAL_FILE', received)
+
+    if role == 'component' and mode == 'kill':
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    elif role == 'component' and mode == 'term':
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    elif role == 'component' and mode == 'relay_once':
+        signal.signal(signal.SIGINT, _count_signal)
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    else:
+        signal.signal(signal.SIGINT, _exit_on_signal)
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    if role == 'component':
+        _write_env_path('CAPTURE_FIXTURE_COMPONENT_PID_FILE', os.getpid())
+        _write_env_path('CAPTURE_FIXTURE_COMPONENT_READY_FILE', 'ready')
+    else:
+        _write_env_path('CAPTURE_FIXTURE_CONTAINER_PID_FILE', os.getpid())
+        _write_env_path('CAPTURE_FIXTURE_CONTAINER_READY_FILE', 'ready')
+    if role == 'component' and mode == 'relay_once':
+        while received == 0:
+            signal.pause()
+        # Keep teardown alive long enough to observe launch's forwarded signal.
+        time.sleep(0.25)
+        raise SystemExit(0 if received == 1 else 7)
+    while True:
+        signal.pause()
+
+
+def _topic_info(topic):
+    started = Path(os.environ['CAPTURE_FIXTURE_STARTED_PATH']).exists()
+    is_detection_topic = topic.endswith('/detections_output')
+    publisher = int(started and is_detection_topic)
+    record_ready = Path(os.environ['CAPTURE_FIXTURE_RECORD_READY_FILE']).exists()
+    subscription = int(started and (not is_detection_topic or record_ready))
+    print(f'Publisher count: {publisher}')
+    print(f'Subscription count: {subscription}')
+    return 0
+
+
+def _launch():
+    mode = os.environ['CAPTURE_FIXTURE_MODE']
+
+    children = []
+
+    def _on_signal(signum, _frame):
+        if mode == 'relay_once':
+            receipt = Path(os.environ['CAPTURE_FIXTURE_COMPONENT_SIGNAL_FILE'])
+            deadline = time.monotonic() + 0.1
+            while not receipt.exists() and time.monotonic() < deadline:
+                time.sleep(0.005)
+        for child in children:
+            if child.poll() is None:
+                try:
+                    child.send_signal(signum)
+                except ProcessLookupError:
+                    pass
+
+    signal.signal(signal.SIGINT, _on_signal)
+    signal.signal(signal.SIGTERM, _on_signal)
+    container = subprocess.Popen(
+        [sys.executable, __file__, 'child', 'container', mode],
+    )
+    component_command = (
+        ['/bin/sh', '-c', 'exit 7']
+        if mode == 'crash'
+        else [sys.executable, __file__, 'child', 'component', mode]
+    )
+    component = subprocess.Popen(component_command)
+    children.extend((container, component))
+    _wait_for_ready('CAPTURE_FIXTURE_CONTAINER_READY_FILE')
+    if mode != 'crash':
+        _wait_for_ready('CAPTURE_FIXTURE_COMPONENT_READY_FILE')
+    _write_env_path('CAPTURE_FIXTURE_LAUNCH_PID_FILE', os.getpid())
+    print(
+        f'[INFO] [component_container-1]: process started with pid [{container.pid}]',
+        flush=True,
+    )
+    print(
+        f'[INFO] [component_container_mt-2]: process started with pid [{component.pid}]',
+        flush=True,
+    )
+    Path(os.environ['CAPTURE_FIXTURE_STARTED_PATH']).write_text('started\n')
+
+    component_status = component.wait()
+    if component_status == 0:
+        if mode == 'contradictory':
+            print(
+                '[INFO] [component_container_mt-2]: process has finished '
+                f'cleanly [pid {component.pid + 1}]',
+                flush=True,
+            )
+        elif mode != 'missing':
+            print(
+                '[INFO] [component_container_mt-2]: process has finished '
+                f'cleanly [pid {component.pid}]',
+                flush=True,
+            )
+    else:
+        print(
+            '[ERROR] [component_container_mt-2]: process has died '
+            f"[pid {component.pid}, exit code {component_status}, "
+            "cmd '/bin/sh -c exit 7'].",
+            flush=True,
+        )
+
+    container_status = container.wait()
+    if container_status == 0:
+        print(
+            '[INFO] [component_container-1]: process has finished '
+            f'cleanly [pid {container.pid}]',
+            flush=True,
+        )
+    else:
+        print(
+            '[ERROR] [component_container-1]: process has died '
+            f'[pid {container.pid}, exit code {container_status}, cmd '
+            "'fixture container'].",
+            flush=True,
+        )
+    _write_env_path('CAPTURE_FIXTURE_LAUNCH_STATUS_FILE', 0)
+    return 0
+
+
+def _record():
+    mode = os.environ['CAPTURE_FIXTURE_RECORD_MODE']
+    if mode == 'kill':
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    elif mode == 'term':
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    elif mode == 'inherited':
+        # Like Python ROS CLI entry points, retain the inherited SIGINT policy.
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    else:
+        signal.signal(signal.SIGINT, _exit_on_signal)
+        signal.signal(signal.SIGTERM, _exit_on_signal)
+    output_path = Path(sys.argv[sys.argv.index('--output') + 1])
+    output_path.mkdir(parents=True, exist_ok=True)
+    _write_env_path('CAPTURE_FIXTURE_RECORD_PID_FILE', os.getpid())
+    _write_env_path('CAPTURE_FIXTURE_RECORD_READY_FILE', 'ready')
+    while True:
+        signal.pause()
+
+def main():
+    arguments = sys.argv[1:]
+    if arguments and arguments[0] == 'child':
+        _child(arguments[1], arguments[2])
+        return 0
+    if arguments[:2] == ['topic', 'info']:
+        return _topic_info(arguments[2])
+    if arguments[:1] == ['launch']:
+        return _launch()
+    if arguments[:2] == ['bag', 'record']:
+        return _record()
+    if arguments[:2] == ['bag', 'play']:
+        return int(os.environ['CAPTURE_FIXTURE_PLAY_STATUS'])
+    if arguments[:2] == ['bag', 'info']:
+        print('Messages: 1')
+        return 0
+    print(f'unexpected ros2 fixture arguments: {arguments}', file=sys.stderr)
+    return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+'''
+
+
+def _create_nvidia_capture_fixture(
+    root, mode, bag_play_status, record_mode, stop_grace_seconds, stop_term_seconds
+):
+    assets_root = root / 'assets'
+    model_path = assets_root / 'models' / 'synthetica_detr_v1.0.0_onnx' / 'sdetr_grasp.onnx'
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b'fixture model\n')
+    input_bag = assets_root / 'datasets' / 'r2bdataset2024_v1' / 'r2b_robotarm'
+    input_bag.mkdir(parents=True)
+    (input_bag / 'metadata.yaml').write_text('fixture bag metadata\n')
+
+    workspace = root / 'workspace'
+    workspace.mkdir()
+    bin_dir = root / 'fake-bin'
+    bin_dir.mkdir()
+    ros2_path = bin_dir / 'ros2'
+    ros2_path.write_text(f'#!{sys.executable}\n' + _NVIDIA_ROS2_FIXTURE_SOURCE)
+    ros2_path.chmod(ros2_path.stat().st_mode | 0o111)
+    profiler_path = bin_dir / 'nsys'
+    profiler_path.write_text(
+        f'#!{sys.executable}\n'
+        'import signal, subprocess, sys\n'
+        'child = subprocess.Popen(sys.argv[sys.argv.index("bash"):], start_new_session=True)\n'
+        'def forward(signum, _frame):\n'
+        '    if child.poll() is None:\n'
+        '        child.send_signal(signum)\n'
+        'signal.signal(signal.SIGINT, forward)\n'
+        'signal.signal(signal.SIGTERM, forward)\n'
+        'raise SystemExit(child.wait())\n'
+    )
+    profiler_path.chmod(profiler_path.stat().st_mode | 0o111)
+
+    output_root = root / 'capture-output'
+    fixture_paths = {
+        'CAPTURE_FIXTURE_STARTED_PATH': root / 'launch-started',
+        'CAPTURE_FIXTURE_LAUNCH_PID_FILE': root / 'launch-pid',
+        'CAPTURE_FIXTURE_COMPONENT_PID_FILE': root / 'component-pid',
+        'CAPTURE_FIXTURE_CONTAINER_PID_FILE': root / 'container-pid',
+        'CAPTURE_FIXTURE_RECORD_PID_FILE': root / 'record-pid',
+        'CAPTURE_FIXTURE_CONTAINER_READY_FILE': root / 'container-ready',
+        'CAPTURE_FIXTURE_COMPONENT_READY_FILE': root / 'component-ready',
+        'CAPTURE_FIXTURE_COMPONENT_SIGNAL_FILE': root / 'component-signal-count',
+        'CAPTURE_FIXTURE_RECORD_READY_FILE': root / 'record-ready',
+        'CAPTURE_FIXTURE_LAUNCH_STATUS_FILE': root / 'launch-status',
+    }
+    environment = os.environ.copy()
+    for name in (
+        'CAPTURE_ORT_PROFILE_PREFIX',
+        'CAPTURE_BINDING_REPORT_PATH',
+        'CAPTURE_NSYS_OUTPUT',
+        'CAPTURE_MODEL_PATH',
+        'CAPTURE_INPUT_BAG',
+        'ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT',
+        'ISAAC_ROS_WS',
+    ):
+        environment.pop(name, None)
+    environment.update(
+        {
+            'PATH': f'{bin_dir}{os.pathsep}{environment["PATH"]}',
+            'ROS_DISTRO': 'capture-test-no-ros',
+            'ISAAC_ROS_WS': str(workspace),
+            'ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT': str(assets_root),
+            'CAPTURE_OUTPUT_ROOT': str(output_root),
+            'CAPTURE_PLAYBACK_RATE': '0.25',
+            'CAPTURE_DRAIN_SECONDS': '0',
+            'CAPTURE_MIN_MESSAGES': '1',
+            'CAPTURE_STOP_GRACE_SECONDS': str(stop_grace_seconds),
+            'CAPTURE_STOP_TERM_SECONDS': str(stop_term_seconds),
+            'CAPTURE_FIXTURE_MODE': mode,
+            'CAPTURE_FIXTURE_RECORD_MODE': record_mode,
+            'CAPTURE_FIXTURE_PLAY_STATUS': str(bag_play_status),
+        }
+    )
+    environment.update({name: str(path) for name, path in fixture_paths.items()})
+    return environment, output_root, fixture_paths
+
+
+def _kill_nvidia_fixture_processes(fixture_paths):
+    process_groups = set()
+    for name, path in fixture_paths.items():
+        if not name.endswith('_PID_FILE'):
+            continue
+        try:
+            pid = int(path.read_text())
+            process_group = os.getpgid(pid)
+        except (FileNotFoundError, ProcessLookupError, ValueError):
+            continue
+        if process_group != os.getpgrp():
+            process_groups.add(process_group)
+    for process_group in process_groups:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def _run_nvidia_capture(
+    root,
+    *,
+    mode='clean',
+    bag_play_status=0,
+    record_mode='clean',
+    stop_grace_seconds=1,
+    stop_term_seconds=1,
+    profiled=False,
+):
+    environment, output_root, fixture_paths = _create_nvidia_capture_fixture(
+        root,
+        mode,
+        bag_play_status,
+        record_mode,
+        stop_grace_seconds,
+        stop_term_seconds,
+    )
+    if profiled:
+        environment['CAPTURE_NSYS_OUTPUT'] = str(root / 'profile')
+    command = [str(SCRIPT_PATH), 'rtdetr-managed', f'fixture-{mode}']
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=12)
+    except subprocess.TimeoutExpired as timeout:
+        _kill_nvidia_fixture_processes(fixture_paths)
+        try:
+            stdout, stderr = process.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            stdout, stderr = process.communicate()
+        raise AssertionError(f'NVIDIA capture fixture timed out:\n{stdout}\n{stderr}') from timeout
+    finally:
+        _kill_nvidia_fixture_processes(fixture_paths)
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+    return (
+        subprocess.CompletedProcess(command, process.returncode, stdout, stderr),
+        output_root,
+        fixture_paths,
+    )
+
+
+def test_nvidia_capture_rejects_component_crash_hidden_by_zero_wrapper(tmp_path):
+    result, output_root, fixture_paths = _run_nvidia_capture(tmp_path, mode='crash')
+    launch_log = output_root / 'logs' / 'fixture-crash.launch.log'
+
+    assert result.returncode != 0, f'{result.stdout}\n{result.stderr}'
+    assert 'PASS:' not in result.stdout
+    assert fixture_paths['CAPTURE_FIXTURE_LAUNCH_STATUS_FILE'].read_text().strip() == '0'
+    assert '[ERROR] [component_container_mt-2]: process has died ' in launch_log.read_text()
+    assert 'exit code 7' in result.stdout + result.stderr
+
+
+def test_nvidia_capture_accepts_clean_component_and_container_stop(tmp_path):
+    result, output_root, fixture_paths = _run_nvidia_capture(tmp_path, mode='clean')
+    launch_log = output_root / 'logs' / 'fixture-clean.launch.log'
+    launch_text = launch_log.read_text()
+
+    assert result.returncode == 0, f'{result.stdout}\n{result.stderr}'
+    assert 'PASS:' in result.stdout
+    assert fixture_paths['CAPTURE_FIXTURE_LAUNCH_STATUS_FILE'].read_text().strip() == '0'
+    assert '[INFO] [component_container_mt-2]: process has finished cleanly' in launch_text
+    assert '[INFO] [component_container-1]: process has finished cleanly' in launch_text
+    assert (output_root / 'fixture-clean').is_dir()
+
+
+@pytest.mark.parametrize('mode', ('missing', 'contradictory'))
+def test_nvidia_capture_rejects_unconfirmed_or_contradictory_component_exit(tmp_path, mode):
+    result, output_root, _ = _run_nvidia_capture(tmp_path, mode=mode)
+    launch_text = (output_root / 'logs' / f'fixture-{mode}.launch.log').read_text()
+    diagnostic = result.stdout + result.stderr
+
+    assert result.returncode != 0, diagnostic
+    assert 'PASS:' not in result.stdout
+    assert 'component_container_mt-2' in launch_text
+    if mode == 'missing':
+        assert 'unconfirmed' in diagnostic.lower() or 'clean exit' in diagnostic.lower()
+    else:
+        assert 'process has finished cleanly [pid ' in launch_text
+        assert 'contradict' in diagnostic.lower() or 'pid' in diagnostic.lower()
+
+
+@pytest.mark.parametrize(
+    ('mode', 'escalation'),
+    (('term', 'SIGTERM'), ('kill', 'SIGKILL')),
+)
+def test_nvidia_capture_fails_when_graph_stop_requires_escalation(tmp_path, mode, escalation):
+    result, _output_root, _fixture_paths = _run_nvidia_capture(tmp_path, mode=mode)
+    diagnostic = result.stdout + result.stderr
+
+    assert result.returncode != 0, diagnostic
+    assert 'PASS:' not in result.stdout
+    assert escalation in diagnostic
+
+
+@pytest.mark.parametrize(
+    ('mode', 'stop_grace_seconds', 'stop_term_seconds', 'diagnostic_fragment'),
+    (
+        ('term', 0, 1, 'graph required SIGTERM escalation'),
+        ('kill', 0, 0, 'graph required SIGKILL escalation'),
+    ),
+)
+def test_nvidia_capture_gates_escalation_with_zero_stop_deadline(
+    tmp_path, mode, stop_grace_seconds, stop_term_seconds, diagnostic_fragment
+):
+    result, _output_root, _fixture_paths = _run_nvidia_capture(
+        tmp_path,
+        mode=mode,
+        stop_grace_seconds=stop_grace_seconds,
+        stop_term_seconds=stop_term_seconds,
+    )
+    diagnostic = result.stdout + result.stderr
+
+    assert result.returncode != 0, diagnostic
+    assert 'PASS:' not in result.stdout
+    assert diagnostic_fragment in diagnostic
+
+
+@pytest.mark.parametrize(
+    ('record_mode', 'escalation'),
+    (('term', 'SIGTERM'), ('kill', 'SIGKILL')),
+)
+def test_nvidia_capture_fails_when_recorder_stop_requires_escalation(
+    tmp_path, record_mode, escalation
+):
+    result, _output_root, _fixture_paths = _run_nvidia_capture(
+        tmp_path, mode='clean', record_mode=record_mode
+    )
+    diagnostic = result.stdout + result.stderr
+
+    assert result.returncode != 0, diagnostic
+    assert 'PASS:' not in result.stdout
+    assert 'recorder required SIGTERM/SIGKILL escalation' in diagnostic
+    assert escalation in diagnostic
+
+
+def test_nvidia_capture_recorder_receives_int_without_installing_a_handler(tmp_path):
+    result, _output_root, _fixture_paths = _run_nvidia_capture(tmp_path, record_mode='inherited')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'PASS:' in result.stdout
+    assert 'sending SIGTERM' not in result.stdout
+
+
+@pytest.mark.parametrize('profiled', (False, True))
+def test_nvidia_capture_signals_launch_without_double_signalling_components(tmp_path, profiled):
+    result, _output_root, fixture_paths = _run_nvidia_capture(
+        tmp_path, mode='relay_once', stop_grace_seconds=3, profiled=profiled
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert fixture_paths['CAPTURE_FIXTURE_COMPONENT_SIGNAL_FILE'].read_text().strip() == '1'
+
+
+def test_nvidia_capture_preserves_playback_failure_during_cleanup(tmp_path):
+    result, output_root, _fixture_paths = _run_nvidia_capture(
+        tmp_path, mode='clean', bag_play_status=23
+    )
+
+    assert result.returncode == 23, f'{result.stdout}\n{result.stderr}'
+    assert 'PASS:' not in result.stdout
+    assert 'Capture failed. Logs:' in result.stdout
+    assert (output_root / 'logs' / 'fixture-clean.launch.log').is_file()
+    assert (output_root / 'logs' / 'fixture-clean.record.log').is_file()
+    assert (output_root / 'fixture-clean').is_dir()
 
 
 def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():

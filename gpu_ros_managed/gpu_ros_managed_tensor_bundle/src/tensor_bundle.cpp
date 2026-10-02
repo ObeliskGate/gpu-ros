@@ -146,8 +146,18 @@ PooledTensor tensor_from_pool(std::string name, TensorDataType dtype, std::vecto
   FixedDeviceMemoryPool & pool, const DeviceStream & stream)
 {
   auto block = pool.acquire(stream);
-  ManagedTensor tensor(std::move(name), dtype, std::move(shape), block.buffer);
-  return PooledTensor(std::move(tensor), std::move(block.writer));
+  try {
+    ManagedTensor tensor(std::move(name), dtype, std::move(shape), block.buffer);
+    return PooledTensor(std::move(tensor), std::move(block.writer));
+  } catch (...) {
+    // Tensor validation/allocation has not submitted any device work.
+    try {
+      block.writer.cancel();
+    } catch (...) {
+      block.writer.fail();
+    }
+    throw;
+  }
 }
 PooledTensor tensor_from_external(std::string name, TensorDataType dtype,
   std::vector<int64_t> shape, std::shared_ptr<DeviceBuffer> buffer, const DeviceStream & stream)

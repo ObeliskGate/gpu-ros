@@ -48,6 +48,7 @@ OUTPUT_ROOT="${CAPTURE_OUTPUT_ROOT:-${RESULTS_ROOT}/phase2b_bags}"
 OUTPUT_PATH="${OUTPUT_ROOT}/${OUTPUT_NAME}"
 LOG_ROOT="${OUTPUT_ROOT}/logs"
 LAUNCH_LOG="${LOG_ROOT}/${OUTPUT_NAME}.launch.log"
+GRAPH_SIGNAL_PID_FILE="${LOG_ROOT}/${OUTPUT_NAME}.launch.pid"
 RECORD_LOG="${LOG_ROOT}/${OUTPUT_NAME}.record.log"
 PLAYBACK_RATE="${CAPTURE_PLAYBACK_RATE:-0.25}"
 DRAIN_SECONDS="${CAPTURE_DRAIN_SECONDS:-10}"
@@ -216,7 +217,7 @@ if [[ -n ${NSYS_OUTPUT} ]]; then
   done
 fi
 
-for target in "${OUTPUT_PATH}" "${LAUNCH_LOG}" "${RECORD_LOG}"; do
+for target in "${OUTPUT_PATH}" "${LAUNCH_LOG}" "${RECORD_LOG}" "${GRAPH_SIGNAL_PID_FILE}"; do
   if [[ -e ${target} ]]; then
     echo "ERROR: refusing to overwrite existing path: ${target}" >&2
     exit 1
@@ -255,7 +256,7 @@ if [[ -f ${WORKSPACE_ROOT}/install/setup.bash ]]; then
   set -u
 fi
 
-for command_name in ros2 awk ps setsid sleep tail; do
+for command_name in ros2 awk ps setsid env sleep tail; do
   if ! command -v "${command_name}" >/dev/null; then
     echo "ERROR: required command is unavailable: ${command_name}" >&2
     exit 1
@@ -264,12 +265,23 @@ done
 
 LAUNCH_PID=""
 RECORD_PID=""
+GRAPH_WAIT_RC=""
+GRAPH_SIGINT_SENT=0
+GRAPH_TERM_SENT=0
+GRAPH_KILL_SENT=0
+RECORDER_ESCALATED=0
 
 stop_process() {
   local pid="$1"
   local label="$2"
   local attempt
-  local state
+  local state=""
+  local sigint_sent=0
+  local term_sent=0
+  local kill_sent=0
+  local wait_status
+  local signal_pid="${pid}"
+  local signal_ancestor=""
 
   if [[ -z ${pid} ]]; then
     return
@@ -277,13 +289,39 @@ stop_process() {
 
   if kill -0 "${pid}" 2>/dev/null; then
     echo "Stopping ${label} (PID ${pid})..."
-    kill -INT -- "-${pid}" 2>/dev/null || kill -INT "${pid}" 2>/dev/null || true
+    if [[ ${label} == graph ]]; then
+      # Launch forwards SIGINT to its components. Signalling the whole group
+      # also delivers a second SIGINT during component/static teardown.
+      signal_pid=""
+      if [[ -r ${GRAPH_SIGNAL_PID_FILE} ]]; then
+        read -r signal_pid <"${GRAPH_SIGNAL_PID_FILE}" || true
+      fi
+      if [[ ${signal_pid} =~ ^[1-9][0-9]*$ ]]; then
+        # Nsight starts its target in a separate session. Verify ancestry,
+        # rather than process-group identity, before trusting the PID file.
+        signal_ancestor="${signal_pid}"
+        while [[ ${signal_ancestor} =~ ^[1-9][0-9]*$ &&
+          ${signal_ancestor} != "${pid}" && ${signal_ancestor} != 1 ]]; do
+          signal_ancestor="$(ps -o ppid= -p "${signal_ancestor}" 2>/dev/null || true)"
+          signal_ancestor="${signal_ancestor//[[:space:]]/}"
+        done
+        [[ ${signal_ancestor} == "${pid}" ]] || signal_pid=""
+      else
+        signal_pid=""
+      fi
+    fi
+    if [[ -n ${signal_pid} ]] && kill -INT "${signal_pid}" 2>/dev/null; then
+      sigint_sent=1
+    fi
   fi
 
-  for ((attempt = 1; attempt <= STOP_GRACE_SECONDS * 4; attempt++)); do
+  for ((attempt = 0; attempt <= STOP_GRACE_SECONDS * 4; attempt++)); do
     state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
     state="${state//[[:space:]]/}"
     if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+      break
+    fi
+    if ((attempt == STOP_GRACE_SECONDS * 4)); then
       break
     fi
     sleep 0.25
@@ -291,13 +329,20 @@ stop_process() {
 
   if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
     echo "${label} did not stop after SIGINT; sending SIGTERM..."
-    kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+    if kill -TERM -- "-${pid}" 2>/dev/null; then
+      term_sent=1
+    elif kill -TERM "${pid}" 2>/dev/null; then
+      term_sent=1
+    fi
   fi
 
-  for ((attempt = 1; attempt <= STOP_TERM_SECONDS * 4; attempt++)); do
+  for ((attempt = 0; attempt <= STOP_TERM_SECONDS * 4; attempt++)); do
     state="$(ps -o stat= -p "${pid}" 2>/dev/null || true)"
     state="${state//[[:space:]]/}"
     if [[ -z ${state} || ${state:0:1} == "Z" ]]; then
+      break
+    fi
+    if ((attempt == STOP_TERM_SECONDS * 4)); then
       break
     fi
     sleep 0.25
@@ -305,9 +350,182 @@ stop_process() {
 
   if [[ -n ${state} && ${state:0:1} != "Z" ]] && kill -0 "${pid}" 2>/dev/null; then
     echo "WARNING: ${label} ignored SIGTERM; sending SIGKILL." >&2
-    kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+    if kill -KILL -- "-${pid}" 2>/dev/null; then
+      kill_sent=1
+    elif kill -KILL "${pid}" 2>/dev/null; then
+      kill_sent=1
+    fi
   fi
-  wait "${pid}" 2>/dev/null || true
+
+  if wait "${pid}" 2>/dev/null; then
+    wait_status=0
+  else
+    wait_status=$?
+  fi
+  if [[ ${label} == "graph" ]]; then
+    GRAPH_WAIT_RC=${wait_status}
+    GRAPH_SIGINT_SENT=${sigint_sent}
+    GRAPH_TERM_SENT=${term_sent}
+    GRAPH_KILL_SENT=${kill_sent}
+  elif [[ ${term_sent} -eq 1 || ${kill_sent} -eq 1 ]]; then
+    RECORDER_ESCALATED=1
+  fi
+}
+
+check_component_exit() {
+  local result
+
+  if [[ ! -r ${LAUNCH_LOG} ]]; then
+    echo "ERROR: component exit is unconfirmed: launch log is missing or unreadable (${LAUNCH_LOG})." >&2
+    return 1
+  fi
+
+  # Jazzy launch's ExecuteLocal emits these exact process lifecycle records.
+  # ComposableNodeContainer uses component_container_mt as its executable;
+  # launch_ros labels this process with the executable basename by default.
+  if result="$(
+    awk '
+      BEGIN {
+        quote = sprintf("%c", 39)
+        death_pattern = "^\\[ERROR\\] \\[component_container_mt-[0-9]+\\]: process has died \\[pid [0-9]+, exit code -?[0-9]+, cmd " quote ".*" quote "\\]\\.$"
+      }
+      function logger_name(line) {
+        sub(/^\[[A-Z]+\] \[/, "", line)
+        sub(/\]:.*/, "", line)
+        return line
+      }
+      function process_pid(line) {
+        sub(/^.*pid \[?/, "", line)
+        sub(/[].,].*$/, "", line)
+        return line
+      }
+      {
+        if ($0 ~ /^\[INFO\] \[component_container_mt-[0-9]+\]: process started with pid \[[0-9]+\]$/) {
+          start_count++
+          if (start_count == 1) {
+            start_logger = logger_name($0)
+            start_pid = process_pid($0)
+          }
+          next
+        }
+        if ($0 ~ /^\[INFO\] \[component_container_mt-[0-9]+\]: process has finished cleanly \[pid [0-9]+\]$/) {
+          end_count++
+          if (end_count == 1) {
+            end_kind = "clean"
+            end_logger = logger_name($0)
+            end_pid = process_pid($0)
+          }
+          next
+        }
+        if ($0 ~ death_pattern) {
+          end_count++
+          if (end_count == 1) {
+            end_kind = "death"
+            end_logger = logger_name($0)
+            end_pid = process_pid($0)
+            end_exit_code = $0
+            sub(/^.*exit code /, "", end_exit_code)
+            sub(/, cmd .*$/, "", end_exit_code)
+          }
+          next
+        }
+        if ($0 ~ /^\[[A-Z]+\] \[component_container_mt-[0-9]+\]: process (started with pid|has finished cleanly|has died)/) {
+          malformed = 1
+        }
+      }
+      END {
+        if (malformed) {
+          print "component exit is unconfirmed: a component_container_mt lifecycle record does not match the Jazzy format."
+          exit 1
+        }
+        if (start_count == 0) {
+          print "component exit is unconfirmed: no component_container_mt start record was found."
+          exit 1
+        }
+        if (start_count != 1) {
+          print "component exit is contradictory: found " start_count " component_container_mt start records; expected exactly one."
+          exit 1
+        }
+        if (end_count == 0) {
+          print "component exit is unconfirmed: no component_container_mt clean/death record was found."
+          exit 1
+        }
+        if (end_count != 1) {
+          print "component exit is contradictory: found " end_count " component_container_mt termination records; expected exactly one."
+          exit 1
+        }
+        if (end_logger != start_logger || end_pid != start_pid) {
+          print "component exit is contradictory: termination logger/PID " end_logger "/" end_pid \
+            " does not match start logger/PID " start_logger "/" start_pid "."
+          exit 1
+        }
+        if (end_kind == "death") {
+          if (end_exit_code == 0) {
+            print "component exit is contradictory: Jazzy death record reports exit code 0."
+            exit 1
+          }
+          print "component container " start_logger " (PID " start_pid \
+            ") exited nonzero (exit code " end_exit_code ")."
+          exit 1
+        }
+        print "component container " start_logger " (PID " start_pid ") exited cleanly."
+      }
+    ' "${LAUNCH_LOG}"
+  )"; then
+    echo "INFO: ${result}"
+    return 0
+  fi
+
+  echo "ERROR: ${result}" >&2
+  return 1
+}
+
+check_graph_lifecycle() {
+  local failed=0
+  local component_clean=0
+
+  if check_component_exit; then
+    component_clean=1
+  else
+    failed=1
+  fi
+  if [[ ${RECORDER_ESCALATED} -eq 1 ]]; then
+    echo "ERROR: capture lifecycle gate failed: recorder required SIGTERM/SIGKILL escalation." >&2
+    failed=1
+  fi
+
+  if [[ ${GRAPH_TERM_SENT} -eq 1 ]]; then
+    echo "ERROR: capture lifecycle gate failed: graph required SIGTERM escalation." >&2
+    failed=1
+  fi
+  if [[ ${GRAPH_KILL_SENT} -eq 1 ]]; then
+    echo "ERROR: capture lifecycle gate failed: graph required SIGKILL escalation." >&2
+    failed=1
+  fi
+
+  if [[ -z ${GRAPH_WAIT_RC} ]]; then
+    echo "ERROR: capture lifecycle gate failed: graph wrapper wait status was not recorded." >&2
+    failed=1
+  elif [[ ${GRAPH_WAIT_RC} -eq 0 ]]; then
+    :
+  elif [[ ${GRAPH_WAIT_RC} -eq 130 ]]; then
+    if [[ ${GRAPH_SIGINT_SENT} -ne 1 ]]; then
+      echo "ERROR: capture lifecycle gate failed: graph wrapper exited 130 without an intentional SIGINT." >&2
+      failed=1
+    fi
+    if [[ ${component_clean} -ne 1 ]]; then
+      echo "ERROR: capture lifecycle gate failed: graph wrapper exited 130 without confirmed clean component exit." >&2
+      failed=1
+    fi
+  else
+    echo "ERROR: capture lifecycle gate failed: graph wrapper exited with status ${GRAPH_WAIT_RC}." >&2
+    failed=1
+  fi
+
+  if [[ ${failed} -ne 0 ]]; then
+    return 1
+  fi
+  echo "INFO: graph wrapper exited with status ${GRAPH_WAIT_RC}; intentional SIGINT=${GRAPH_SIGINT_SENT}."
 }
 
 cleanup() {
@@ -316,6 +534,9 @@ cleanup() {
   set +e
   stop_process "${RECORD_PID}" "recorder"
   stop_process "${LAUNCH_PID}" "graph"
+  if [[ -n ${LAUNCH_PID} ]]; then
+    check_graph_lifecycle || true
+  fi
   if [[ ${status} -ne 0 ]]; then
     echo "Capture failed. Logs:"
     echo "  ${LAUNCH_LOG}"
@@ -413,6 +634,13 @@ LAUNCH_COMMAND=(
   "${EXTRA_LAUNCH_ARGS[@]}"
 )
 
+# Record ros2 launch's PID even when Nsight is the outer process. Keep group
+# signalling only for TERM/KILL escalation, which remains a lifecycle failure.
+LAUNCH_COMMAND=(
+  bash -c 'printf "%s\n" "$$" >"$1"; shift; exec "$@"'
+  capture-launch "${GRAPH_SIGNAL_PID_FILE}" "${LAUNCH_COMMAND[@]}"
+)
+
 if [[ -n ${NSYS_OUTPUT} ]]; then
   LAUNCH_COMMAND=(
     nsys profile
@@ -424,9 +652,9 @@ if [[ -n ${NSYS_OUTPUT} ]]; then
 fi
 
 echo "Starting ${LANE} graph..."
-setsid bash -c \
-  'trap - INT TERM; exec "$@"' \
-  capture-child \
+# Bash cannot reset a signal inherited as ignored by an asynchronous command.
+# Restore dispositions before exec so non-interactive recorders receive SIGINT.
+setsid env --default-signal=INT,TERM \
   "${LAUNCH_COMMAND[@]}" >"${LAUNCH_LOG}" 2>&1 &
 LAUNCH_PID=$!
 
@@ -453,9 +681,7 @@ if ((REQUIRES_CAMERA_INFO)); then
 fi
 
 echo "Recording ${DETECTION_TOPIC} to ${OUTPUT_PATH}..."
-setsid bash -c \
-  'trap - INT TERM; exec "$@"' \
-  capture-child \
+setsid env --default-signal=INT,TERM \
   ros2 bag record \
   --output "${OUTPUT_PATH}" \
   "${DETECTION_TOPIC}" >"${RECORD_LOG}" 2>&1 &
@@ -485,6 +711,9 @@ stop_process "${RECORD_PID}" "recorder"
 RECORD_PID=""
 stop_process "${LAUNCH_PID}" "graph"
 LAUNCH_PID=""
+if ! check_graph_lifecycle; then
+  exit 1
+fi
 
 BAG_INFO="$(ros2 bag info "${OUTPUT_PATH}")"
 echo "${BAG_INFO}"

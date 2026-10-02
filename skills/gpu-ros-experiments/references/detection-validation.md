@@ -66,6 +66,24 @@ ros2 run gpu_ros_detection_validation run_nvidia_fixed_input_capture.sh \
 Invoke the same command separately for each other requested lane. Do not run
 capture lanes concurrently on one GPU.
 
+The NVIDIA runner also requires a matching Jazzy component-container start PID
+and clean exit record. A nonzero component exit fails even when the launch or
+profiling wrapper returns zero. Missing or contradictory records mean clean
+exit is unconfirmed, not that a crash was proved. SIGTERM/SIGKILL escalation
+for the graph or recorder fails capture; wrapper status 130 is accepted only
+after the runner deliberately sends SIGINT and confirms clean component exit.
+Failure preserves bags and logs, and cleanup retains an earlier command error.
+The non-interactive NVIDIA runner restores SIGINT/SIGTERM dispositions with
+GNU `env --default-signal` before starting each process group. A nested Bash
+`trap -` cannot undo an inherited ignored SIGINT and can otherwise force a
+healthy recorder to require SIGTERM.
+Graceful graph shutdown signals only the recorded `ros2 launch` PID: launch
+owns forwarding to its components. Sending SIGINT to both launch and its
+components can deliver a second signal during static teardown. The runner
+validates the recorded PID's ancestry because Nsight starts its target in a
+separate session; matching the profiler's process group is insufficient.
+TERM/KILL escalation remains group-wide and is reported as a lifecycle error.
+
 ## Compare detections
 
 The comparator reads `vision_msgs/msg/Detection2DArray` bags. It selects the

@@ -218,8 +218,41 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_onnx_inference_core
     test/test_onnx_inference_core.cpp
+    TIMEOUT 900
   )
-  target_link_libraries(test_onnx_inference_core onnx_inference_core)
+  if(ORT_ENABLE_MIGRAPHX)
+    # Compile the same implementation in the test executable, never the
+    # production library, with the three package-private exception points.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(cancellation_test_model
+      "${CMAKE_CURRENT_BINARY_DIR}/test_models/managed_output_cancellation.onnx")
+    add_custom_command(
+      OUTPUT "${cancellation_test_model}"
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/generate_cancellation_model.py"
+        "${cancellation_test_model}"
+      DEPENDS test/generate_cancellation_model.py
+      VERBATIM)
+    add_custom_target(onnx_cancellation_test_model DEPENDS "${cancellation_test_model}")
+    add_dependencies(test_onnx_inference_core onnx_cancellation_test_model)
+    target_sources(test_onnx_inference_core PRIVATE
+      src/onnx_inference_core.cpp src/managed_io_contract.cpp)
+    target_include_directories(test_onnx_inference_core PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test")
+    ament_target_dependencies(test_onnx_inference_core gpu_ros_managed_tensor_bundle)
+    target_link_libraries(test_onnx_inference_core
+      onnxruntime::onnxruntime gpu_ros_managed::hip)
+    target_compile_definitions(test_onnx_inference_core PRIVATE
+      GPU_ROS_MANAGED_HIP GPU_ROS_ORT_CANCELLATION_TEST
+      TEST_HIP_CANCELLATION_MODEL_PATH="${cancellation_test_model}")
+    if(ORT_ENABLE_CUDA)
+      target_link_libraries(test_onnx_inference_core gpu_ros_managed::cuda)
+      target_compile_definitions(test_onnx_inference_core PRIVATE GPU_ROS_MANAGED_CUDA)
+    endif()
+  else()
+    target_link_libraries(test_onnx_inference_core onnx_inference_core)
+  endif()
   ament_add_gtest(test_staging_pool_limits
     test/test_staging_pool_limits.cpp)
   target_include_directories(test_staging_pool_limits PRIVATE

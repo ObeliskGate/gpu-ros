@@ -53,24 +53,19 @@ __device__ float ReadRgb(
 __device__ void ResizeCoordinate(
   int destination, int source_size, int destination_size, int * source_index, float * weight)
 {
-  constexpr float kInterTabSize = 32.0F; // OpenCV INTER_BITS.
-  const float source_coordinate = (static_cast<float>(destination) + 0.5F) *
-                                    static_cast<float>(source_size) /
-                                    static_cast<float>(destination_size) -
-                                  0.5F;
+  const double scale = static_cast<double>(source_size) / static_cast<double>(destination_size);
+  const double source_coordinate_double = (static_cast<double>(destination) + 0.5) * scale - 0.5;
+  const float source_coordinate = static_cast<float>(source_coordinate_double);
   int index = static_cast<int>(floorf(source_coordinate));
   float fraction = source_coordinate - static_cast<float>(index);
-  // OpenCV clamps a sample outside the source image to the edge and clears
-  // the corresponding interpolation weight before applying its 5-bit
-  // interpolation table.
+  // Clamp samples outside the source image to the edge and clear the
+  // corresponding interpolation weight.
   if (index < 0) {
     index = 0;
     fraction = 0.0F;
   } else if (index >= source_size - 1) {
     index = source_size - 1;
     fraction = 0.0F;
-  } else {
-    fraction = floorf(fraction * kInterTabSize + 0.5F) / kInterTabSize;
   }
   *source_index = index;
   *weight = fraction;

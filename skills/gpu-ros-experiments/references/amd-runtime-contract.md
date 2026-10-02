@@ -22,7 +22,7 @@ runs:
 | GPU driver | The compatible AMD kernel/user-space driver release for the device | `rocminfo`, `rocminfo --version`, and the site package query; record it in the result archive |
 | MIGraphX | MIGraphX 2.14 behavior shipped by the ROCm 7.1.1 package set | `migraphx`, `migraphx-dev`, and the provider audit |
 | ONNX Runtime | 1.23.1 at the commit in `gpu_ros_object_detection/config/onnxruntime.lock` | `gpu_ros_object_detection/config/onnxruntime.lock` |
-| ORT provider patches | The tracked GridSample and int64-div CPU-fallback patches | `gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-*.patch` and `.series` |
+| ORT provider patches | The tracked build, GridSample, int64-div CPU-fallback, and Linux provider-lifetime patches | `gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-*.patch` and `.series` |
 | Benchmark framework | `ros2_benchmark` `v4.5-0`, plus the tracked standalone patch | `gpu_ros_object_detection/docker/phase2a-amd.Dockerfile` |
 
 MIGraphX is installed from the ROCm package repository rather than built from a
@@ -36,6 +36,16 @@ migraphx-driver --version 2>/dev/null || true
 
 A different package revision is a different software baseline even when the
 ROCm marketing version is unchanged.
+
+The Linux provider-lifetime patch keeps the MIGraphX provider module mapped
+until process exit, following ORT's existing CUDA/TensorRT provider policy.
+Provider `Shutdown()` still runs when the ORT environment is released. This
+prevents independently initialized HIP from later invoking teardown code in
+an unloaded MIGraphX module; it does not bypass stream synchronization or
+buffer lifetime obligations. Rebuild the external ORT into its new patch-set
+fingerprint rather than replacing an existing install. The real HIP
+`test_onnx_inference_core` regression must finish with process exit zero;
+passing assertions followed by a teardown signal is a failure.
 
 ## Container recipe and image identity
 

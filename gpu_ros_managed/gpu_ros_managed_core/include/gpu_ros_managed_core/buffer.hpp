@@ -43,16 +43,16 @@ public:
   // Retain a source owner (for example a ROS Image) until this producer's
   // completion event has made the device buffer safe to release.
   void retain_owner(std::shared_ptr<const void> owner);
-  // The producer must explicitly publish readiness. Destruction without
-  // finalize() or cancel() marks the buffer failed and permanently
-  // non-recyclable because GPU work may already have been submitted.
+  // Producers explicitly publish readiness with finalize() after submission.
+  // Destruction while this handle is active calls fail() and permanently
+  // prevents recycling; only an explicit pre-submission cancel() restores it.
   void finalize();
   // Mark a producer operation failed when the caller knows that no
   // trustworthy completion event can be recorded. The allocation is then
   // orphan-safe and cannot be returned to a pool.
   void fail() noexcept;
-  // Cancel a reservation before any producer work is submitted. The fresh
-  // buffer can then be returned to a fixed pool for reuse.
+  // Cancel only before any producer work is submitted. This restores the
+  // buffer to a fresh reservation; implicit destruction never cancels.
   void cancel();
 
 private:
@@ -73,9 +73,11 @@ public:
   uint8_t * data() const noexcept;
   size_t size() const noexcept;
   // ORT-style writers must call finalize_synchronously only after the
-  // external operation has synchronously completed. Destruction without an
-  // explicit finalize/cancel marks the buffer failed and non-recyclable.
+  // external operation has synchronously completed. Destruction while active
+  // calls fail() and permanently prevents recycling.
   void finalize_synchronously();
+  // Cancel only before external work is submitted; explicit cancellation is
+  // the only path that restores the fresh reservation.
   void cancel();
   void fail() noexcept;
 

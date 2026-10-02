@@ -38,6 +38,7 @@ struct BufferState
   std::mutex mutex;
   BufferPhase phase{BufferPhase::kFresh};
   NativeStream writer_stream{0};
+  std::shared_ptr<void> writer_stream_owner;
   Event producer_event{0};
   std::vector<Event> reader_events;
   BufferReadiness readiness{BufferReadiness::kNotReady};
@@ -122,13 +123,14 @@ BufferState::~BufferState()
   }
   events.insert(events.end(), reader_events.begin(), reader_events.end());
   auto owner = std::move(allocation_owner);
+  auto stream_owner = std::move(writer_stream_owner);
   auto producer_owners =
     std::make_shared<std::vector<std::shared_ptr<const void>>>(std::move(this->producer_owners));
   auto backend_ops = ops;
   const auto allocation_device = device;
   const bool must_orphan = release_must_orphan;
   phase = BufferPhase::kReleasing;
-  if (!owner && producer_owners->empty() && events.empty()) {
+  if (!owner && !stream_owner && producer_owners->empty() && events.empty()) {
     return;
   }
 
@@ -136,14 +138,14 @@ BufferState::~BufferState()
   // work to wait for. Releasing it on a detached thread would create one
   // thread per tensor at high throughput, even though the only required
   // preparation is selecting the owning device for the allocator deleter.
-  // Keep the owner orphaned if device selection fails; the allocation must not
-  // be returned to the backend in that case.
+  // Keep all owners orphaned if device selection fails.
   if (events.empty()) {
     if (!must_orphan) {
       try {
         backend_ops->select_device(allocation_device.ordinal);
         owner.reset();
         producer_owners->clear();
+        stream_owner.reset();
         return;
       } catch (...) {
         // Fall through to the safe orphan path below.
@@ -154,17 +156,22 @@ BufferState::~BufferState()
     for (auto & source_owner : *producer_owners) {
       orphan_storage().push_back(std::move(source_owner));
     }
+    orphan_storage().push_back(std::move(stream_owner));
     return;
   }
 
   auto & value = tracker();
-  {
-    std::lock_guard<std::mutex> lock(value.mutex);
-    ++count_for(value, allocation_device.backend);
-  }
+  std::unique_lock<std::mutex> tracker_lock(value.mutex);
+  ++count_for(value, allocation_device.backend);
   try {
-    std::thread([events, owner, producer_owners, backend_ops, allocation_device,
+    std::thread([events, owner, stream_owner, producer_owners, backend_ops, allocation_device,
                   must_orphan]() mutable {
+      // Do not release a capture until the parent has dropped its copies.
+      // Otherwise its reset under tracker_lock could invoke an arbitrary
+      // owner deleter while the release-tracker mutex is held.
+      {
+        std::lock_guard<std::mutex> lock(tracker().mutex);
+      }
       bool safe = !must_orphan;
       bool device_selected = false;
       try {
@@ -198,13 +205,18 @@ BufferState::~BufferState()
       if (safe) {
         owner.reset();
         producer_owners->clear();
+        stream_owner.reset();
       } else {
         std::lock_guard<std::mutex> lock(orphan_mutex());
         orphan_storage().push_back(std::move(owner));
         for (auto & source_owner : *producer_owners) {
           orphan_storage().push_back(std::move(source_owner));
         }
+        orphan_storage().push_back(std::move(stream_owner));
       }
+      producer_owners.reset();
+      owner.reset();
+      stream_owner.reset();
       auto & release_tracker = tracker();
       {
         std::lock_guard<std::mutex> lock(release_tracker.mutex);
@@ -212,10 +224,6 @@ BufferState::~BufferState()
       }
       release_tracker.cv.notify_all();
     }).detach();
-    // Keep a local owner until std::thread has successfully copied its
-    // callable. If thread construction throws, the catch path can still
-    // safe-orphan the allocation.
-    owner.reset();
   } catch (...) {
     for (const Event event : events) {
       if (event == 0) {
@@ -228,21 +236,30 @@ BufferState::~BufferState()
         // The allocation remains orphaned below.
       }
     }
-    if (owner || !producer_owners->empty()) {
+    if (owner || stream_owner || !producer_owners->empty()) {
       std::lock_guard<std::mutex> lock(orphan_mutex());
       if (owner) {
         orphan_storage().push_back(std::move(owner));
+      }
+      if (stream_owner) {
+        orphan_storage().push_back(std::move(stream_owner));
       }
       for (auto & source_owner : *producer_owners) {
         orphan_storage().push_back(std::move(source_owner));
       }
     }
-    {
-      std::lock_guard<std::mutex> tracker_lock(value.mutex);
-      --count_for(value, allocation_device.backend);
-    }
+    --count_for(value, allocation_device.backend);
+    tracker_lock.unlock();
     value.cv.notify_all();
+    return;
   }
+  // Hold the release-tracker mutex until the parent's owner copies are gone.
+  // A fast worker may finish event cleanup immediately, but cannot publish
+  // zero pending releases while this destructor still retains the stream.
+  owner.reset();
+  stream_owner.reset();
+  producer_owners.reset();
+  tracker_lock.unlock();
 }
 
 const StreamState & StreamAccess::get(const DeviceStream & stream)
@@ -366,12 +383,19 @@ void WriteHandle::cancel()
   if (!responsible_ || !state_) {
     return;
   }
-  std::lock_guard<std::mutex> lock(state_->mutex);
-  if (state_->phase != detail::BufferPhase::kWriting) {
-    throw std::logic_error("WriteHandle can only cancel a reservation");
+  std::shared_ptr<void> stream_owner;
+  std::vector<std::shared_ptr<const void>> source_owners;
+  {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    if (state_->phase != detail::BufferPhase::kWriting) {
+      throw std::logic_error("WriteHandle can only cancel a reservation");
+    }
+    state_->phase = detail::BufferPhase::kFresh;
+    state_->writer_stream = 0;
+    stream_owner = std::move(state_->writer_stream_owner);
+    source_owners = std::move(state_->producer_owners);
+    responsible_ = false;
   }
-  state_->phase = detail::BufferPhase::kFresh;
-  responsible_ = false;
 }
 
 SynchronizedWriteHandle::SynchronizedWriteHandle(std::shared_ptr<detail::BufferState> state)
@@ -415,12 +439,19 @@ void SynchronizedWriteHandle::cancel()
   if (!responsible_ || !state_) {
     return;
   }
-  std::lock_guard<std::mutex> lock(state_->mutex);
-  if (state_->phase != detail::BufferPhase::kWriting) {
-    throw std::logic_error("SynchronizedWriteHandle can only cancel a reservation");
+  std::shared_ptr<void> stream_owner;
+  std::vector<std::shared_ptr<const void>> source_owners;
+  {
+    std::lock_guard<std::mutex> lock(state_->mutex);
+    if (state_->phase != detail::BufferPhase::kWriting) {
+      throw std::logic_error("SynchronizedWriteHandle can only cancel a reservation");
+    }
+    state_->phase = detail::BufferPhase::kFresh;
+    state_->writer_stream = 0;
+    stream_owner = std::move(state_->writer_stream_owner);
+    source_owners = std::move(state_->producer_owners);
+    responsible_ = false;
   }
-  state_->phase = detail::BufferPhase::kFresh;
-  responsible_ = false;
 }
 void SynchronizedWriteHandle::fail() noexcept
 {
@@ -575,6 +606,7 @@ WriteHandle DeviceBuffer::get_write_handle(const DeviceStream & stream)
   if (state_->phase != detail::BufferPhase::kFresh) {
     throw std::logic_error("DeviceBuffer writer can only be acquired once");
   }
+  state_->writer_stream_owner = native.owner;
   state_->phase = detail::BufferPhase::kWriting;
   state_->writer_stream = native.native;
   return WriteHandle(state_);

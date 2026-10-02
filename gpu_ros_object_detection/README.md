@@ -24,6 +24,15 @@ NVIDIA TensorList conversion components remain in the managed collection's
 those components with inference, model, and Isaac packages; it does not own a
 second conversion implementation.
 
+Shared HIP preprocessing uses continuous half-pixel bilinear weights, edge
+clamping, and final 8-bit quantization before model normalization. Its oracle
+is `ExecuteCpuPreprocess()` with OpenCV `INTER_LINEAR`, not the 1/32-weight
+table used by other OpenCV interpolation operations. CPU/HIP parity permits
+at most one raw intensity level, or `1/255 + 1e-6` after unit normalization;
+padding is exactly zero and no-resize channel conversion is exact. The common
+package tests cover strided encodings, high-contrast ramps, singleton axes,
+non-integer downscaling, checkerboards, and rounding boundaries.
+
 ## NVIDIA reference launches
 
 Use `ros2 launch gpu_ros_nvidia_reference` for these files:
