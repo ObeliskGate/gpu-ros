@@ -238,6 +238,8 @@ fi
   echo "D2D deltas are reported separately and are not conflated with H2D/D2H."
   echo "Kernel-name differences are diagnostic and are not counted as copies by name alone."
   echo "The capture includes graph startup and drain; interpret absolute totals with per-frame deltas."
+  echo "Detection metrics and frame coverage are observations, not numerical acceptance gates."
+  echo "Experiment status covers execution and copy evidence, not detection equivalence."
   echo "This is a C-vs-D transfer diagnostic, not a Managed zero-copy closure verdict."
 } | tee "${AUDIT_ROOT}/summary.txt"
 

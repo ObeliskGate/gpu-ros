@@ -513,7 +513,6 @@ ros2 run gpu_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag "${BAG_ROOT}/std" \
   --candidate-bag "${BAG_ROOT}/managed" \
   --match-policy stamp \
-  --report-only \
   --output-json "${REPORT_ROOT}/detection_comparison.json" \
   2>&1 | tee "${LOG_ROOT}/detection_comparison.log"
 DETECTION_STATUS=${PIPESTATUS[0]}
@@ -532,6 +531,7 @@ if ((TRACE_STATUS != 0)); then
   fi
 fi
 if ((DETECTION_STATUS != 0)) && [[ ${FINAL_STATUS} != TOOLING_ERROR ]]; then
+  echo "ERROR: detection observation command failed (exit ${DETECTION_STATUS})." >&2
   FINAL_STATUS="FAIL"
 fi
 
@@ -550,6 +550,8 @@ fi
   echo "Managed-only tensor-sized inference-boundary copies fail; ambiguous payload kernels are INCONCLUSIVE."
   echo "Kernel names containing copy/memcpy/blit are diagnostic unless trace evidence resolves their role."
   echo "CPU fallback is recorded in the ORT provider report and is not a closure failure."
+  echo "Detection metrics and frame coverage are observations, not numerical acceptance gates."
+  echo "Audit status covers execution and copy evidence, not detection equivalence."
   echo "No claim is made for copies outside the Managed TensorBundle inference boundary."
 } | tee "${AUDIT_ROOT}/summary.txt"
 
