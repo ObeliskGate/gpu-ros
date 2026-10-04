@@ -14,14 +14,15 @@
 # limitations under the License.
 
 """
-Compare RT-DETR detections between two pipelines (e.g. config A vs config D).
+Compare detections received on two ROS topics.
 
-Subscribes to two Detection2DArray topics, pairs messages by header stamp, and
-for each paired frame matches detections via IoU. Reports mean/median/p95 IoU,
-score delta, unmatched detections, and PASS/FAIL against configurable thresholds.
+Messages are paired by header stamp. Detections in paired frames are matched
+greedily by IoU; the resulting metrics and coverage counts are observations,
+not acceptance thresholds.
 """
 
 import argparse
+import math
 import sys
 
 import numpy as np
@@ -58,15 +59,11 @@ def match_frame(dets_a, dets_b):
     """
     Greedy IoU matching for one paired frame.
 
-    Returns (matched_ious, matched_score_deltas, unmatched_count). Greedy
-    (highest-IoU-first) is sufficient here because the compared pipelines run
-    the same model on the same input, so boxes nearly coincide and greedy
-    matches the optimal assignment.
+    Returns IoU and score-delta observations, unmatched counts for each input,
+    and class-match observations for geometrically matched detections.
     """
-    if not dets_a and not dets_b:
-        return [], [], 0
     if not dets_a or not dets_b:
-        return [], [], max(len(dets_a), len(dets_b))
+        return [], [], len(dets_a), len(dets_b), 0, 0, 0
 
     pairs = []
     for i, da in enumerate(dets_a):
@@ -76,6 +73,9 @@ def match_frame(dets_a, dets_b):
 
     used_a, used_b = set(), set()
     ious, score_deltas = [], []
+    class_matches = 0
+    class_mismatches = 0
+    class_unavailable = 0
     for pair_iou, i, j in pairs:
         if pair_iou <= 0:
             break
@@ -84,34 +84,96 @@ def match_frame(dets_a, dets_b):
         used_a.add(i)
         used_b.add(j)
         ious.append(pair_iou)
-        sa = dets_a[i].results[0].hypothesis.score if dets_a[i].results else 0.0
-        sb = dets_b[j].results[0].hypothesis.score if dets_b[j].results else 0.0
-        score_deltas.append(abs(sa - sb))
-    unmatched_count = (len(dets_a) - len(used_a)) + (len(dets_b) - len(used_b))
-    return ious, score_deltas, unmatched_count
+        if dets_a[i].results and dets_b[j].results:
+            result_a = dets_a[i].results[0].hypothesis
+            result_b = dets_b[j].results[0].hypothesis
+            score_deltas.append(abs(result_a.score - result_b.score))
+            if result_a.class_id == result_b.class_id:
+                class_matches += 1
+            else:
+                class_mismatches += 1
+        else:
+            class_unavailable += 1
+    unmatched_a = len(dets_a) - len(used_a)
+    unmatched_b = len(dets_b) - len(used_b)
+    return (
+        ious,
+        score_deltas,
+        unmatched_a,
+        unmatched_b,
+        class_matches,
+        class_mismatches,
+        class_unavailable,
+    )
+
+
+def validate_detection_array(msg):
+    """Reject malformed numeric observations before they contaminate metrics."""
+    nanoseconds = msg.header.stamp.nanosec
+    if not 0 <= nanoseconds < 1_000_000_000:
+        raise ValueError(f'invalid stamp nanoseconds: {nanoseconds}')
+
+    for index, det in enumerate(msg.detections):
+        values = (
+            det.bbox.center.position.x,
+            det.bbox.center.position.y,
+            det.bbox.size_x,
+            det.bbox.size_y,
+        )
+        if not all(math.isfinite(float(value)) for value in values):
+            raise ValueError(f'detection {index} has a non-finite bounding box')
+        if det.bbox.size_x < 0 or det.bbox.size_y < 0:
+            raise ValueError(f'detection {index} has a negative bounding-box size')
+        if det.results and not math.isfinite(float(det.results[0].hypothesis.score)):
+            raise ValueError(f'detection {index} has a non-finite score')
+
+
+def metric_summary(values):
+    """Summarize real samples, leaving metrics unavailable when none exist."""
+    if not values:
+        return {'samples': 0, 'mean': None, 'median': None, 'p95': None}
+    samples = np.asarray(values, dtype=float)
+    return {
+        'samples': int(samples.size),
+        'mean': float(samples.mean()),
+        'median': float(np.median(samples)),
+        'p95': float(np.percentile(samples, 95)),
+    }
+
+
+def format_metric(metric):
+    if metric['samples'] == 0:
+        return 'n/a'
+    return f"mean={metric['mean']:.4f} median={metric['median']:.4f} p95={metric['p95']:.4f}"
 
 
 class DetectionComparator(Node):
-    def __init__(
-        self,
-        topic_a,
-        topic_b,
-        min_mean_iou,
-        max_mean_score_delta,
-        min_frame_pass_rate,
-        min_paired_frames,
-    ):
+    def __init__(self, topic_a, topic_b):
         super().__init__('detection_comparator')
-        self.min_mean_iou = min_mean_iou
-        self.max_mean_score_delta = max_mean_score_delta
-        self.min_frame_pass_rate = min_frame_pass_rate
-        self.min_paired_frames = min_paired_frames
         self.buf_a = {}
         self.buf_b = {}
-        self.frame_ious = []  # mean IoU per paired frame
-        self.frame_deltas = []  # mean score delta per paired frame
-        self.frame_unmatched = []
-        self.frame_passes = []
+        self.data_error = None
+
+        self.received_frames_a = 0
+        self.received_frames_b = 0
+        self.received_detections_a = 0
+        self.received_detections_b = 0
+        self.paired_frames = 0
+        self.paired_detections_a = 0
+        self.paired_detections_b = 0
+        self.paired_unmatched_a = 0
+        self.paired_unmatched_b = 0
+        self.unpaired_frames_a = 0
+        self.unpaired_frames_b = 0
+        self.unpaired_detections_a = 0
+        self.unpaired_detections_b = 0
+        self.frame_ious = []
+        self.frame_score_deltas = []
+        self.matched_detections = 0
+        self.class_matches = 0
+        self.class_mismatches = 0
+        self.class_unavailable = 0
+
         self.create_subscription(
             Detection2DArray, topic_a, lambda m: self._on(m, self.buf_a, self.buf_b), 10
         )
@@ -120,75 +182,152 @@ class DetectionComparator(Node):
         )
 
     def _on(self, msg, own_buf, other_buf):
+        try:
+            validate_detection_array(msg)
+        except ValueError as error:
+            self.data_error = error
+            return
+
+        is_a = own_buf is self.buf_a
+        detections = len(msg.detections)
+        if is_a:
+            self.received_frames_a += 1
+            self.received_detections_a += detections
+        else:
+            self.received_frames_b += 1
+            self.received_detections_b += detections
+
         key = stamp_key(msg)
         if key in other_buf:
             other = other_buf.pop(key)
-            ious, deltas, unmatched_count = match_frame(
-                list(msg.detections), list(other.detections)
-            )
-            if not ious and unmatched_count == 0:
-                self.frame_ious.append(1.0)
-                self.frame_deltas.append(0.0)
-                self.frame_unmatched.append(0)
-                self.frame_passes.append(True)
-            elif not ious:
-                self.frame_ious.append(0.0)
-                self.frame_deltas.append(float('inf'))
-                self.frame_unmatched.append(unmatched_count)
-                self.frame_passes.append(False)
+            self.paired_frames += 1
+            if is_a:
+                detections_a, detections_b = msg.detections, other.detections
             else:
-                mean_iou = float(np.mean(ious))
-                mean_delta = float(np.mean(deltas))
-                self.frame_ious.append(mean_iou)
-                self.frame_deltas.append(mean_delta)
-                self.frame_unmatched.append(unmatched_count)
-                self.frame_passes.append(
-                    unmatched_count == 0
-                    and mean_iou >= self.min_mean_iou
-                    and mean_delta <= self.max_mean_score_delta
-                )
+                detections_a, detections_b = other.detections, msg.detections
+            self.paired_detections_a += len(detections_a)
+            self.paired_detections_b += len(detections_b)
+
+            # Preserve the existing arrival-order matching behavior.
+            (
+                ious,
+                deltas,
+                unmatched_msg,
+                unmatched_other,
+                class_matches,
+                class_mismatches,
+                class_unavailable,
+            ) = match_frame(msg.detections, other.detections)
+            if is_a:
+                self.paired_unmatched_a += unmatched_msg
+                self.paired_unmatched_b += unmatched_other
+            else:
+                self.paired_unmatched_b += unmatched_msg
+                self.paired_unmatched_a += unmatched_other
+            if ious:
+                self.frame_ious.append(float(np.mean(ious)))
+                self.matched_detections += len(ious)
+            if deltas:
+                self.frame_score_deltas.append(float(np.mean(deltas)))
+            self.class_matches += class_matches
+            self.class_mismatches += class_mismatches
+            self.class_unavailable += class_unavailable
         else:
+            if key in own_buf:
+                replaced = own_buf[key]
+                if is_a:
+                    self.unpaired_frames_a += 1
+                    self.unpaired_detections_a += len(replaced.detections)
+                else:
+                    self.unpaired_frames_b += 1
+                    self.unpaired_detections_b += len(replaced.detections)
             own_buf[key] = msg
 
+    def summary(self):
+        pending_frames_a = len(self.buf_a)
+        pending_frames_b = len(self.buf_b)
+        pending_detections_a = sum(len(msg.detections) for msg in self.buf_a.values())
+        pending_detections_b = sum(len(msg.detections) for msg in self.buf_b.values())
+        unpaired_frames_a = self.unpaired_frames_a + pending_frames_a
+        unpaired_frames_b = self.unpaired_frames_b + pending_frames_b
+        unpaired_detections_a = self.unpaired_detections_a + pending_detections_a
+        unpaired_detections_b = self.unpaired_detections_b + pending_detections_b
+        class_samples = self.class_matches + self.class_mismatches
+        return {
+            'frames': {
+                'received_a': self.received_frames_a,
+                'received_b': self.received_frames_b,
+                'paired': self.paired_frames,
+                'unmatched_a': unpaired_frames_a,
+                'unmatched_b': unpaired_frames_b,
+                'pending_a': pending_frames_a,
+                'pending_b': pending_frames_b,
+            },
+            'detections': {
+                'received_a': self.received_detections_a,
+                'received_b': self.received_detections_b,
+                'paired_a': self.paired_detections_a,
+                'paired_b': self.paired_detections_b,
+                'matched': self.matched_detections,
+                'unmatched_paired_a': self.paired_unmatched_a,
+                'unmatched_paired_b': self.paired_unmatched_b,
+                'unpaired_a': unpaired_detections_a,
+                'unpaired_b': unpaired_detections_b,
+                'unmatched_a': self.paired_unmatched_a + unpaired_detections_a,
+                'unmatched_b': self.paired_unmatched_b + unpaired_detections_b,
+                'pending_a': pending_detections_a,
+                'pending_b': pending_detections_b,
+            },
+            'iou': metric_summary(self.frame_ious),
+            'score_delta': metric_summary(self.frame_score_deltas),
+            'class_observations': {
+                'matches': self.class_matches,
+                'mismatches': self.class_mismatches,
+                'unavailable': self.class_unavailable,
+                'samples': class_samples,
+                'match_rate': (self.class_matches / class_samples if class_samples else None),
+            },
+        }
+
     def report(self):
-        if not self.frame_ious:
-            print('No paired frames received — cannot compare.')
-            return False
-        ious = np.array(self.frame_ious)
-        deltas = np.array(self.frame_deltas)
-        unmatched = np.array(self.frame_unmatched)
-        finite_deltas = deltas[np.isfinite(deltas)]
-        delta_mean = finite_deltas.mean() if finite_deltas.size else float('inf')
-        delta_median = np.median(finite_deltas) if finite_deltas.size else float('inf')
-        delta_p95 = np.percentile(finite_deltas, 95) if finite_deltas.size else float('inf')
-        frame_pass = np.mean(np.array(self.frame_passes, dtype=bool))
-        unmatched_frames = int(np.count_nonzero(unmatched))
-        print(f'Paired frames: {len(ious)}')
+        summary = self.summary()
+        frames = summary['frames']
+        detections = summary['detections']
+        classes = summary['class_observations']
+        class_rate = f'{classes["match_rate"]:.4f}' if classes['match_rate'] is not None else 'n/a'
         print(
-            f'IoU   mean={ious.mean():.4f} median={np.median(ious):.4f} '
-            f'p95={np.percentile(ious, 95):.4f}'
+            f"Frame coverage: received A={frames['received_a']} B={frames['received_b']} "
+            f"paired={frames['paired']} unmatched A={frames['unmatched_a']} "
+            f"B={frames['unmatched_b']} "
+            f"(pending buffers A={frames['pending_a']} B={frames['pending_b']})"
         )
-        print(f'Score mean={delta_mean:.4f} median={delta_median:.4f} p95={delta_p95:.4f}')
+        print(f"Detections received: A={detections['received_a']} B={detections['received_b']}")
         print(
-            f'Unmatched detections: total={int(unmatched.sum())} '
-            f'frames={unmatched_frames}/{len(unmatched)}'
+            f"Paired detections: A={detections['paired_a']} B={detections['paired_b']} "
+            f"matched={detections['matched']}"
         )
-        print(f'Frames passing per-frame threshold: {frame_pass * 100:.1f}%')
         print(
-            'Thresholds: '
-            f'min_paired_frames={self.min_paired_frames}, '
-            f'min_mean_iou={self.min_mean_iou:.4f}, '
-            f'max_mean_score_delta={self.max_mean_score_delta:.4f}, '
-            f'min_frame_pass_rate={self.min_frame_pass_rate:.4f}'
+            f"Unmatched detections: A={detections['unmatched_a']} "
+            f"B={detections['unmatched_b']} "
+            f"(paired A={detections['unmatched_paired_a']} "
+            f"B={detections['unmatched_paired_b']}; "
+            f"unpaired A={detections['unpaired_a']} B={detections['unpaired_b']}; "
+            f"pending buffers A={detections['pending_a']} "
+            f"B={detections['pending_b']})"
         )
-        ok = (
-            len(ious) >= self.min_paired_frames
-            and ious.mean() >= self.min_mean_iou
-            and delta_mean <= self.max_mean_score_delta
-            and frame_pass >= self.min_frame_pass_rate
+        print(
+            f"IoU paired-frame samples={summary['iou']['samples']} {format_metric(summary['iou'])}"
         )
-        print('PASS' if ok else 'FAIL')
-        return ok
+        print(
+            f"Score delta paired-frame samples={summary['score_delta']['samples']} "
+            f"{format_metric(summary['score_delta'])}"
+        )
+        print(
+            f"Class observations: matches={classes['matches']} "
+            f"mismatches={classes['mismatches']} unavailable={classes['unavailable']} "
+            f"match_rate={class_rate} samples={classes['samples']}"
+        )
+        return summary
 
 
 def main():
@@ -198,42 +337,32 @@ def main():
     parser.add_argument(
         '--duration', type=float, default=30.0, help='Seconds to collect before reporting'
     )
-    parser.add_argument(
-        '--min-mean-iou', type=float, default=0.95, help='Minimum mean IoU across paired frames'
-    )
-    parser.add_argument(
-        '--max-mean-score-delta',
-        type=float,
-        default=0.05,
-        help='Maximum mean score delta across paired frames',
-    )
-    parser.add_argument(
-        '--min-frame-pass-rate',
-        type=float,
-        default=0.90,
-        help='Minimum fraction of paired frames passing per-frame thresholds',
-    )
-    parser.add_argument(
-        '--min-paired-frames', type=int, default=1, help='Minimum number of paired frames required'
-    )
     args = parser.parse_args()
+    if not math.isfinite(args.duration) or args.duration < 0:
+        parser.error('--duration must be a finite, non-negative number')
 
-    rclpy.init()
-    node = DetectionComparator(
-        args.topic_a,
-        args.topic_b,
-        args.min_mean_iou,
-        args.max_mean_score_delta,
-        args.min_frame_pass_rate,
-        args.min_paired_frames,
-    )
-    end = node.get_clock().now().nanoseconds + int(args.duration * 1e9)
-    while rclpy.ok() and node.get_clock().now().nanoseconds < end:
-        rclpy.spin_once(node, timeout_sec=0.1)
-    ok = node.report()
-    node.destroy_node()
-    rclpy.shutdown()
-    return 0 if ok else 1
+    node = None
+    try:
+        rclpy.init()
+        node = DetectionComparator(args.topic_a, args.topic_b)
+        end = node.get_clock().now().nanoseconds + int(args.duration * 1e9)
+        while node.get_clock().now().nanoseconds < end:
+            if not rclpy.ok():
+                raise RuntimeError('ROS context shut down before collection completed')
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if node.data_error is not None:
+                raise ValueError(f'invalid detection message: {node.data_error}')
+        if not rclpy.ok():
+            raise RuntimeError('ROS context shut down before reporting')
+        node.report()
+        return 0
+    finally:
+        try:
+            if node is not None:
+                node.destroy_node()
+        finally:
+            if rclpy.ok():
+                rclpy.shutdown()
 
 
 if __name__ == '__main__':

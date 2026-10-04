@@ -179,9 +179,9 @@ NITROS TensorRT -> NvidiaTensorListToTensorBundle -> std decoder
 
 ## Fixed-input and provider/copy evidence
 
-Use fixed-input scripts only for detection equivalence. Capture the reference,
-managed candidate, and audit data with the same input bag, image dimensions,
-model files, and RT-DETR size policy. Run from the NVIDIA outer workspace:
+Use fixed-input scripts to collect detection-comparison observations. Capture
+the reference, managed candidate, and audit data with the same input bag, image
+dimensions, model files, and RT-DETR size policy. Run from the NVIDIA outer workspace:
 
 ```bash
 ros2 run gpu_ros_detection_validation run_nvidia_fixed_input_capture.sh \
@@ -200,8 +200,8 @@ are owned by `gpu_ros_nvidia_reference`; conversion components remain in compat.
 
 The provider audit must contain CUDA activity. CPU shape/decoder bookkeeping
 is reported, not rejected by a fixed node-count rule. A requested provider
-with no provider activity is a failure. YOLO fixed-input parity is a separate
-follow-up, not part of the formal Phase 1 table.
+with no provider activity is a failure. YOLO fixed-input detection reporting is
+a separate observation, not part of the formal Phase 1 table.
 
 ## Historical results
 

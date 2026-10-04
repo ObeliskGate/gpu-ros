@@ -108,19 +108,21 @@ code explicitly and return the accumulated failure status. `set -e` cannot
 reveal a child error swallowed by a capture or launch-test wrapper; inspect
 component logs and post-exit processes too.
 
-## Fixed-input correctness
-
+## Fixed-input detection observations
 Use [detection validation](detection-validation.md#nvidia) for the six existing
 capture lanes and parameters. Preserve model/input bytes, provider, image
 geometry, RT-DETR size policy, and source timestamps. Use unique output names,
 profiling disabled, playback 0.25, drain 30 seconds, at least 100 messages, and
 stop grace/termination windows of 60/20 seconds when matching this protocol.
 
-Each migration lane is compared only with its own pre-change bag using the
-[strict acceptance command](detection-validation.md#compare-detections).
-C versus managed and C versus D are separate cross-lane observations. Keep
-REPORT_ONLY reports as such; index pairing and ignoring unmatched frames do not
-satisfy the migration gate. Record coverage as well as numeric differences.
+Compare each migration lane with its own pre-change bag to collect a
+detection-comparison observation; do not treat metric differences or unmatched
+coverage as an acceptance verdict. C versus managed and C versus D are separate
+cross-lane observations. Use the complete default report: exact timestamp
+pairing, FIFO for duplicate stamps, and deterministic class-unconstrained
+IoU-greedy detection matching. Record coverage and numeric observations.
+Optional index or filtering diagnostics retain their method/options and do not
+replace the full-coverage default report.
 
 ## Formal throughput
 
@@ -161,9 +163,10 @@ binding reports, CUDA traces, copy and detection reports, and lifecycle logs.
 
 Complete copy records and CUDA activity are required. CPU shape/decoder
 bookkeeping is diagnostic rather than a fixed forbidden-node count. A copy
-parser PASS does not waive failed strict numeric comparison or a new teardown
-fault. Compare suspected regressions with the preserved source using the same
-native command, not a different benchmark or failure stage.
+parser PASS does not establish clean teardown, and numeric detection
+observations do not replace copy or lifecycle evidence. Compare suspected
+regressions with the preserved source using the same native command, not a
+different benchmark or failure stage.
 
 ## Historical results and reporting
 

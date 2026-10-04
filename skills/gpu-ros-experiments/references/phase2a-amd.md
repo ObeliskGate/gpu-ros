@@ -138,10 +138,10 @@ ros2 run gpu_ros_detection_validation \
 ```
 
 For a managed capture, set `CAPTURE_TRANSPORT=managed`. Use the explicit
-recording parameters and strict same-lane command in
-[detection validation](detection-validation.md). Retain paired/unpaired frames,
-class equality, IoU, score deltas, and frame pass rate. A separate cross-lane
-REPORT_ONLY comparison is not the migration gate.
+recording parameters and comparison command in
+[detection validation](detection-validation.md). Retain paired/unpaired frame
+coverage, class matches, IoU, and score observations. Keep cross-lane reports
+separate from same-lane observations.
 
 ## Provider and library audit
 

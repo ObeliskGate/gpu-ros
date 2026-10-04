@@ -27,8 +27,18 @@ and sourcing the selected runtime:
 [Detection validation methods](../../skills/gpu-ros-experiments/references/detection-validation.md)
 contain runtime prerequisites, capture parameters, comparator usage, audits,
 HIP probing, and lifecycle checks. [Acceptance rules](../../skills/gpu-ros-experiments/references/result-acceptance.md)
-separate correctness from copy evidence and performance.
+separate detection observations, input/model validity, lifecycle, copy evidence,
+and performance.
 
 Keep bags, traces, profiles, logs, and reports outside Git. A wrapper exit of
-zero does not establish clean component shutdown, and a REPORT_ONLY comparison
-does not pass a correctness gate.
+zero does not establish clean component shutdown. Offline bag comparisons use
+schema `phase2b_detection_report_only_v2`: `REPORT_ONLY` means a report was
+generated, not that numeric outputs are equal. Numeric differences and
+unpaired coverage do not set project pass/fail; invalid input or report-writing
+errors remain nonzero, as do independent lifecycle and copy failures.
+
+Schema v2 removes numerical thresholds and per-frame/aggregate pass fields.
+Consumers should read metric sample counts and coverage rather than a numerical
+verdict. No-sample metrics are `null`; a generated report with zero paired
+frames does not establish numerical similarity. The CLI has no separate
+report-only switch or numerical gate parameters.

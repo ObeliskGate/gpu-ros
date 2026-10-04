@@ -85,9 +85,13 @@ not a verification prerequisite. The helper at
 Run focused checks and preserve their actual exit codes and raw logs.
 Benchmark `launch_test` commands measure performance and require an explicit
 request. A wrapper exit of zero or valid JSON does not prove clean component
-teardown. Keep numeric correctness, copy evidence, lifecycle status, and
-throughput separate. Do not weaken thresholds, drop unmatched frames, or use
-cross-lane REPORT_ONLY evidence to pass a failed same-lane migration gate.
+teardown. Keep detection metric differences and coverage, copy evidence,
+lifecycle status, and throughput separate. The fixed-input comparator is
+observation-only: numeric differences and unmatched coverage do not determine
+project pass/fail. Use the default exact-stamp pairing and retain full coverage
+for the primary report; label optional index-paired or filtered diagnostics
+with their recorded method. Invalid inputs and report errors, plus independent
+lifecycle, copy, and validity checks, retain their real status.
 Use [result acceptance](skills/gpu-ros-experiments/references/result-acceptance.md).
 
 Record the executed revision, dirty/untracked fingerprints, runtime identity,

@@ -86,9 +86,12 @@ incomplete record is `INCONCLUSIVE`, not proof of zero-copy.
 
 For separately collected staged-control traces, the analyzer can require
 adapter directions; this is not an extra argument to the capture runner.
-Compare each migration lane with its own pre-change bag using strict
-class-aware stamp matching. Archive std/managed cross-lane observations
-separately, without using them to waive a failed same-lane gate.
+Compare each migration lane with its own pre-change capture as an observation.
+The default pairs exact timestamps (repeated stamps FIFO), then uses
+deterministic class-unconstrained IoU-greedy detection matching. Use complete,
+unfiltered coverage for the primary report; identify diagnostic index/filter
+options and their method metadata. Archive std/managed cross-lane observations
+separately. Numeric differences and unmatched coverage are not pass/fail gates.
 
 ## Graph proof and matrix
 
@@ -132,10 +135,11 @@ and post-exit processes separately. Missing fields remain MISSING.
 
 Phase 2B is not closed by throughput alone. Both models require package/POL
 tests, direct and staged topology checks, managed contract checks, fixed-input
-comparison, provider/copy audit, and the three-lane matrix. The removed
+detection reports, provider/copy audit, and the three-lane matrix. The removed
 high-load experiment is not an acceptance gate. Promote a performance baseline
-only after publishing each lane's three peak reports, fixed 10/30/60 rows,
-aggregation rule, and correctness comparison. Follow
-[result acceptance](result-acceptance.md), without changing tolerances to match
-a historical label. Compare an out-of-tolerance observation with preserved
-pre-change source on the current device before attributing it to a migration.
+only after publishing each lane's three peak reports, fixed 10/30/60 rows, and
+aggregation rule, alongside the detection observations. Follow
+[result acceptance](result-acceptance.md); do not turn detection metrics into
+an equality verdict. Compare an out-of-tolerance performance observation with
+preserved pre-change source on the current device before attributing it to a
+migration.

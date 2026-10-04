@@ -67,6 +67,9 @@ if(BUILD_TESTING)
     target_link_libraries(test_rtdetr_decoder rtdetr_decoder_core)
   endif()
 
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_compare_detections test/test_compare_detections.py)
+
   option(
     BUILD_MIGRAPHX_POL_TEST
     "Build the standard ROS2 + ONNX Runtime MIGraphX proof-of-life test"

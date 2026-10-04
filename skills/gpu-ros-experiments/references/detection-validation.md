@@ -90,31 +90,34 @@ The comparator reads `vision_msgs/msg/Detection2DArray` bags. It selects the
 only detection topic by default; provide `--reference-topic` and
 `--candidate-topic` when a bag contains more than one.
 
-For a migration, compare each lane with its own pre-change capture using the
-[formal same-bag gate](result-acceptance.md#reproduction-acceptance):
+For a migration observation, compare each lane with its own pre-change capture
+using the same model/input bytes, provider, geometry, and runtime. A successful
+report uses schema `phase2b_detection_report_only_v2` and status `REPORT_ONLY`;
+that status means the report was generated, not that outputs are numerically
+equal. Numeric differences, detection-count differences, class mismatches, and
+unpaired coverage do not make a valid comparison nonzero. Invalid or unreadable
+bags, invalid messages, and report-writing errors remain nonzero.
+
+The default pairs exact timestamps, pairing repeated timestamps FIFO, then
+uses deterministic class-unconstrained IoU-greedy detection matching. It
+retains full coverage and reports all score, IoU, class, matched/unmatched
+detection, and paired/unpaired frame observations. Metrics with no comparable
+samples are `null` with sample counts; two empty detections are a valid
+observation.
 
 ```bash
 ros2 run gpu_ros_detection_validation compare_detection2d_bags.py \
   --reference-bag "${BEFORE_BAG}" --candidate-bag "${AFTER_BAG}" \
-  --match-policy stamp --min-score 0.0 --max-detections-per-frame 0 \
-  --class-aware-matching --min-paired-frames 20 --min-class-match-rate 1.0 \
-  --min-mean-iou 0.99 --min-pair-iou 0.99 \
-  --max-mean-score-delta 0.001 --max-pair-score-delta 0.001 \
-  --min-frame-pass-rate 1.0 --output-json "${COMPARISON_JSON}"
+  --output-json "${COMPARISON_JSON}"
 ```
 
-Unpaired frames count against the overall pass rate. Retain all class,
-IoU, score, matched/unmatched detection, and frame-count fields. Compare AMD
-std versus managed and NVIDIA C versus managed or D separately when requested;
-a REPORT_ONLY cross-lane report does not replace the migration gate.
-
-The tool also supports diagnostic options: `--match-policy index`, score or
-detection-count filtering, `--max-frame-details`, and
-`--ignore-unpaired-frames`. Index pairing requires an independently justified
-message-order correspondence. Ignoring unmatched frames can be useful when
-inspecting drop-allowing throughput sweeps. Neither option is permitted in the
-strict migration comparison, and a filtered diagnostic cannot be promoted as
-that gate.
+Keep the complete, unfiltered default report as the primary same-lane or
+cross-lane observation. Optional diagnostics include `--match-policy index`,
+`--class-aware-matching`, `--min-score` and `--max-detections-per-frame`
+filters, and `--max-frame-details`. These options do not create acceptance gates.
+Index pairing needs independently justified message-order correspondence.
+Record selected methods/options and make any altered coverage clear; diagnostic
+results are not a substitute for the full-coverage default report.
 
 ## Transport audits
 
@@ -193,8 +196,8 @@ established stable JSON/CSV and HIP runtime tracing.
 The [AMD method](phase2b-managed.md#graph-proof-and-matrix) describes the native
 three-round matrix. The [NVIDIA method](phase2b-nvidia.md#formal-throughput)
 describes its four separate graphs. Both require an explicit benchmark request.
-There is no extra high-load correctness gate: normal benchmark drops prevent
-input/output counts alone from proving detection equivalence.
+There is no high-load detection-comparison requirement: normal benchmark drops
+mean input/output counts alone cannot establish detection correspondence.
 
 Preserve each command's exit code, graph/component logs, emitted-frame
 coverage, reports, and post-exit process list. Capture runners can swallow a

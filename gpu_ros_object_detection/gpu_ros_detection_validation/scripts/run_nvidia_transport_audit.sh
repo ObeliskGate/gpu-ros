@@ -250,6 +250,7 @@ if ((TRACE_STATUS != 0)); then
   fi
 fi
 if ((DETECTION_STATUS != 0)); then
+  echo "ERROR: detection observation command failed (exit ${DETECTION_STATUS})." >&2
   FINAL_STATUS="FAIL"
 fi
 
@@ -264,7 +265,8 @@ fi
   echo "Copy evidence: explicit memory_copy records are primary."
   echo "Kernel set/count differences are diagnostic; copy-looking kernel differences can yield INCONCLUSIVE."
   echo "Config A is a manual sanity reference only when Config C is INCONCLUSIVE."
-  echo "Detection comparison uses existing stamp matching and thresholds."
+  echo "Detection metrics and frame coverage are observations, not numerical acceptance gates."
+  echo "Audit status covers execution and copy evidence, not detection equivalence."
   echo "No claim is made for copies outside the Managed TensorBundle inference boundary."
 } | tee "${AUDIT_ROOT}/summary.txt"
 
