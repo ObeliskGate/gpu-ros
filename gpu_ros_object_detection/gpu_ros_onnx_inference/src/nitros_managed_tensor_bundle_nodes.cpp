@@ -100,7 +100,8 @@ private:
   {
     try {
       const auto start = std::chrono::steady_clock::now();
-      publisher_->publish(view.get());
+      publisher_->publish(
+        std::make_unique<gpu_ros_managed::ManagedTensorBundle>(view.get()));
       timing_.Record(start);
     } catch (const std::exception & error) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
