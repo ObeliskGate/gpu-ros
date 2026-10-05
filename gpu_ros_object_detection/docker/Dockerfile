@@ -81,6 +81,7 @@ RUN printf '%s\n' /opt/onnxruntime/lib /opt/gpu-ros/cuda-buffer-backend/lib \
     test "$(ros2 pkg prefix cuda_buffer)" = /opt/ros/lyrical
 
 # Python dependencies for model preparation (FP16 conversion).
+COPY gpu_ros_object_detection/config/nvidia-model-prep-constraints.txt /opt/gpu-ros/nvidia-model-prep-constraints.txt
 RUN source /opt/gpu-ros/nvidia-runtime.lock && \
     curl --fail --location --silent --show-error \
       "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
@@ -96,5 +97,8 @@ RUN source /opt/gpu-ros/nvidia-runtime.lock && \
       "https://raw.githubusercontent.com/astral-sh/uv/${UV_VERSION}/LICENSE-APACHE" \
       --output /usr/local/share/licenses/uv/LICENSE-APACHE && \
     uv pip install --system --no-cache --break-system-packages \
+      --constraint /opt/gpu-ros/nvidia-model-prep-constraints.txt \
       "onnxconverter-common==${ONNXCONVERTER_COMMON_VERSION}" && \
+    uv run --no-project python -c \
+      'import cv2, numpy as np, onnx; image = np.arange(6, dtype=np.uint8).reshape(2, 3); expected = np.repeat(np.repeat(image, 2, axis=0), 2, axis=1); actual = cv2.resize(image, (6, 4), interpolation=cv2.INTER_NEAREST); assert np.array_equal(actual, expected); print("SDK_PYTHON_ABI=PASS numpy=" + np.__version__ + " onnx=" + onnx.__version__)' && \
     rm -rf /tmp/uv-x86_64-unknown-linux-gnu /tmp/uv.tgz
