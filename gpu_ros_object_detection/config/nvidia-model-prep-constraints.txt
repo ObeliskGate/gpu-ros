@@ -1,5 +1,7 @@
-# Isaac ROS 5's Noble OpenCV binary uses the NumPy 1.x ABI.
-# ml-dtypes 0.6 requires NumPy 2; 0.5.4 supports the selected Python 3.12 SDK.
+# Preserve the Python closure installed by the paired Isaac ROS 5.0 utilities.
+# The SDK OpenCV binary uses NumPy 1.x; do not replace the SDK ONNX/protobuf pair.
 numpy==1.26.4
 ml-dtypes==0.5.4
-onnx==1.23.1
+onnx==1.19.0
+protobuf==5.29.5
+typing-extensions==4.15.0

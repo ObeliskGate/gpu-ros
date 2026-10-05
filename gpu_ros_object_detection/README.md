@@ -69,8 +69,9 @@ The NVIDIA dependency recipe installs the image-paired 5.0 test utilities as
 well as the runtime components; tests must not borrow an older Isaac overlay.
 The SDK OpenCV Python extension requires NumPy 1.x. Model preparation therefore
 uses [`nvidia-model-prep-constraints.txt`](config/nvidia-model-prep-constraints.txt)
-(`numpy==1.26.4`, `ml-dtypes==0.5.4`, `onnx==1.23.1`); the image build executes
-an OpenCV resize and checks its pixel values to verify the native Python ABI.
+to preserve the SDK's NumPy 1.26.4, ml-dtypes 0.5.4, ONNX 1.19.0, protobuf 5.29.5,
+and typing-extensions 4.15.0 while adding the conversion tool. The image build
+executes an OpenCV resize and checks its pixel values to verify the native ABI.
 
 ## Detection facilities
 
