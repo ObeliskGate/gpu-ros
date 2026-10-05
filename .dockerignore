@@ -13,7 +13,9 @@ gpu_ros_object_detection/gpu_ros_yolov8
 gpu_ros_object_detection/gpu_ros_detection_validation
 gpu_ros_object_detection/gpu_ros_nvidia_reference
 gpu_ros_object_detection/benchmarks
-gpu_ros_object_detection/tools
+gpu_ros_object_detection/tools/*
+!gpu_ros_object_detection/tools/install-nvidia-runtime-packages.py
+!gpu_ros_object_detection/tools/nvidia-runtime-setup.bash
 gpu_ros_object_detection/external
 gpu_ros_object_detection/apptainer
 skills

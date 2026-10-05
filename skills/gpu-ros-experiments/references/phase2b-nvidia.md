@@ -76,7 +76,7 @@ Build from the fresh outer workspace without sourcing an old project install:
 
 ```bash
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
-  bash -lc 'set -e; export GPU_ROS_NVIDIA_PROFILE=1; source /opt/ros/lyrical/setup.bash; colcon build'
+  bash -lc 'set -e; export GPU_ROS_NVIDIA_PROFILE=1; source /opt/gpu-ros/setup.bash; colcon build'
 ```
 
 Run the selected colcon tests and the packages not selected by the NVIDIA test
@@ -86,7 +86,7 @@ defaults. Keep every command failure visible:
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
   bash -lc 'set -e
     export GPU_ROS_NVIDIA_PROFILE=1
-    source /opt/ros/lyrical/setup.bash
+    source /opt/gpu-ros/setup.bash
     source install/setup.bash
     colcon test --event-handlers console_direct+
     colcon test-result --all --verbose
@@ -114,7 +114,7 @@ enter an interactive shell or introduce another graph runner:
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
   bash -lc "set -e; ulimit -c 0
     export GPU_ROS_NVIDIA_PROFILE=1
-    source /opt/ros/lyrical/setup.bash
+    source /opt/gpu-ros/setup.bash
     source /workspaces/isaac_ros-dev/install/setup.bash
     ${PAYLOAD}"
 ```

@@ -66,7 +66,7 @@ RUN source /opt/gpu-ros/nvidia-runtime.lock && \
 ENV ONNXRUNTIME_ROOT=/opt/onnxruntime
 ENV AMENT_PREFIX_PATH=/opt/gpu-ros/cuda-buffer-backend:/opt/ros/lyrical
 ENV CMAKE_PREFIX_PATH=/opt/gpu-ros/cuda-buffer-backend:/opt/ros/lyrical
-ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/opt/gpu-ros/cuda-buffer-backend/lib:/opt/ros/lyrical/lib:/usr/local/cuda-13.2/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib:/opt/gpu-ros/cuda-buffer-backend/lib:/opt/ros/lyrical/lib:/usr/local/cuda-13.2/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 COPY gpu_ros_object_detection/tools/nvidia-runtime-setup.bash /opt/gpu-ros/setup.bash
 RUN printf '%s\n' /opt/onnxruntime/lib /opt/gpu-ros/cuda-buffer-backend/lib \
       > /etc/ld.so.conf.d/gpu-ros-nvidia.conf && ldconfig && \
