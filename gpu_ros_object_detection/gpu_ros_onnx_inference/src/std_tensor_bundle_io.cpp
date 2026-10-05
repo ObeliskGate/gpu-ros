@@ -80,7 +80,7 @@ private:
     std::vector<gpu_ros_managed::ManagedTensor> inputs;
     inputs.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
-      auto shape = t.shape.to_vector();
+      auto shape = t.shape;
       std::shared_ptr<const void> owner = msg;
       const uint8_t * data;
       if (t.data.get_backend_type() == "cpu") {

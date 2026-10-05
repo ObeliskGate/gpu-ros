@@ -66,7 +66,7 @@ TEST(TypeAdapterProbe, NonCpuRosBufferMaterializesIntoManagedHostStorage)
   auto & tensor = ros.tensors.emplace_back();
   tensor.name = "device_input";
   tensor.data_type = gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
-  tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 2});
+  tensor.shape = {1, 2};
   tensor.data = MakeTestNonCpuBuffer(std::move(bytes));
 
   ManagedTensorBundle managed;

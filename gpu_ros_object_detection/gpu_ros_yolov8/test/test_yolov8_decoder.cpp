@@ -126,7 +126,7 @@ TEST(YoloV8DecoderTest, DecodesSingleDetection)
   EXPECT_EQ(detection.results.front().hypothesis.class_id, "1");
   EXPECT_FLOAT_EQ(detection.results.front().hypothesis.score, 0.90F);
 }
-TEST(YoloV8DecoderTest, MaterializesNonCpuMetadataAndPayloadAtHostBoundary)
+TEST(YoloV8DecoderTest, MaterializesNonCpuPayloadAtHostBoundary)
 {
   const auto values = MakeYoloOutput({100.0F, 300.0F}, {120.0F, 320.0F}, {40.0F, 30.0F},
     {50.0F, 20.0F}, {0.10F, 0.20F}, {0.90F, 0.05F});
@@ -136,7 +136,7 @@ TEST(YoloV8DecoderTest, MaterializesNonCpuMetadataAndPayloadAtHostBoundary)
   Tensor tensor;
   tensor.name = "output_tensor";
   tensor.data_type = Tensor::FLOAT32;
-  tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 6, 2});
+  tensor.shape = {1, 6, 2};
   tensor.data = MakeTestNonCpuBuffer(std::move(bytes));
   TensorBundle message;
   message.header.frame_id = "camera";

@@ -43,13 +43,7 @@ std::vector<T> TensorToVector(const gpu_ros_tensor_bundle_msgs::msg::TensorBundl
     if (tensor.name != name) {
       continue;
     }
-    bool shape_matches = false;
-    if (tensor.shape.get_backend_type() == "cpu") {
-      shape_matches = tensor.shape == expected_shape;
-    } else {
-      const auto host_shape = tensor.shape.to_vector();
-      shape_matches = host_shape == expected_shape;
-    }
+    const bool shape_matches = tensor.shape == expected_shape;
     size_t expected_elements = 1U;
     for (const auto dimension : expected_shape) {
       if (dimension <= 0 || expected_elements > std::numeric_limits<size_t>::max() / dimension) {

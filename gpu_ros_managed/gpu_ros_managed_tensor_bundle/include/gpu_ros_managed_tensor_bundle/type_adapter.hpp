@@ -51,10 +51,7 @@ struct rclcpp::TypeAdapter<gpu_ros_managed::ManagedTensorBundle,
   {
     std::vector<gpu_ros_managed::ManagedTensor> tensors;
     for (const auto & tensor : source.tensors) {
-      std::vector<int64_t> shape =
-        tensor.shape.get_backend_type() == "cpu"
-          ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
-          : tensor.shape.to_vector();
+      std::vector<int64_t> shape = tensor.shape;
       const auto dtype = static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type);
       if (tensor.data.get_backend_type() == "cpu") {
         tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_copy(

@@ -172,10 +172,7 @@ private:
       };
 
       for (const auto & tensor : message->tensors) {
-        std::vector<int64_t> shape =
-          tensor.shape.get_backend_type() == "cpu"
-            ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
-            : tensor.shape.to_vector();
+        std::vector<int64_t> shape = tensor.shape;
         const auto dtype = static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type);
         const size_t bytes = gpu_ros_managed::tensor_byte_size(shape, dtype);
         if (tensor.data.size() < bytes) {

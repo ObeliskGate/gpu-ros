@@ -75,7 +75,7 @@ RtDetrDecoderConfig Config()
   return config;
 }
 } // namespace
-TEST(RtDetrDecoderTest, MaterializesNonCpuMetadataAndPayloadAtHostBoundary)
+TEST(RtDetrDecoderTest, MaterializesNonCpuPayloadAtHostBoundary)
 {
   using gpu_ros_tensor_bundle_msgs::msg::Tensor;
   using gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
@@ -92,17 +92,17 @@ TEST(RtDetrDecoderTest, MaterializesNonCpuMetadataAndPayloadAtHostBoundary)
   Tensor label_tensor;
   label_tensor.name = "labels";
   label_tensor.data_type = Tensor::INT64;
-  label_tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 300});
+  label_tensor.shape = {1, 300};
   label_tensor.data = MakeTestNonCpuBuffer(BytesOf(labels));
   Tensor box_tensor;
   box_tensor.name = "boxes";
   box_tensor.data_type = Tensor::FLOAT32;
-  box_tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 300, 4});
+  box_tensor.shape = {1, 300, 4};
   box_tensor.data = MakeTestNonCpuBuffer(BytesOf(boxes));
   Tensor score_tensor;
   score_tensor.name = "scores";
   score_tensor.data_type = Tensor::FLOAT32;
-  score_tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 300});
+  score_tensor.shape = {1, 300};
   score_tensor.data = MakeTestNonCpuBuffer(BytesOf(scores));
 
   TensorBundle message;

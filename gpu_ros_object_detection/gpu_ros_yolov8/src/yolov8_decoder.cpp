@@ -189,10 +189,7 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8TensorBundle(
   const TensorBundle & message, const YoloV8DecoderConfig & config)
 {
   const auto & tensor = FindTensor(message, config.tensor_name);
-  const std::vector<int64_t> shape =
-    tensor.shape.get_backend_type() == "cpu"
-      ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
-      : tensor.shape.to_vector();
+  const auto & shape = tensor.shape;
   if (tensor.data_type != kTensorBundleFloat32 || shape.size() != 3U ||
       tensor.data.size() % sizeof(float) != 0U)
   {
