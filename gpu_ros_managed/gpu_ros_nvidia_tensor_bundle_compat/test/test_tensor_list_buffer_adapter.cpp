@@ -34,6 +34,7 @@ protected:
   {
     node.reset();
     EXPECT_TRUE(cuda::wait_for_pending_releases(5s));
+    rclcpp::shutdown();
   }
   std::shared_ptr<rclcpp::Node> node;
 };

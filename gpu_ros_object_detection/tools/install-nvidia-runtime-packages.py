@@ -48,6 +48,7 @@ def main():
         "ros-lyrical-isaac-ros-tensor-rt", "ros-lyrical-cuda-buffer",
         "ros-lyrical-cuda-buffer-backend-msgs", "ros-lyrical-isaac-ros-tensor-msgs",
         "ros-lyrical-tensor-msgs",
+        "ros-lyrical-isaac-ros-test",
     ]
     # Prefer every already-installed version, including non-ROS libraries. Exact
     # addition pins prevent a future release catalog from selecting new ABIs.

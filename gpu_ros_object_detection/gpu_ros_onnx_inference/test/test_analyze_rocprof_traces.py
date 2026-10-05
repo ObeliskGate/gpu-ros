@@ -63,7 +63,7 @@ def test_fixture_metadata_is_not_an_activity_event():
     assert capture.sections['kernel_trace']['record_count'] == 2
 
 
-def test_operation_lookup_is_metadata_driven_and_numeric_enum_is_only_sanity_check():
+def test_operation_lookup_is_metadata_driven_and_numeric_enum_is_only_sanity_check(tmp_path):
     capture = ROC.load_capture([FIXTURE_ROOT / 'rocprofv3_minimal.json'])
     summary = ROC.summarize(capture.events, {16, 8})
 
@@ -78,12 +78,9 @@ def test_operation_lookup_is_metadata_driven_and_numeric_enum_is_only_sanity_che
     document['rocprofiler-sdk-tool'][0]['strings']['buffer_records'][0]['operations'][2] = (
         'MEMORY_COPY_DEVICE_TO_HOST'
     )
-    changed = FIXTURE_ROOT / 'rocprofv3_enum_mismatch.json'
+    changed = tmp_path / 'rocprofv3_enum_mismatch.json'
     changed.write_text(json.dumps(document), encoding='utf-8')
-    try:
-        mismatch = ROC.load_capture([changed])
-    finally:
-        changed.unlink()
+    mismatch = ROC.load_capture([changed])
     assert any(item['kind'] == 'schema_version_mismatch' for item in mismatch.diagnostics)
     # Metadata lookup says D2H even though the numeric value is inconsistent.  The
     # loader must not silently replace the metadata fact with a magic-number

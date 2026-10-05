@@ -122,6 +122,10 @@ TEST(TypeAdapterProbe, NativeIntraProcessPreservesCustomObjectIdentity)
     rclcpp::init(argc, nullptr);
   }
   rclcpp::NodeOptions options;
+  struct ContextShutdown
+  {
+    ~ContextShutdown() { rclcpp::shutdown(); }
+  } shutdown;
   options.use_intra_process_comms(true);
   auto publisher_node = std::make_shared<rclcpp::Node>("managed_probe_pub", options);
   auto subscriber_node = std::make_shared<rclcpp::Node>("managed_probe_sub", options);

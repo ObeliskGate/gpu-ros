@@ -1,6 +1,7 @@
 # Exact allowed additions for the pinned official Isaac ROS 5.0 amd64 base.
 # 391 versions from its observed RT-DETR package transaction (zero upgrades/removals),
 # plus release-5.0 YOLO and CUDA-13 cuDNN. Only the resolved graph closure is installed.
+# Plus the observed paired 5.0 test-utility closure; no baseline package is replaced.
 # Columns: Debian package, exact version, SHA256 (-: use authenticated APT index).
 # Isaac release index: https://isaac.download.nvidia.com/isaac-ros/release-5.0/dists/noble/main/binary-amd64/Packages.gz
 # SHA256 eebf557ce63baeb89cc74c6104ba4303e80edb8b7a2468ef09ad12085cc29c76
@@ -402,3 +403,14 @@ ros-lyrical-vision-msgs	4.2.0-3noble.20260818.171944	6a2b4c4330318ecb0d624781fe6
 tensorrt	10.16.1.11-1+cuda13.2	88b331b4a0f723949855735b9cbab8a4e37eb7a2069f412779bfb59c3ca367ce
 unixodbc-common	2.3.12-1ubuntu0.24.04.1	-
 vpi4-dev	4.1.4	-
+liblbfgsb0	3.0+dfsg.4-1build1	54fb5cef115594e46819e0dfbe33d69b9086b9849ab73369fdbe5fa211bd628d
+libnvshmem3-cuda-13	3.8.0-1	d4f1e22c8274c0133e88e0e55fc61c920450346ddba2857df4865be6f6eedd22
+libnvshmem3-dev-cuda-13	3.8.0-1	3c4db535e6a9891826d03a5ce4ee9521e5bd1b37710420bef247517795d2a141
+python3-decorator	5.1.1-5	60063dc9d7b2fd681b7ed0fc71905c92ec024b314693eacdd374c836968d47e8
+python3-onnx-pip-shim	1.19.0-1.20260218102631	ba0a57ddc022cf7c59c13bed432ad51bd37ce5109282bb38beaf5d43356c41ed
+python3-onnxscript-pip-shim	0.7.1-1	c789cfe04f230e31748804ddd5d0538cf296ff27847ce512e470a7dfbe9b4fba
+python3-pip	24.0+dfsg-1ubuntu1.3	4e1af0b6f0b52c847ffa7b192b9f650845b99ff300138af05ab9a6252eb75682
+python3-scipy	1.11.4-6build1	ab2abe2431b49d54f203cc2cc394885a3a8bf3a3eebf0b1748f916158a1c9f31
+python3-torch-pip-shim	2.12.1+cu132-1.20260904202028	ef3c1e9df98b62215d46f599e9cac2aa7f866dc425235d75e6033061e9e21852
+python3-wheel	0.42.0-2	e1a4076425d3d1f1772b11bff6a025055723b2d0a4972f9519849ddaa8cd3953
+ros-lyrical-isaac-ros-test	5.0.0-0noble.20260918011121000	8578f5a9a5d14a84c3437b0e47b32ee9420d6dd68c60db4739d811d77765ee9c
