@@ -65,6 +65,13 @@ Use the selected official Isaac ROS 5.0 Docker image's paired ROS versions and
 set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery (`0` for CPU/AMD).
 Target-image integration and GPU acceptance remain pending.
 
+The NVIDIA dependency recipe installs the image-paired 5.0 test utilities as
+well as the runtime components; tests must not borrow an older Isaac overlay.
+The SDK OpenCV Python extension requires NumPy 1.x. Model preparation therefore
+uses [`nvidia-model-prep-constraints.txt`](config/nvidia-model-prep-constraints.txt)
+(`numpy==1.26.4`, `ml-dtypes==0.5.4`, `onnx==1.23.1`); the image build executes
+an OpenCV resize and checks its pixel values to verify the native Python ABI.
+
 ## Detection facilities
 
 | Directory | Contents |

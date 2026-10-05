@@ -14,6 +14,7 @@
 //
 #include <gtest/gtest.h>
 #include <cuda_runtime_api.h>
+#include <chrono>
 #include <cstring>
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
 #include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
