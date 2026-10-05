@@ -2,23 +2,22 @@
 // Licensed under the Apache License, Version 2.0.
 #include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
 #include "tensor_list_buffer_adapter_detail.hpp"
-#include "host_buffer_access.hpp"
+#include "tensor_metadata.hpp"
 #include <condition_variable>
 #include <mutex>
 
-#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <utility>
 #include "cuda_buffer/cuda_buffer_api.hpp"
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
-#include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 
 namespace gpu_ros::nvidia_tensor_bundle_compat
 {
 namespace
 {
-using Message = isaac_ros_tensor_list_interfaces::msg::TensorList;
+using Message = isaac_ros_tensor_msgs::msg::TensorList;
 using namespace gpu_ros_managed;
 void Check(cudaError_t status)
 {
@@ -74,24 +73,10 @@ struct NativeAttachment final : DeviceBufferAttachment
   const int device;
   const void * const pointer;
 };
-NativeTensorSpec Spec(const Message::_tensors_type::value_type & tensor)
+NativeTensorSpec Spec(const Message & message, size_t index)
 {
-  NativeTensorSpec spec{tensor.name, static_cast<TensorDataType>(tensor.data_type), {}};
-  std::vector<uint32_t> materialized_dims;
-  const auto & dims = detail::HostValues(tensor.shape.dims, materialized_dims);
-  if (dims.empty() || tensor.shape.rank != dims.size()) {
-    throw std::invalid_argument("TensorList rank does not match positive dimensions");
-  }
-  spec.shape.assign(dims.begin(), dims.end());
-  const auto bytes = tensor_byte_size(spec.shape, spec.dtype);
-  std::vector<uint64_t> materialized_strides;
-  const auto & strides = detail::HostValues(tensor.strides, materialized_strides);
-  if (bytes != tensor.data.size() ||
-      (!strides.empty() && strides != contiguous_strides(spec.shape, spec.dtype)))
-  {
-    throw std::invalid_argument("TensorList byte size or contiguous strides mismatch");
-  }
-  return spec;
+  const auto & tensor = message.tensors[index];
+  return {message.names[index], detail::ValidateTensor(tensor), tensor.shape};
 }
 std::shared_ptr<NativeTensorListEnvelope> Reusable(const ManagedTensorBundle & bundle, int device)
 {
@@ -114,11 +99,12 @@ std::shared_ptr<NativeTensorListEnvelope> Reusable(const ManagedTensorBundle & b
       envelope = attachment->envelope;
     }
     if (envelope != attachment->envelope || envelope->message->header != bundle.header() ||
-        envelope->message->tensors.size() != bundle.tensors().size())
+        envelope->message->tensors.size() != bundle.tensors().size() ||
+        envelope->message->names.size() != bundle.tensors().size())
     {
       return {};
     }
-    const auto spec = Spec(envelope->message->tensors[i]);
+    const auto spec = Spec(*envelope->message, i);
     if (spec.name != tensor.name() || spec.dtype != tensor.data_type() ||
         spec.shape != tensor.shape() ||
         tensor.strides() != contiguous_strides(spec.shape, spec.dtype))
@@ -144,14 +130,15 @@ Message::ConstSharedPtr ReusableTensorList(const ManagedTensorBundle & bundle, i
 }
 ManagedTensorBundle ImportTensorList(Message::ConstSharedPtr message, int device)
 {
+  detail::ValidateNames(*message);
   DeviceScope scope(device);
   auto envelope = std::make_shared<NativeTensorListEnvelope>(device);
   envelope->message = std::move(message);
   envelope->readers.reserve(envelope->message->tensors.size());
   std::vector<NativeTensorSpec> specs;
   specs.reserve(envelope->message->tensors.size());
-  for (const auto & tensor : envelope->message->tensors) {
-    specs.push_back(Spec(tensor));
+  for (size_t i = 0; i < envelope->message->tensors.size(); ++i) {
+    specs.push_back(Spec(*envelope->message, i));
   }
   const auto retain_uncertain_owner = [&] {
     // No payload allocation: use Managed's orphan protocol for the message,
@@ -287,7 +274,7 @@ void NativeOutputBatch::CopyFrom(const ManagedTensorBundle & source)
     leases.reserve(source.tensors().size());
     for (size_t i = 0; i < source.tensors().size(); ++i) {
       const auto & tensor = source.tensors()[i];
-      const auto spec = Spec(impl_->envelope->message->tensors[i]);
+      const auto spec = Spec(*impl_->envelope->message, i);
       if (tensor.name() != spec.name || tensor.data_type() != spec.dtype ||
           tensor.shape() != spec.shape)
       {
@@ -423,6 +410,7 @@ NativeOutputBatch TensorListTransport::Allocate(
       delete value;
     });
   message->header = header;
+  message->names.reserve(specs.size());
   message->tensors.reserve(specs.size());
   state->envelope->message = message;
   state->envelope->writers.reserve(specs.size());
@@ -433,21 +421,9 @@ NativeOutputBatch TensorListTransport::Allocate(
   try {
     for (size_t i = 0; i < specs.size(); ++i) {
       const auto & spec = specs[i];
-      const auto bytes = tensor_byte_size(spec.shape, spec.dtype);
-      if (spec.shape.empty() || spec.shape.size() > std::numeric_limits<uint8_t>::max()) {
-        throw std::invalid_argument("native output rank out of range");
-      }
       auto & tensor = message->tensors.emplace_back();
-      tensor.name = spec.name;
-      tensor.data_type = static_cast<int32_t>(spec.dtype);
-      tensor.shape.rank = static_cast<decltype(tensor.shape.rank)>(spec.shape.size());
-      for (const auto dim : spec.shape) {
-        if (dim <= 0 || static_cast<uint64_t>(dim) > std::numeric_limits<uint32_t>::max()) {
-          throw std::invalid_argument("native output dimension out of range");
-        }
-        tensor.shape.dims.push_back(static_cast<uint32_t>(dim));
-      }
-      tensor.strides = contiguous_strides(spec.shape, spec.dtype);
+      const auto bytes = detail::SetTensorMetadata(tensor, spec.dtype, spec.shape);
+      message->names.push_back(spec.name);
       tensor.data = cuda_buffer_backend::allocate_buffer(bytes);
       auto & envelope = batch.impl_->envelope;
       envelope->writers.push_back(

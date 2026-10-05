@@ -57,11 +57,20 @@ TEST_F(NativeAdapterTest, NativeManagedRoundTripPreservesEnvelopePayloadAndLocal
   auto managed = Bundle(header, batch.buffers()[0]);
   auto message = compat::detail::ReusableTensorList(managed, 0);
   ASSERT_TRUE(message);
+  EXPECT_EQ(message->names, (std::vector<std::string>{"values"}));
+  ASSERT_EQ(message->tensors.size(), 1U);
+  EXPECT_EQ(message->tensors[0].dtype_code, 2);
+  EXPECT_EQ(message->tensors[0].dtype_bits, 32);
+  EXPECT_EQ(message->tensors[0].dtype_lanes, 1);
+  EXPECT_EQ(message->tensors[0].shape, (std::vector<int64_t>{1, 4}));
+  EXPECT_EQ(message->tensors[0].strides, (std::vector<int64_t>{4, 1}));
+  EXPECT_EQ(message->tensors[0].byte_offset, 0U);
   auto stream = cuda::make_stream(0);
   auto native_read = cuda_buffer_backend::from_input_buffer(message->tensors[0].data, stream.get());
   EXPECT_EQ(native_read.get_ptr(), batch.pointer(0));
   auto imported = compat::detail::ImportTensorList(message, 0);
   EXPECT_EQ(compat::detail::ReusableTensorList(imported, 0), message);
+  EXPECT_EQ(imported.tensors()[0].strides(), (std::vector<uint64_t>{16, 4}));
   auto buffer = std::get<std::shared_ptr<DeviceBuffer>>(imported.tensors()[0].storage());
   EXPECT_EQ(buffer->get_blocking_ready_lease().data(), batch.pointer(0));
   const auto host = compat::ToTensorBundle(*message);
@@ -121,12 +130,13 @@ TEST_F(NativeAdapterTest, CopiedAttachmentCannotSubstituteAnotherAllocation)
 TEST_F(NativeAdapterTest, CpuPromotionAndHostConversionHaveExactContent)
 {
   auto message = std::make_shared<compat::NvidiaTensorList>();
+  message->names = {"values"};
   auto & tensor = message->tensors.emplace_back();
-  tensor.name = "values";
-  tensor.data_type = 9;
-  tensor.shape.rank = 2;
-  tensor.shape.dims = {1, 4};
-  tensor.strides = {16, 4};
+  tensor.dtype_code = 2;
+  tensor.dtype_bits = 32;
+  tensor.dtype_lanes = 1;
+  tensor.shape = {1, 4};
+  tensor.strides = {4, 1};
   const float values[]{1, 3, 5, 7};
   tensor.data.resize(sizeof(values));
   std::memcpy(tensor.data.data(), values, sizeof(values));
@@ -137,6 +147,38 @@ TEST_F(NativeAdapterTest, CpuPromotionAndHostConversionHaveExactContent)
               cudaMemcpyDeviceToHost),
     cudaSuccess);
   EXPECT_EQ(std::memcmp(restored, values, sizeof(values)), 0);
+}
+
+TEST_F(NativeAdapterTest, RejectsInvalidNativeMetadataBeforePromotion)
+{
+  auto message = std::make_shared<compat::NvidiaTensorList>();
+  message->names = {"values"};
+  auto & tensor = message->tensors.emplace_back();
+  tensor.dtype_code = 2;
+  tensor.dtype_bits = 32;
+  tensor.dtype_lanes = 1;
+  tensor.shape = {1, 4};
+  tensor.strides = {4, 1};
+  tensor.data.resize(16);
+  message->names.clear();
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  message->names = {"one", "two"};
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  message->names = {"values"};
+  tensor.dtype_code = 255;
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  tensor.dtype_code = 2;
+  tensor.dtype_lanes = 2;
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  tensor.dtype_lanes = 1;
+  tensor.strides = {16, 4};
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  tensor.strides = {4, 1};
+  tensor.byte_offset = 4;
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
+  tensor.byte_offset = 0;
+  tensor.data.resize(15);
+  EXPECT_THROW(compat::detail::ImportTensorList(message, 0), std::invalid_argument);
 }
 struct Gate
 {

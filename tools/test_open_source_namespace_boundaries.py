@@ -120,7 +120,7 @@ def assert_package_names() -> None:
             found_legacy.append(f"{package_xml}: {name}")
         if name != package_xml.parent.name:
             raise AssertionError(f"package directory/name mismatch: {package_xml}: {name}")
-        if "isaac_ros_tensor_list_interfaces" in dependencies:
+        if "isaac_ros_tensor_msgs" in dependencies:
             tensor_list_dependents.append(name)
         if name in {"gpu_ros_rtdetr", "gpu_ros_yolov8"}:
             isaac_dependencies = sorted(
@@ -135,7 +135,7 @@ def assert_package_names() -> None:
     )
     assert tensor_list_dependents == [COMPAT_PACKAGE], (
         "only the NVIDIA compatibility package may depend on "
-        f"isaac_ros_tensor_list_interfaces; found {tensor_list_dependents}"
+        f"isaac_ros_tensor_msgs; found {tensor_list_dependents}"
     )
     assert not core_model_isaac_dependents, (
         "core model packages must not have non-test Isaac ROS dependencies:\n"
@@ -195,9 +195,6 @@ def assert_amd_profile_excludes_compat() -> None:
         content = path.read_text(encoding="utf-8")
         assert COMPAT_PACKAGE not in content, f"AMD profile resolves compat package: {path}"
         assert REFERENCE_PACKAGE not in content, f"AMD profile resolves reference package: {path}"
-        assert "isaac_ros_tensor_list_interfaces" not in content, (
-            f"AMD profile resolves NVIDIA TensorList interface: {path}"
-        )
 
 
 def assert_no_old_project_directories() -> None:

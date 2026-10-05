@@ -16,17 +16,19 @@
 #define GPU_ROS_NVIDIA_TENSOR_BUNDLE_COMPAT__TENSOR_BUNDLE_CONVERSION_HPP_
 
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
-#include "isaac_ros_tensor_list_interfaces/msg/tensor_list.hpp"
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
+#include "tensor_msgs/msg/experimental_tensor.hpp"
 
 namespace gpu_ros::nvidia_tensor_bundle_compat
 {
 
 using TensorBundle = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
-using NvidiaTensorList = isaac_ros_tensor_list_interfaces::msg::TensorList;
-using NvidiaTensor = isaac_ros_tensor_list_interfaces::msg::Tensor;
+using NvidiaTensorList = isaac_ros_tensor_msgs::msg::TensorList;
+using NvidiaTensor = tensor_msgs::msg::ExperimentalTensor;
 
-// Convert only contiguous C-order tensors. The old message's rank, shape, and
-// byte strides are checked explicitly; an invalid or strided tensor throws.
+// Convert only scalar, contiguous C-order tensors with zero byte_offset.
+// TensorList names, dtype, shape, element strides and payload size are checked.
+// Both conversions produce CPU-backed payloads.
 TensorBundle ToTensorBundle(const NvidiaTensorList & source);
 NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source);
 

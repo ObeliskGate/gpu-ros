@@ -9,11 +9,12 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-  <depend>isaac_ros_tensor_list_interfaces</depend>
+  <depend>isaac_ros_tensor_msgs</depend>
+  <depend>tensor_msgs</depend>
   <depend>gpu_ros_tensor_bundle_msgs</depend>
   <depend>rosidl_buffer</depend>
   <depend>cuda_buffer</depend>
-  <depend>cuda_buffer_backend</depend>
+  <exec_depend>cuda_buffer_backend</exec_depend>
   <depend>gpu_ros_managed_core</depend>
   <depend>gpu_ros_managed_cuda</depend>
   <depend>gpu_ros_managed_ros</depend>
