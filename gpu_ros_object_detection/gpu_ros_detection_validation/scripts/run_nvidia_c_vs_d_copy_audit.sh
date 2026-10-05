@@ -65,8 +65,8 @@ if [[ ${MODEL} == yolov8 ]]; then
   CANDIDATE_LANE="yolov8-d"
 else
   # Formal RT-DETR payloads: images=4915200, orig_target_sizes=16,
-  # labels=800, boxes=1600, and scores=400 bytes.
-  PAYLOAD_SIZES=(4915200 16 800 1600 400)
+  # labels=2400, boxes=4800, and scores=1200 bytes for NVIDIA Synthetica.
+  PAYLOAD_SIZES=(4915200 16 2400 4800 1200)
   REFERENCE_LANE="rtdetr-c"
   CANDIDATE_LANE="rtdetr-d"
 fi

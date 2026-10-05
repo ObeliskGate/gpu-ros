@@ -25,13 +25,10 @@ if _POL_SPEC is None or _POL_SPEC.loader is None:
 _POL_MODULE = importlib.util.module_from_spec(_POL_SPEC)
 _POL_SPEC.loader.exec_module(_POL_MODULE)
 
-GpuRosOnnxRtDetrPOLTest = _POL_MODULE.GpuRosOnnxRtDetrPOLTest
-generate_rtdetr_pol_description = _POL_MODULE.generate_rtdetr_pol_description
 
-
-class GpuRosOnnxRtDetrManagedPOLTest(GpuRosOnnxRtDetrPOLTest):
+class GpuRosOnnxRtDetrManagedPOLTest(_POL_MODULE.GpuRosOnnxRtDetrPOLTest):
     """Run the fixed-input RT-DETR POL graph through both Managed boundaries."""
 
 
 def generate_test_description():
-    return generate_rtdetr_pol_description(GpuRosOnnxRtDetrManagedPOLTest, 'managed')
+    return _POL_MODULE.generate_rtdetr_pol_description(GpuRosOnnxRtDetrManagedPOLTest, 'managed')

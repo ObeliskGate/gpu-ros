@@ -167,9 +167,9 @@ def generate_launch_description():
                 'binding_report_path': binding_report_path,
                 'transport': 'tensor_list',
                 'managed_output_contracts': [
-                    'labels=int64[1,100]',
-                    'boxes=float32[1,100,4]',
-                    'scores=float32[1,100]',
+                    'labels=int64[1,300]',
+                    'boxes=float32[1,300,4]',
+                    'scores=float32[1,300]',
                 ],
             }
         ],
