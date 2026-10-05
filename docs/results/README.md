@@ -136,11 +136,31 @@ same-hardware reproduction baseline. In this campaign only, managed mean output
 is +9.69% for RT-DETR and +3.97% for YOLOv8 relative to C; this does not establish
 a stable migration speedup.
 
-The earlier four A100/4.5 reports have mean outputs 102.983766, 98.870657,
-153.101195, and 157.868137 fps in the same lane order, but their component
-containers exited `-11` and their pooling formula is missing. Do not apply the
-new SDK's aggregation retrospectively or attribute cross-device/stack rate
-differences to migration.
+The earlier four A100/4.5 native reports are retained as contextual observations:
+
+| Historical lane | Peak prediction (Hz) | Mean output (fps) | Peak missed / sent | 10-Hz output (fps) | 30-Hz output (fps) | 60-Hz output (fps) |
+| --- | --- | --- | --- | --- | --- | --- |
+| RT-DETR C | 110.546875 | 102.983766 | 30 / 552 | 10.207345 | 30.193532 | 60.283610 |
+| RT-DETR managed | 102.812500 | 98.870657 | 12.333333 / 514 | 10.204322 | 30.208401 | 60.243959 |
+| YOLOv8 C | 156.953125 | 153.101195 | 12.666667 / 784 | 10.203653 | 30.212811 | 60.188017 |
+| YOLOv8 managed | 164.687500 | 157.868137 | 26.666667 / 823 | 10.204815 | 30.231653 | 60.205153 |
+
+All historical fixed-rate misses/sent are 0/50, 0/150, and 0/300. Their command
+exits are 0 but all four component containers exited `-11`; their internal
+pooling formula is missing. Raw archive: `nvidia-after-formal-evidence.tar`,
+members `formal/<graph-basename>/r2b-log-20260918-{092057,092424,092751,093118}.json`
+in the same lane order as the table.
+The historical throughput source is dirty monorepo
+`df69877403107127dec6b89662efacd694bc9dc5`, tracked-diff SHA-256
+`7361bff65428725ebca7915c29836ac0bd57af86835831f62c2c21d65d0165d1`,
+dirty/untracked-content SHA-256
+`06ab633d22d42313370e546393fddf364b5cc3f3dc0ebefb3af8d132bba997f2`;
+runtime image:
+`sha256:52ba16a38a6c03eeb4533c6006d44459140e0517b59483b186df798b79ec1453`.
+Do not apply the new SDK's aggregation retrospectively or attribute
+cross-device/stack/source rate differences to migration. The separate August
+clean-rerun summary has no corresponding locally available raw JSON/logs or
+complete execution identity and is not substituted for these four raw records.
 
 | Lane | Immutable SDK report ID | SHA-256 |
 | --- | --- | --- |
