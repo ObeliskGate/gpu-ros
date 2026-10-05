@@ -19,8 +19,16 @@ def main() -> None:
     parser.add_argument("--device-id", type=int, default=0)
     args = parser.parse_args()
 
-    if ort.__version__ != "1.23.1":
-        raise RuntimeError(f"provider parity requires ONNX Runtime 1.23.1, got {ort.__version__}")
+    ort_lock = Path(__file__).resolve().parents[2] / "config" / "onnxruntime.lock"
+    locked_version = next(
+        line.removeprefix("ORT_VERSION=")
+        for line in ort_lock.read_text().splitlines()
+        if line.startswith("ORT_VERSION=")
+    )
+    if ort.__version__ != locked_version:
+        raise RuntimeError(
+            f"provider parity requires ONNX Runtime {locked_version}, got {ort.__version__}"
+        )
 
     if (args.images_npy is None) != (args.orig_target_sizes_npy is None):
         parser.error("provide both fixed-input .npy files or neither")

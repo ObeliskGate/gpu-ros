@@ -123,9 +123,13 @@ TEST(TensorBundleConversion, AcceptsInferredStridesButRejectsByteStridesAndViews
 {
   auto message = FloatMessage();
   auto & tensor = message.tensors[0];
-  EXPECT_NO_THROW(compat::ToTensorBundle(message));
+  const auto explicit_strides = compat::ToTensorBundle(message);
+  ASSERT_EQ(explicit_strides.tensors.size(), 1U);
+  EXPECT_EQ(explicit_strides.tensors[0].shape, (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(explicit_strides.tensors[0].data_type,
+    gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32);
   tensor.strides.clear();
-  EXPECT_NO_THROW(compat::ToTensorBundle(message));
+  EXPECT_EQ(compat::ToTensorBundle(message), explicit_strides);
   for (const auto & strides : std::vector<std::vector<int64_t>>{
       {12, 4}, {4, 1}, {3}, {3, -1}, {3, 0}}) {
     tensor.strides = strides;

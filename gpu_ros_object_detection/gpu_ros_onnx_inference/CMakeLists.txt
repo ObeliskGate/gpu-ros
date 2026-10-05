@@ -59,15 +59,6 @@ if(ONNXRUNTIME_ROOT)
 endif()
 
 if(NOT ONNXRUNTIME_ROOT)
-  # NVIDIA Isaac ROS compatibility fallback: the CUDA-matched ORT library often
-  # ships inside Triton's backend while headers are unpacked separately.
-  if(NOT ONNXRUNTIME_INCLUDE_DIR AND EXISTS "/opt/onnxruntime/include/onnxruntime_cxx_api.h")
-    set(ONNXRUNTIME_INCLUDE_DIR "/opt/onnxruntime/include")
-  endif()
-  if(NOT ONNXRUNTIME_LIBRARY AND EXISTS "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
-    set(ONNXRUNTIME_LIBRARY "/opt/tritonserver/backends/onnxruntime/libonnxruntime.so")
-  endif()
-
   if(NOT ONNXRUNTIME_INCLUDE_DIR)
     find_path(ONNXRUNTIME_INCLUDE_DIR
       NAMES onnxruntime_cxx_api.h

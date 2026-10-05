@@ -1,0 +1,12 @@
+# Official Isaac ROS 5.0 base and its released CUDA Buffer backend source.
+ISAAC_ROS_BASE_DIGEST=8b08a75a95692d64ba68cd244b04519cd837789c33781340b166427043dcc42d
+CUDA_BUFFER_DEB_VERSION=0.1.2-2noble.20260918011121000
+CUDA_BUFFER_BACKEND_VERSION=0.1.2
+CUDA_BUFFER_BACKEND_COMMIT=7e723061d03b347bedea69009b003f33e9b53314
+CUDA_BUFFER_BACKEND_ARCHIVE_SHA256=2b065cdc5387290a3514987a3673a61665e99afc25c09c0bc4b3a46057b9fa71
+# Source archive: https://codeload.github.com/ros2/rosidl_buffer_backends/tar.gz/${CUDA_BUFFER_BACKEND_COMMIT}
+# cuDNN and the complete allowed APT addition set are in nvidia-runtime-packages.lock.
+# Model preparation uses uv, without replacing the SDK Python interpreter.
+UV_VERSION=0.12.23
+UV_LINUX_ARCHIVE_SHA256=9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6
+ONNXCONVERTER_COMMON_VERSION=1.16.0

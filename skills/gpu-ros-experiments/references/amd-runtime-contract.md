@@ -22,8 +22,8 @@ evidence that this new combination has passed:
 | GPU target | The actual target reported by the device; the campaign baseline is `gfx950` | `AMD_GPU_TARGETS` and `rocminfo` |
 | GPU driver | The compatible AMD kernel/user-space driver release for the device | `rocminfo`, `rocminfo --version`, and the site package query; record it in the result archive |
 | MIGraphX | MIGraphX 2.14 behavior shipped by the ROCm 7.1.1 package set | `migraphx`, `migraphx-dev`, and the provider audit |
-| ONNX Runtime | 1.23.1 at the commit in `gpu_ros_object_detection/config/onnxruntime.lock` | `gpu_ros_object_detection/config/onnxruntime.lock` |
-| ORT provider patches | The tracked build, GridSample, int64-div CPU-fallback, and Linux provider-lifetime patches | `gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-*.patch` and `.series` |
+| ONNX Runtime | 1.30.0 at the commit in `gpu_ros_object_detection/config/onnxruntime.lock` | `gpu_ros_object_detection/config/onnxruntime.lock` |
+| ORT provider patches | The tracked GridSample, int64-div CPU-fallback, and Linux provider-lifetime patches | `gpu_ros_object_detection/docker/patches/onnxruntime-1.30.0-migraphx-*.patch` and `.series` |
 | Benchmark framework | Image-paired `ros2_benchmark` source, with only the standalone build-dependency patch | Verified image provenance and `gpu_ros_object_detection/docker/phase2a-amd.Dockerfile` |
 
 MIGraphX is installed from the ROCm package repository rather than built from a

@@ -91,12 +91,21 @@ remains an external checkout and is not covered by the root Apache declaration.
 
 ## ONNX Runtime
 
-The Docker/build workflow fetches ONNX Runtime `v1.23.1` at commit
-`d9b2048791efb5804fe3d53a04b4971256addebf` and applies the three MIGraphX
-patches under `gpu_ros_object_detection/docker/patches/`. ONNX Runtime is MIT-licensed; the applicable
-copy is preserved in `LICENSES/ONNXRUNTIME-MIT.txt`. The Linux unused-helper
-patch also records Microsoft upstream commit
-`935affb848b1635be7d48d9c21c625300e7a3571`.
+The Docker/build workflow selects ONNX Runtime `v1.30.0` at commit
+`f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7`. AMD builds apply the three
+MIGraphX policy patches under `gpu_ros_object_detection/docker/patches/`:
+GridSample capability, rank-at-least-two int64 Div CPU fallback, and Linux
+provider residency. The unused-helper backport is no longer needed upstream.
+NVIDIA installs the complete official CUDA 13 distribution at the archive
+hash in `gpu_ros_object_detection/config/onnxruntime.lock`, including its license
+files. ONNX Runtime is MIT-licensed; the source notice is also preserved in
+`LICENSES/ONNXRUNTIME-MIT.txt`.
+
+The NVIDIA image builds only `cuda_buffer_backend` from released
+`ros2/rosidl_buffer_backends` 0.1.2 at the source revision in
+`gpu_ros_object_detection/config/nvidia-runtime.lock`. Its upstream license is
+installed with the plugin; SDK CUDA Buffer, message, and ROS core packages
+remain external binary dependencies.
 
 ## Standalone ros2_benchmark preparation
 

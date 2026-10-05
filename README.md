@@ -89,7 +89,7 @@ fresh dependency-image build.
 ## Runtime and asset boundaries
 
 The AMD migration target is ROS 2 Lyrical, Ubuntu 24.04, ROCm 7.1.1, the
-actual device target, and the external ONNX Runtime 1.23.1/MIGraphX install
+actual device target, and the external ONNX Runtime 1.30.0/MIGraphX install
 selected by the [ORT lock](gpu_ros_object_detection/config/onnxruntime.lock).
 Lyrical GPU acceptance remains pending; historical Jazzy runs retain their
 original identities. The checkout and workspace remain `/workspaces/gpu-ros`.

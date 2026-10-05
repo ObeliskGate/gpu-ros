@@ -1,7 +1,7 @@
 SPDX-FileCopyrightText: Microsoft Corporation
 SPDX-License-Identifier: MIT
 Upstream-Status: Not submitted
-Applies-To: ONNX Runtime v1.23.1
+Applies-To: ONNX Runtime v1.30.0 (f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7)
 Reason: MIGraphX 2.14 converts unsupported int64 pointwise operations to
         float for the GPU target. Its nested-convert elimination can then
         remove the truncating float-to-int64-to-float round trip around an
@@ -19,7 +19,7 @@ Risk: Adds one small CPU fallback boundary for the RT-DETR query-index Div.
 diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 --- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 +++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
-@@ -848,6 +848,28 @@ static std::unique_ptr<ComputeCapability> GetCapabilityForNodeGroup(
+@@ -858,6 +858,28 @@ std::unique_ptr<IndexedSubGraph> MIGraphXExecutionProvider::GetSubGraph(
    return sub_graph;
  }
  
@@ -48,7 +48,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
  static std::vector<NodeIndex>
  GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                            /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
-@@ -1011,6 +1033,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
+@@ -1027,6 +1049,14 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                      "Xor"};
    std::vector<NodeIndex> unsupported_nodes_idx;
    for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -63,7 +63,7 @@ diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc 
      if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
        // Collect inputs that are initializers
        graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers,
-@@ -1287,7 +1317,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
+@@ -1306,7 +1336,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
      const Node& fused_node = fused_node_graph.fused_node;
  
      std::filesystem::path model_cache_file;

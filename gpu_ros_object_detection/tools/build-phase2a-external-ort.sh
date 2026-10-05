@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build a patched ONNX Runtime 1.23.1 MIGraphX install outside the container
-# image.  The source checkout must be a pristine recursive v1.23.1 checkout.
+# Build the locked, patched ONNX Runtime MIGraphX install outside the container
+# image. The source must be a pristine recursive checkout of the locked commit.
 set -euo pipefail
 trap 'echo "ERROR: external ORT build failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
@@ -17,7 +17,7 @@ SOURCE_ROOT="${ORT_STATE_ROOT}/source/onnxruntime"
 BUILD_PARENT="${ORT_STATE_ROOT}/build"
 INSTALL_PARENT="${ORT_STATE_ROOT}/install"
 PATCH_DIR="${ROOT_DIR}/gpu_ros_object_detection/docker/patches"
-PATCH_SERIES="${ORT_PATCH_SERIES:-${PATCH_DIR}/onnxruntime-${ORT_VERSION}.series}"
+PATCH_SERIES="${PATCH_DIR}/onnxruntime-${ORT_VERSION}.series"
 ORT_BUILD_JOBS="${ORT_BUILD_JOBS:-${SLURM_CPUS_PER_TASK:-24}}"
 
 die() {
@@ -168,6 +168,7 @@ done
 
 printf '%s\n' "${fingerprint}" >"${INSTALL_ROOT}/.ovg-ort-fingerprint"
 {
+  printf 'ort_version=%s\n' "${ORT_VERSION}"
   printf 'source_commit=%s\n' "${source_commit}"
   printf 'patchset_sha256=%s\n' "${patchset_sha256}"
   for patch_name in "${PATCHES[@]}"; do

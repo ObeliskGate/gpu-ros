@@ -57,8 +57,10 @@ packages. AMD managed launches belong to `gpu_ros_onnx_inference`.
 
 The NVIDIA transport values are `tensor_list` and `managed`; `nitros` is no
 longer accepted. The historical bridge component plugin identifiers remain
-registered, but their implementation uses standard TensorList messages and
-the native CUDA Buffer backend. ROS-facing targets require Lyrical/C++20.
+registered, but their implementation uses `isaac_ros_tensor_msgs/TensorList`
+containing `tensor_msgs/ExperimentalTensor` and the native CUDA Buffer backend.
+It does not retain the Isaac ROS 4.5 TensorList wire schema.
+ROS-facing targets require Lyrical/C++20.
 Use the selected official Isaac ROS 5.0 Docker image's paired ROS versions and
 set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery (`0` for CPU/AMD).
 Target-image integration and GPU acceptance remain pending.

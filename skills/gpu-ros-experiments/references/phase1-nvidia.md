@@ -63,7 +63,7 @@ Record these values in the external archive for every run:
 | Monorepo | Record the exact `monorepo_revision`, tracked-diff hash, untracked paths/content hash, and dirty state. |
 | External object detection | Prefer the image binary; any required source overlay must match the image's verifiable source provenance. |
 | External benchmark | Prefer image-paired benchmark packages, not a separately selected upstream release head. |
-| ORT | Record the selected 1.23.1 source/library identity. |
+| ORT | Record the selected 1.30.0 source/library identity and the locked CUDA 13 distribution hash. |
 | Model/data | Record the selected profile and asset/dataset hashes. |
 
 Do not put host, user, scheduler, device-instance, or deployment-path

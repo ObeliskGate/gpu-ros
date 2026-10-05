@@ -15,6 +15,9 @@ services:
     environment:
       ROS_DISTRO: lyrical
       GPU_ROS_NVIDIA_PROFILE: "1"
+      ONNXRUNTIME_ROOT: /opt/onnxruntime
+      # The image also prepends the plugin prefix to AMENT_PREFIX_PATH,
+      # CMAKE_PREFIX_PATH and LD_LIBRARY_PATH for non-shell Compose exec calls.
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT: /workspaces/isaac_ros-dev/assets

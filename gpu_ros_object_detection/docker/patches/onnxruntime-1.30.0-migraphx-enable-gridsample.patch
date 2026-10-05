@@ -1,7 +1,7 @@
 SPDX-FileCopyrightText: Microsoft Corporation
 SPDX-License-Identifier: MIT
 Upstream-Status: Not submitted
-Applies-To: ONNX Runtime v1.23.1
+Applies-To: ONNX Runtime v1.30.0 (f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7)
 Reason: MIGraphX 7.1.1 implements the ONNX GridSample parser, but the
         ONNX Runtime MIGraphX EP capability allowlist omits GridSample.
 Risk: Changes provider graph assignment; validate provider placement and
@@ -10,7 +10,7 @@ Risk: Changes provider graph assignment; validate provider placement and
 diff --git a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 --- a/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
 +++ b/onnxruntime/core/providers/migraphx/migraphx_execution_provider.cc
-@@ -904,6 +904,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
+@@ -916,6 +916,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                      "GlobalMaxPool",
                                                      "Greater",
                                                      "GreaterOrEqual",

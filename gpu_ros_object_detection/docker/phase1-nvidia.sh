@@ -7,6 +7,8 @@ COMPOSE_FILE="${ROOT_DIR}/gpu_ros_object_detection/docker/docker-compose.yaml"
 ORT_LOCK="${ROOT_DIR}/gpu_ros_object_detection/config/onnxruntime.lock"
 # shellcheck source=/dev/null
 source "${ORT_LOCK}"
+# shellcheck source=/dev/null
+source "${ROOT_DIR}/gpu_ros_object_detection/config/nvidia-runtime.lock"
 GPU_ROS_REPO_ROOT="${GPU_ROS_REPO_ROOT:-${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}/src/gpu-ros}"
 export GPU_ROS_REPO_ROOT
 
@@ -31,8 +33,8 @@ check_pins() {
 
 require_base_image_for_build() {
   local image="${ISAAC_ROS_BASE_IMAGE:-}"
-  [[ "${image}" =~ ^nvcr\.io/nvidia/isaac/ros(:[^@[:space:]]+)?@sha256:[0-9a-f]{64}$ ]] || {
-    echo "BLOCKED: set ISAAC_ROS_BASE_IMAGE to the official Isaac ROS 5.0 reference including its verified sha256 digest before building." >&2
+  [[ "${image}" =~ ^nvcr\.io/nvidia/isaac/ros(:[^@[:space:]]+)?@sha256:${ISAAC_ROS_BASE_DIGEST}$ ]] || {
+    echo "BLOCKED: ISAAC_ROS_BASE_IMAGE must name the locked official Isaac ROS 5.0 digest ${ISAAC_ROS_BASE_DIGEST} before building." >&2
     return 1
   }
 }
@@ -75,7 +77,8 @@ check_host() {
 verify_container() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
     set -euo pipefail
-    source /opt/ros/lyrical/setup.bash
+    source /opt/gpu-ros/setup.bash
+    source /opt/gpu-ros/onnxruntime.lock
     test "${ROS_DISTRO}" = lyrical
     test "${GPU_ROS_NVIDIA_PROFILE}" = 1
     test "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}" = \
@@ -83,11 +86,19 @@ verify_container() {
     test -d "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}"
     nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
     test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
-    test -e /opt/tritonserver/backends/onnxruntime/libonnxruntime.so
+    test -e /opt/onnxruntime/lib/libonnxruntime.so
+    test "${ONNXRUNTIME_ROOT}" = /opt/onnxruntime
+    test "$(readlink -f /opt/onnxruntime/lib/libonnxruntime.so)" = \
+      "/opt/onnxruntime/lib/libonnxruntime.so.${ORT_VERSION}"
+    test -f /opt/onnxruntime/lib/libonnxruntime_providers_cuda.so
+    test "$(ros2 pkg prefix cuda_buffer_backend)" = /opt/gpu-ros/cuda-buffer-backend
+    test "$(ros2 pkg prefix cuda_buffer)" = /opt/ros/lyrical
+    dpkg-query -W libcudnn9-cuda-13 ros-lyrical-isaac-ros-yolov8 \
+      ros-lyrical-isaac-ros-benchmark ros-lyrical-ros2-benchmark
     for package in \
       rclcpp rosidl_buffer cuda_buffer cuda_buffer_backend \
-      isaac_ros_tensor_list_interfaces isaac_ros_benchmark ros2_benchmark \
-      isaac_ros_image_proc isaac_ros_tensor_proc isaac_ros_rtdetr \
+      isaac_ros_tensor_msgs tensor_msgs isaac_ros_benchmark ros2_benchmark \
+      isaac_ros_dnn_image_encoder isaac_ros_image_proc isaac_ros_tensor_proc isaac_ros_rtdetr \
       isaac_ros_yolov8 isaac_ros_tensor_rt; do
       ros2 pkg prefix "${package}"
     done
@@ -115,7 +126,7 @@ verify_release_caches() {
       }
     test "${ROS_DISTRO}" = lyrical
     test "${GPU_ROS_NVIDIA_PROFILE}" = 1
-    source /opt/ros/lyrical/setup.bash
+    source /opt/gpu-ros/setup.bash
     source install/setup.bash
     ros2 pkg prefix gpu_ros_managed_core
     ros2 pkg prefix gpu_ros_managed_cuda
@@ -128,9 +139,10 @@ verify_release_caches() {
 
 build_workspace() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
+    set -e
     test "${ROS_DISTRO}" = lyrical
     test "${GPU_ROS_NVIDIA_PROFILE}" = 1
-    source /opt/ros/lyrical/setup.bash
+    source /opt/gpu-ros/setup.bash
     colcon build
   '
   verify_release_caches
@@ -163,7 +175,8 @@ case "${1:-bootstrap}" in
     ;;
   shell)
     "${COMPOSE[@]}" exec dev bash -lc '
-      source /opt/ros/lyrical/setup.bash
+      set -e
+      source /opt/gpu-ros/setup.bash
       if [[ -f install/setup.bash ]]; then source install/setup.bash; fi
       exec bash
     '

@@ -61,6 +61,15 @@ by tag and `@sha256:` digest. There is no substitute default. NVIDIA builds
 use the image's installed packages; `docker compose config`, `exec`, and
 `up --no-build` do not require build-only version inputs.
 
+The selected digest is locked in
+`gpu_ros_object_detection/config/nvidia-runtime.lock`. The NVIDIA Dockerfile
+adds only the exact packages in `nvidia-runtime-packages.lock`, refusing
+replacement or removal of any installed base package and verifying downloaded
+archives against signed APT metadata. It installs the complete locked ORT
+CUDA 13 distribution with cuDNN 9 and builds only the released 0.1.2 CUDA Buffer
+plugin against the SDK underlay. `/opt/gpu-ros/setup.bash` activates that plugin
+and ORT for non-interactive commands; it does not replace the SDK entrypoint.
+
 CPU and AMD builds additionally require `ROS_LYRICAL_APT_PACKAGE_SPECS`, a
 single-line, space-separated complete general ROS package inventory in
 `ros-lyrical-package=exact-version` form, derived from that same image/CDN

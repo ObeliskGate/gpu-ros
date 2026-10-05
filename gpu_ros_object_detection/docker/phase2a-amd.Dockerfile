@@ -2,8 +2,8 @@
 
 ARG AMD_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.1.1-complete
 
-# ORT 1.23.1 is the version used by the Phase 1 NVIDIA baseline. AMD's
-# supported pairing for that release is ROCm 7.1/7.1.1.
+# Build the shared ORT release on ROCm 7.1.1. Its selected-device GPU
+# compatibility still requires acceptance in the target AMD environment.
 FROM ${AMD_BASE_IMAGE} AS rocm-migraphx
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -45,25 +45,23 @@ RUN . /tmp/onnxruntime.lock \
     && test "$(git -C onnxruntime rev-parse HEAD)" = "${ORT_COMMIT}"
 
 WORKDIR /opt/src/onnxruntime
-# Backport the Linux MIGraphX test-build fix merged upstream after ORT 1.23.x.
+# Apply the same ordered provider policy as the external install helper:
+# GridSample capability, rank >= 2 int64 Div fallback (not scalar shape Div),
+# and Linux provider residency. ORT 1.30 already guards SessionHasEp on WIN32.
 # Keep unit-test targets and warnings-as-errors enabled.
-COPY gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch /tmp/
-RUN patch -p1 < /tmp/onnxruntime-1.23.1-migraphx-linux-unused-helper.patch
+COPY gpu_ros_object_detection/docker/patches/ /tmp/ort-patches/
+RUN . /tmp/onnxruntime.lock \
+    && sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
+      "/tmp/ort-patches/onnxruntime-${ORT_VERSION}.series" > /tmp/ort-patches/active.series \
+    && test -s /tmp/ort-patches/active.series \
+    && while IFS= read -r patch_name; do \
+      case "${patch_name}" in */*) exit 1 ;; esac; \
+      git apply --check "/tmp/ort-patches/${patch_name}" \
+        && git apply "/tmp/ort-patches/${patch_name}" || exit 1; \
+    done < /tmp/ort-patches/active.series
 
-# MIGraphX 7.1.1 implements GridSample, but ORT 1.23.1 omits it from the
-# MIGraphX EP capability allowlist. Fail if the pinned source no longer matches.
-COPY gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-enable-gridsample.patch /tmp/
-RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch \
-    && git apply /tmp/onnxruntime-1.23.1-migraphx-enable-gridsample.patch
-
-# MIGraphX 2.14 can lose int64 division truncation while converting unsupported
-# GPU pointwise types through float. Keep only int64 Div on CPU so RT-DETR box
-# selection remains correct while the surrounding graph stays on MIGraphX.
-COPY gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch /tmp/
-RUN git apply --check /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch \
-    && git apply /tmp/onnxruntime-1.23.1-migraphx-int64-div-cpu-fallback.patch
-
-RUN CMAKE_TARGETS="$(printf '%s' "${AMD_GPU_TARGETS}" | tr ',' ';')" \
+RUN test -n "${AMD_GPU_TARGETS}" \
+    && CMAKE_TARGETS="$(printf '%s' "${AMD_GPU_TARGETS}" | tr ',' ';')" \
     && ./build.sh \
       --config Release \
       --parallel "${ORT_BUILD_JOBS}" \
@@ -220,9 +218,9 @@ COPY gpu_ros_object_detection/config/onnxruntime.lock /tmp/onnxruntime.lock
 RUN . /tmp/onnxruntime.lock \
     && ROS_PACKAGE_LOCK_SHA256="$(python3 -c 'import json; print(json.load(open("/var/lib/gpu-ros/isaac-ros-5-ros-package-lock.json"))["package_specs_sha256"])')" \
     && mkdir -p /opt/ovg \
-    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","isaac_ros_base_image":"%s","ros_package_lock_sha256":"%s","ros2_benchmark_commit":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ort_commit":"%s","ros_distro":"%s","isaac_ros_base_image":"%s","ros_package_lock_sha256":"%s","ros2_benchmark_commit":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1","migraphx-linux-provider-lifetime"]}\n' \
       "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
-      "${ORT_VERSION}" "${ROS_DISTRO}" "${ISAAC_ROS_BASE_IMAGE}" \
+      "${ORT_VERSION}" "${ORT_COMMIT}" "${ROS_DISTRO}" "${ISAAC_ROS_BASE_IMAGE}" \
       "${ROS_PACKAGE_LOCK_SHA256}" "${ROS2_BENCHMARK_COMMIT}" "${AMD_GPU_TARGETS:-}" \
       > /opt/ovg/image-manifest.json
 

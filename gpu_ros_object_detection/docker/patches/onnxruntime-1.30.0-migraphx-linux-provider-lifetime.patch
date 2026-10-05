@@ -2,6 +2,7 @@ SPDX-FileCopyrightText: Microsoft Corporation
 SPDX-FileCopyrightText: 2026 gpu_ros_managed contributors
 SPDX-License-Identifier: MIT
 Upstream-Status: Pending
+Applies-To: ONNX Runtime v1.30.0 (f2c39fe2f838cf35ce7da92824f5a5e3ee6e88a7)
 
 Keep the Linux MIGraphX provider module resident through process teardown,
 following the existing CUDA/TensorRT ProviderLibrary lifetime policy. When HIP
@@ -15,7 +16,7 @@ Ort::Env, then exit normally. No project buffer or ROS code is required.
 diff --git a/onnxruntime/core/session/provider_bridge_ort.cc b/onnxruntime/core/session/provider_bridge_ort.cc
 --- a/onnxruntime/core/session/provider_bridge_ort.cc
 +++ b/onnxruntime/core/session/provider_bridge_ort.cc
-@@ -1938,7 +1938,15 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provid
+@@ -2076,7 +2076,15 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_provid
  #endif
  );
  static ProviderLibrary s_library_nv(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx") LIBRARY_EXTENSION);

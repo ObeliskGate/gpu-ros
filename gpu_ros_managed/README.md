@@ -81,8 +81,9 @@ Optional requirements depend on the packages being built:
 - ROS 2 and `rclcpp` for the ROS wrappers
 - `gpu_ros_tensor_bundle_msgs` for the TensorBundle adapter; the message
   package is [in this collection](gpu_ros_tensor_bundle_msgs/).
-- The pinned NVIDIA runtime and TensorList interfaces for the optional
-  compatibility package.
+- The pinned NVIDIA runtime, `isaac_ros_tensor_msgs/TensorList`,
+  `tensor_msgs/ExperimentalTensor`, and the released CUDA Buffer transport
+  plugin for the optional compatibility package.
 
 The installed NVIDIA compatibility package exports its `CUDAToolkit`
 dependency, including `CUDA::cudart`. Consumers linking its exported CMake
@@ -231,6 +232,11 @@ See the
 
 ## ROS 2 transport
 
+In the generated Lyrical `Tensor` message, `shape` remains an ordinary
+`std::vector<int64_t>`; only the `uint8[] data` payload uses `rosidl::Buffer`.
+The adapter keeps metadata on the CPU and materializes non-CPU payloads at the
+standard-message host boundary.
+
 `ManagedPublisher<T>` and `ManagedSubscriber<ViewT>` enable ROS 2
 intra-process communication and keep the managed message owner alive for the
 duration of the callback. All participating nodes must use intra-process
@@ -246,6 +252,18 @@ communication and run in the same process to retain device-backed storage.
 Crossing the ROS serialization boundary materializes device tensors in host
 memory with a blocking copy. The adapter is therefore useful for compatibility
 and inspection, but it is not an inter-process zero-copy protocol.
+
+The NVIDIA boundary maps project scalar codes to the native DL data type
+`code/bits/lanes` fields (`lanes=1`). It accepts dense, contiguous tensors:
+positive dimensions, contiguous element strides (or empty inferred strides),
+and zero byte offset. Tensor names and tensor counts must match. Unsupported
+types, strided views, offsets, and invalid sizes fail before allocation or
+promotion; they are not silently copied into a different layout.
+
+The CUDA Buffer transport plugin is a runtime requirement, built separately
+against the image's installed SDK. Successful RMW data access alone does not
+prove zero-copy; pointer, binding, profiler, and lifecycle evidence remain
+separate acceptance checks.
 
 ## Safety contract
 
