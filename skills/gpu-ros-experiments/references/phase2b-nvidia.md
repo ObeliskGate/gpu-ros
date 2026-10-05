@@ -183,6 +183,15 @@ Buffer allocations. Managed outputs retain a typed envelope attachment so the
 egress bridge can reuse the original TensorList. Validate ORT, native writer
 and Managed pointer identity within the allocating process; mapped addresses
 in another process need not be equal.
+
+The original NVIDIA Synthetica asset uses a postprocessor TopK of 300 despite
+dynamic ONNX output dimensions. Its batch-one output contracts are
+`labels=int64[1,300]`, `boxes=float32[1,300,4]`, and `scores=float32[1,300]`.
+The corresponding output payloads are 2400, 4800, and 1200 bytes. These shapes
+must match across native/managed launches, POL tests, benchmark graphs, and
+copy-audit classifiers; a 100-query preallocation drops frames rather than
+changing the model to 100 queries.
+
 Pointer evidence must contain positive numeric addresses (integers or decimal/
 hexadecimal strings); equal placeholders such as `unknown` are not identity
 evidence. An explicitly incomplete profiler capture or a caller-identified

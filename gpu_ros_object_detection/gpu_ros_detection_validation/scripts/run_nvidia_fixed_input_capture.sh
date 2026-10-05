@@ -685,7 +685,7 @@ echo "Recording ${DETECTION_TOPIC} to ${OUTPUT_PATH}..."
 setsid env --default-signal=INT,TERM \
   ros2 bag record \
   --output "${OUTPUT_PATH}" \
-  "${DETECTION_TOPIC}" >"${RECORD_LOG}" 2>&1 &
+  --topics "${DETECTION_TOPIC}" >"${RECORD_LOG}" 2>&1 &
 RECORD_PID=$!
 
 if ! wait_for_topic_count \
