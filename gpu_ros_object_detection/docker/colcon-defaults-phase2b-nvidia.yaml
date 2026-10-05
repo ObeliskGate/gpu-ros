@@ -12,14 +12,13 @@ build:
     - src/gpu-ros/gpu_ros_managed/gpu_ros_nvidia_tensor_bundle_compat
     - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_validation
     - src/gpu-ros/gpu_ros_object_detection/gpu_ros_nvidia_reference
-    - src/nvidia_external/isaac_ros_object_detection/isaac_ros_yolov8
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
     - -DORT_ENABLE_CUDA=ON
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=OFF
-    - -DBUILD_NITROS_TRANSPORT=ON
+    - -DBUILD_NATIVE_TENSOR_LIST_TRANSPORT=ON
     - -DBUILD_TESTING=ON
   symlink-install: true
 test:

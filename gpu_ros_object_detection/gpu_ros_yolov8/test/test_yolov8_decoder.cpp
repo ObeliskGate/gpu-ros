@@ -16,11 +16,14 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "gpu_ros_yolov8/yolov8_decoder.hpp"
+#include "rosidl_buffer/buffer.hpp"
 
 namespace
 {
@@ -30,6 +33,34 @@ using gpu_ros::yolov8::YoloV8DecoderConfig;
 using gpu_ros_tensor_bundle_msgs::msg::Tensor;
 using gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 
+template <typename T> class TestNonCpuBufferImpl final : public rosidl::BufferImplBase<T>
+{
+public:
+  explicit TestNonCpuBufferImpl(std::vector<T> values) : values_(std::move(values)) {}
+
+  std::string get_backend_type() const override { return "test_non_cpu"; }
+  size_t size() const override { return values_.size(); }
+
+  std::unique_ptr<rosidl::BufferImplBase<T>> to_cpu() const override
+  {
+    auto cpu = std::make_unique<rosidl::CpuBufferImpl<T>>();
+    cpu->get_storage() = values_;
+    return cpu;
+  }
+
+  std::unique_ptr<rosidl::BufferImplBase<T>> clone() const override
+  {
+    return std::make_unique<TestNonCpuBufferImpl<T>>(values_);
+  }
+
+private:
+  std::vector<T> values_;
+};
+
+template <typename T> rosidl::Buffer<T> MakeTestNonCpuBuffer(std::vector<T> values)
+{
+  return rosidl::Buffer<T>(std::make_unique<TestNonCpuBufferImpl<T>>(std::move(values)));
+}
 Tensor MakeTensor(const std::string & name, const std::vector<uint32_t> & shape,
   const std::vector<float> & values, uint8_t data_type = Tensor::FLOAT32)
 {
@@ -94,6 +125,28 @@ TEST(YoloV8DecoderTest, DecodesSingleDetection)
   ASSERT_EQ(detection.results.size(), 1U);
   EXPECT_EQ(detection.results.front().hypothesis.class_id, "1");
   EXPECT_FLOAT_EQ(detection.results.front().hypothesis.score, 0.90F);
+}
+TEST(YoloV8DecoderTest, MaterializesNonCpuMetadataAndPayloadAtHostBoundary)
+{
+  const auto values = MakeYoloOutput({100.0F, 300.0F}, {120.0F, 320.0F}, {40.0F, 30.0F},
+    {50.0F, 20.0F}, {0.10F, 0.20F}, {0.90F, 0.05F});
+  std::vector<uint8_t> bytes(values.size() * sizeof(float));
+  std::memcpy(bytes.data(), values.data(), bytes.size());
+
+  Tensor tensor;
+  tensor.name = "output_tensor";
+  tensor.data_type = Tensor::FLOAT32;
+  tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 6, 2});
+  tensor.data = MakeTestNonCpuBuffer(std::move(bytes));
+  TensorBundle message;
+  message.header.frame_id = "camera";
+  message.tensors.push_back(std::move(tensor));
+
+  const auto detections = DecodeYoloV8TensorBundle(message, Config());
+
+  ASSERT_EQ(detections.detections.size(), 1U);
+  EXPECT_EQ(detections.detections.front().results.front().hypothesis.class_id, "1");
+  EXPECT_FLOAT_EQ(detections.detections.front().results.front().hypothesis.score, 0.90F);
 }
 
 TEST(YoloV8DecoderTest, AppliesConfidenceThreshold)

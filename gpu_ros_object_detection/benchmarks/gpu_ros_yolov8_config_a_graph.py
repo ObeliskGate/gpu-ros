@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config A benchmark: TensorRT + NITROS + upstream YOLOv8 decoder."""
+"""Config A benchmark: TensorRT + native TensorList + upstream YOLOv8 decoder."""
 
 import os
 import sys
@@ -109,10 +109,10 @@ def generate_test_description():
 
 
 class TestGpuRosYoloV8ConfigA(ROS2BenchmarkTest):
-    """Config A: TensorRT + NITROS + upstream YOLOv8 decoder."""
+    """Config A: TensorRT + native TensorList + upstream YOLOv8 decoder."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS YOLOv8 (NVIDIA reference A: TRT + NITROS)',
+        benchmark_name='GPU ROS YOLOv8 (NVIDIA reference A: TRT + TensorList)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

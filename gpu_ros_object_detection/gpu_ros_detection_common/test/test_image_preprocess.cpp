@@ -1,11 +1,81 @@
 // Copyright 2026 Boshen Chen
 #include "gpu_ros_detection_common/image_preprocess.hpp"
 
-#include <cstddef>
-#include <stdexcept>
-
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "rosidl_buffer/buffer.hpp"
+
+namespace
+{
+class NonCpuImageBufferImpl final : public rosidl::BufferImplBase<uint8_t>
+{
+public:
+  NonCpuImageBufferImpl(std::vector<uint8_t> bytes, std::shared_ptr<size_t> materializations)
+      : bytes_(std::move(bytes)), materializations_(std::move(materializations))
+  {
+  }
+
+  std::string get_backend_type() const override { return "test_non_cpu"; }
+  size_t size() const override { return bytes_.size(); }
+
+  std::unique_ptr<rosidl::BufferImplBase<uint8_t>> to_cpu() const override
+  {
+    ++*materializations_;
+    auto cpu = std::make_unique<rosidl::CpuBufferImpl<uint8_t>>();
+    cpu->get_storage() = bytes_;
+    return cpu;
+  }
+
+  std::unique_ptr<rosidl::BufferImplBase<uint8_t>> clone() const override
+  {
+    return std::make_unique<NonCpuImageBufferImpl>(bytes_, materializations_);
+  }
+
+private:
+  std::vector<uint8_t> bytes_;
+  std::shared_ptr<size_t> materializations_;
+};
+
+rosidl::Buffer<uint8_t> MakeNonCpuImageBuffer(
+  std::vector<uint8_t> bytes, const std::shared_ptr<size_t> & materializations)
+{
+  return rosidl::Buffer<uint8_t>(
+    std::make_unique<NonCpuImageBufferImpl>(std::move(bytes), materializations));
+}
+} // namespace
+
+TEST(ImagePreprocessPlan, MaterializesNonCpuImageForOpenCvWithoutChangingValues)
+{
+  sensor_msgs::msg::Image image;
+  image.width = 2;
+  image.height = 1;
+  image.step = 6;
+  image.encoding = "rgb8";
+  const std::vector<uint8_t> pixels{11U, 22U, 33U, 44U, 55U, 66U};
+  auto materializations = std::make_shared<size_t>(0U);
+  image.data = MakeNonCpuImageBuffer(pixels, materializations);
+  const auto plan = gpu_ros::detection_common::MakeImagePreprocessPlan(
+    image, 2, 1, gpu_ros::detection_common::PreprocessNormalization::kNone);
+
+  const auto output = gpu_ros::detection_common::ExecuteCpuPreprocess(image, plan);
+
+  ASSERT_EQ(*materializations, 1U);
+  ASSERT_EQ(output.size(), 6U);
+  EXPECT_FLOAT_EQ(output[0], 11.0F);
+  EXPECT_FLOAT_EQ(output[1], 44.0F);
+  EXPECT_FLOAT_EQ(output[2], 22.0F);
+  EXPECT_FLOAT_EQ(output[3], 55.0F);
+  EXPECT_FLOAT_EQ(output[4], 33.0F);
+  EXPECT_FLOAT_EQ(output[5], 66.0F);
+}
 TEST(ImagePreprocessPlan, ComputesLetterboxGeometry)
 {
   sensor_msgs::msg::Image image;

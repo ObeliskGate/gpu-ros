@@ -286,7 +286,7 @@ source_setup() {
   fi
 }
 
-source_setup "/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+source_setup "/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 source_setup "/opt/ros2_benchmark/setup.bash"
 source_setup "${WORKSPACE_ROOT}/install/setup.bash"
 

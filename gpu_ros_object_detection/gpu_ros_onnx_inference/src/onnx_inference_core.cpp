@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -279,6 +280,10 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
     managed_output_contracts_ =
       ParseManagedTensorContracts(cfg.managed_output_contracts, "managed_output_contracts");
   }
+  if (!strict_managed_ && !cfg.managed_output_contracts.empty()) {
+    managed_output_contracts_ =
+      ParseManagedTensorContracts(cfg.managed_output_contracts, "managed_output_contracts");
+  }
   session_options_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
   if (!cfg.ort_profile_prefix.empty()) {
     session_options_.EnableProfiling(cfg.ort_profile_prefix.c_str());
@@ -318,6 +323,18 @@ OnnxInferenceCore::OnnxInferenceCore(const Config & cfg)
           : "metadata shape is dynamic; use ORT-owned output and adopt after synchronization";
     }
     output_binding_probes_.push_back(std::move(probe));
+  }
+  if (!strict_managed_ && !managed_output_contracts_.empty()) {
+    ValidateManagedOutputContracts(*session_, managed_output_contracts_);
+    std::vector<ManagedTensorContract> ordered;
+    ordered.reserve(output_names_.size());
+    for (const auto & name : output_names_) {
+      const auto found =
+        std::find_if(managed_output_contracts_.begin(), managed_output_contracts_.end(),
+          [&name](const auto & contract) { return contract.name == name; });
+      ordered.push_back(*found);
+    }
+    managed_output_contracts_ = std::move(ordered);
   }
 
   if (strict_managed_) {
@@ -747,7 +764,7 @@ std::vector<OutputTensor> OnnxInferenceCore::RunStrictManagedInference(
 
 std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   gpu_ros_managed::ManagedTensorBundleView inputs, OutputPlacement output_placement,
-  InferenceStageTiming * stage_timing)
+  InferenceStageTiming * stage_timing, DeviceOutputAllocator * allocator)
 {
   if (stage_timing != nullptr) {
     *stage_timing = InferenceStageTiming{};
@@ -877,6 +894,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
   std::vector<std::unique_ptr<gpu_ros_managed::WriteHandle>> managed_output_writers(
     output_names_.size());
   std::vector<Ort::Value> bound_output_values;
+  std::unique_ptr<DeviceOutputBatch> native_batch;
+  std::vector<DeviceOutputSpec> native_specs;
+  std::optional<gpu_ros_managed::SynchronizedWriteHandle> dynamic_input_owner_guard;
   std::vector<BindingTensorReport> output_reports;
   output_reports.reserve(output_names_.size());
   const auto ort_session_run_start =
@@ -908,10 +928,50 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         execution_provider_ == ExecutionProvider::kCuda ? kNvidiaPciVendorId : kAmdPciVendorId;
       ValidateDeviceMemoryInfo(device_memory_info, expected_allocator_name, gpu_device_id_,
         "Managed output binding", expected_vendor_id);
+      bool native_preallocation = allocator && execution_provider_ == ExecutionProvider::kCuda;
+      if (native_preallocation) {
+        native_specs.reserve(output_names_.size());
+        for (size_t i = 0; i < output_names_.size(); ++i) {
+          if (!managed_output_contracts_.empty()) {
+            const auto & contract = managed_output_contracts_.at(i);
+            native_specs.push_back({contract.name, contract.dtype, contract.shape});
+          } else {
+            const auto type = session_->GetOutputTypeInfo(i);
+            const auto metadata = type.GetTensorTypeAndShapeInfo();
+            if (!output_binding_probes_[i].metadata_shape_is_static) {
+              native_preallocation = false;
+              native_specs.clear();
+              break;
+            }
+            native_specs.push_back(
+              {output_names_[i], metadata.GetElementType(), metadata.GetShape()});
+          }
+        }
+        if (native_preallocation) {
+          native_batch = allocator->Allocate(inputs.header(), native_specs);
+          native_batch->RetainOwner(inputs.owner());
+          if (native_batch->buffers().size() != native_specs.size()) {
+            throw std::runtime_error("native allocator returned an incorrect tensor count");
+          }
+        }
+      }
 
       auto binding = std::make_unique<Ort::IoBinding>(*session_);
       for (size_t i = 0; i < ort_inputs.size(); ++i) {
         binding->BindInput(input_name_ptrs[i], ort_inputs[i]);
+      }
+      if (native_batch) {
+        bound_output_values.reserve(native_specs.size());
+        for (size_t i = 0; i < native_specs.size(); ++i) {
+          const auto & spec = native_specs[i];
+          const auto bytes = ManagedTensorByteSize({spec.name, spec.dtype, spec.shape});
+          bound_output_values.push_back(Ort::Value::CreateTensor(device_memory_info,
+            native_batch->pointer(i), bytes, spec.shape.data(), spec.shape.size(), spec.dtype));
+          if (bound_output_values.back().GetTensorMutableRawData() != native_batch->pointer(i)) {
+            throw std::runtime_error("native output pointer identity lost at ORT bind");
+          }
+          binding->BindOutput(output_name_ptrs[i], bound_output_values.back());
+        }
       }
 
       const bool try_managed_hip_preallocation =
@@ -1024,11 +1084,20 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         for (const auto * output_name : output_name_ptrs) {
           binding->BindOutput(output_name, device_memory_info);
         }
-      } else if (!try_managed_hip_preallocation) {
+      } else if (!try_managed_hip_preallocation && !native_batch) {
         for (const auto * output_name : output_name_ptrs) {
           binding->BindOutput(output_name, device_memory_info);
         }
       }
+#ifdef GPU_ROS_MANAGED_CUDA
+      if (allocator && execution_provider_ == ExecutionProvider::kCuda && !native_batch) {
+        // Dynamic outputs have no native reservation yet. Retain borrowed inputs
+        // through the same Managed cancellation/orphan protocol, without a payload allocation.
+        auto retention = gpu_ros_managed::cuda::adopt_external(nullptr, 0, gpu_device_id_,
+          std::const_pointer_cast<gpu_ros_managed::ManagedTensorBundle>(inputs.owner()));
+        dynamic_input_owner_guard.emplace(retention->get_synchronized_write_handle());
+      }
+#endif
 
       binding->SynchronizeInputs();
       // Even a throwing Run may have submitted GPU work.
@@ -1038,6 +1107,10 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
 #endif
       session_->Run(Ort::RunOptions{nullptr}, *binding);
       binding->SynchronizeOutputs();
+      if (dynamic_input_owner_guard) {
+        dynamic_input_owner_guard->finalize_synchronously();
+        dynamic_input_owner_guard.reset();
+      }
 
 #ifdef GPU_ROS_MANAGED_HIP
       for (auto & writer : managed_output_writers) {
@@ -1052,11 +1125,44 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         throw std::runtime_error("ONNX Runtime returned unexpected bound output names");
       }
       ort_outputs = binding->GetOutputValues();
+      if (native_batch) {
+        if (ort_outputs.size() != native_specs.size()) {
+          throw std::runtime_error("native output count changed after Run");
+        }
+        for (size_t i = 0; i < native_specs.size(); ++i) {
+          const auto metadata = ort_outputs[i].GetTensorTypeAndShapeInfo();
+          if (metadata.GetShape() != native_specs[i].shape ||
+              metadata.GetElementType() != native_specs[i].dtype ||
+              ort_outputs[i].GetTensorMutableRawData() != native_batch->pointer(i))
+          {
+            throw std::runtime_error("native output contract or pointer changed after Run");
+          }
+        }
+        native_batch->CompleteAfterSync();
+      }
     } else {
       ort_outputs = session_->Run(Ort::RunOptions{nullptr}, input_name_ptrs.data(),
         ort_inputs.data(), ort_inputs.size(), output_name_ptrs.data(), output_name_ptrs.size());
     }
   } catch (...) {
+    if (native_batch) {
+      if (may_have_submitted) {
+        native_batch->FailAfterSubmit();
+      } else {
+        native_batch->CancelBeforeSubmit();
+      }
+    }
+    if (dynamic_input_owner_guard) {
+      if (may_have_submitted) {
+        dynamic_input_owner_guard->fail();
+      } else {
+        try {
+          dynamic_input_owner_guard->cancel();
+        } catch (...) {
+          dynamic_input_owner_guard->fail();
+        }
+      }
+    }
     if (may_have_submitted) {
       for (auto & writer : managed_output_writers) {
         if (writer) {
@@ -1105,10 +1211,15 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         ValidateDeviceMemoryInfo(
           memory_info, "Cuda", gpu_device_id_, "CUDA output tensor", kNvidiaPciVendorId);
 #ifdef GPU_ROS_MANAGED_CUDA
-        auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
-        auto buffer =
-          gpu_ros_managed::cuda::adopt_synchronized_external(owner->GetTensorMutableRawData(),
-            byte_count, gpu_device_id_, std::static_pointer_cast<void>(owner));
+        std::shared_ptr<gpu_ros_managed::DeviceBuffer> buffer;
+        if (native_batch) {
+          buffer = native_batch->buffers().at(i);
+        } else {
+          auto owner = std::make_shared<Ort::Value>(std::move(ort_outputs[i]));
+          buffer =
+            gpu_ros_managed::cuda::adopt_synchronized_external(owner->GetTensorMutableRawData(),
+              byte_count, gpu_device_id_, std::static_pointer_cast<void>(owner));
+        }
         auto ready = buffer->get_blocking_ready_lease();
         if (ready.data() != ort_output_pointer) {
           throw std::runtime_error("CUDA ORT-owned output '" + tensor.name +
@@ -1116,7 +1227,9 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
         }
         storage_pointer = ready.data();
         output_storage = "cuda_device";
-        output_lifetime_path = "ORT-owned output retained by synchronized Managed CUDA adoption";
+        output_lifetime_path =
+          native_batch ? "native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs"
+                       : "ORT-owned output retained by synchronized Managed CUDA adoption";
         output_pointer_identity = true;
         tensor.storage = std::move(buffer);
 #else
@@ -1190,6 +1303,25 @@ std::vector<OutputTensor> OnnxInferenceCore::RunInference(
       BindingTensorReport{tensor.name, byte_count, output_storage, PointerString(storage_pointer),
         PointerString(ort_output_pointer), output_pointer_identity, output_lifetime_path});
     results.push_back(std::move(tensor));
+  }
+  if (allocator && execution_provider_ == ExecutionProvider::kCuda &&
+      output_placement == OutputPlacement::kDevice && !native_batch)
+  {
+    std::vector<DeviceOutputSpec> specs;
+    specs.reserve(results.size());
+    for (const auto & tensor : results) {
+      specs.push_back({tensor.name, tensor.dtype, tensor.shape});
+    }
+    auto fallback = allocator->Allocate(inputs.header(), specs);
+    fallback->CopyFrom(results);
+    for (size_t i = 0; i < results.size(); ++i) {
+      results[i].storage = fallback->buffers().at(i);
+      output_reports[i].pointer = PointerString(fallback->pointer(i));
+      output_reports[i].pointer_identity = false;
+      output_reports[i].lifetime_path =
+        "generic dynamic output explicitly copied D2D into native CUDA Buffer";
+      output_binding_probes_[i].decision = output_reports[i].lifetime_path;
+    }
   }
   if (stage_timing != nullptr) {
     stage_timing->output_materialize_ns =

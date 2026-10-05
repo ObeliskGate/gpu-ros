@@ -41,7 +41,7 @@ Use `ros2 launch gpu_ros_nvidia_reference` for these files:
 | --- | --- |
 | `rtdetr_ort_managed.launch.py` | RT-DETR with ORT and managed TensorBundle bridges. |
 | `yolov8_ort_transport.launch.py` | YOLOv8 ORT reference and managed transport variants. |
-| `rtdetr_ort_nitros.launch.py` | RT-DETR ORT/NITROS reference. |
+| `rtdetr_ort_tensor_list.launch.py` | RT-DETR ORT with native TensorList/CUDA Buffer transport. |
 | `rtdetr_ort_std.launch.py` | RT-DETR ORT with a standard ROS boundary and Isaac components. |
 | `rtdetr_trt_std.launch.py` | RT-DETR TensorRT with a standard ROS boundary and Isaac components. |
 
@@ -54,6 +54,14 @@ ros2 launch gpu_ros_nvidia_reference rtdetr_ort_managed.launch.py --show-args
 `nvidia_tensor_bundle_boundary.launch.py` belongs to the compatibility package.
 The vendor-neutral `*_ort_std_image.launch.py` files belong to their model
 packages. AMD managed launches belong to `gpu_ros_onnx_inference`.
+
+The NVIDIA transport values are `tensor_list` and `managed`; `nitros` is no
+longer accepted. The historical bridge component plugin identifiers remain
+registered, but their implementation uses standard TensorList messages and
+the native CUDA Buffer backend. ROS-facing targets require Lyrical/C++20.
+Use the selected official Isaac ROS 5.0 Docker image's paired ROS versions and
+set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery (`0` for CPU/AMD).
+Target-image integration and GPU acceptance remain pending.
 
 ## Detection facilities
 

@@ -1,6 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROS_DISTRO="${ROS_DISTRO:-lyrical}"
+[[ "${ROS_DISTRO}" == lyrical ]] || {
+  echo "ERROR: AMD runtime requires ROS_DISTRO=lyrical; found ${ROS_DISTRO}." >&2
+  exit 1
+}
+[[ "${GPU_ROS_NVIDIA_PROFILE:-0}" == 0 ]] || {
+  echo "ERROR: AMD runtime requires GPU_ROS_NVIDIA_PROFILE=0." >&2
+  exit 1
+}
+export ROS_DISTRO GPU_ROS_NVIDIA_PROFILE=0
+
+[[ -s /var/lib/gpu-ros/isaac-ros-5-ros-package-lock.json ]] || {
+  echo "BLOCKED: this AMD image was not built with the official Isaac ROS 5.0 image identity and exact Lyrical ROS package lock." >&2
+  exit 1
+}
+[[ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]] || {
+  echo "ERROR: ROS Lyrical is missing from this AMD runtime image." >&2
+  exit 1
+}
+
 WORKSPACE_ROOT="${OVG_WORKSPACE_ROOT:-/workspaces/gpu-ros}"
 REPO_ROOT="${GPU_ROS_REPO_ROOT:-${WORKSPACE_ROOT}}"
 COLCON_DEFAULTS_FILE="${REPO_ROOT}/gpu_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml"
@@ -88,9 +108,7 @@ if [[ -n "${OVG_ORT_ROOT:-}" ]]; then
   validate_external_ort
 fi
 
-if [[ -n "${ROS_DISTRO:-}" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
-  source_setup "/opt/ros/${ROS_DISTRO}/setup.bash"
-fi
+source_setup "/opt/ros/${ROS_DISTRO}/setup.bash"
 
 if [[ -f /opt/ros2_benchmark/setup.bash ]]; then
   source_setup /opt/ros2_benchmark/setup.bash

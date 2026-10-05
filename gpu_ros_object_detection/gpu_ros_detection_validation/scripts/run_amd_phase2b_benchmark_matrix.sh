@@ -84,7 +84,7 @@ else
   MODEL_PATH="${ASSETS_ROOT}/models/rtdetrv2_r50/rtdetrv2_r50.onnx"
 fi
 DATASET_PATH="${ASSETS_ROOT}/datasets/r2bdataset2024_v1/r2b_robotarm"
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 RUN_LOG_ROOT="${OUTPUT_ROOT}/logs"
 ACTIVE_PID=""
 

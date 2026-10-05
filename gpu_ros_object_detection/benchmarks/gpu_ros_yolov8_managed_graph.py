@@ -3,7 +3,7 @@
 # in 2026;
 # see THIRD_PARTY_NOTICES.md for the external source boundary.
 # SPDX-License-Identifier: Apache-2.0
-"""Managed YOLOv8: official NITROS pre/post-processing and ORT CUDA."""
+"""Managed YOLOv8: official TensorList pre/post-processing and ORT CUDA."""
 
 import os
 import sys
@@ -44,6 +44,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 ),
                 'execution_provider': 'cuda',
                 'transport': 'managed',
+                'managed_output_contracts': ['output0=float32[1,84,8400]'],
             }
         ],
         remappings=[
@@ -104,7 +105,7 @@ def generate_test_description():
 
 
 class TestGpuRosYoloV8Managed(ROS2BenchmarkTest):
-    """ORT CUDA Managed transport versus Config C NITROS transport."""
+    """ORT CUDA Managed transport versus Config C native TensorList transport."""
 
     config = ROS2BenchmarkConfig(
         benchmark_name='GPU ROS YOLOv8 (NVIDIA reference M: ORT CUDA + Managed)',

@@ -25,6 +25,9 @@
 #include "gpu_ros_onnx_inference/tensor_dtype.hpp"
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+#include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
+#endif
 namespace gpu_ros::onnx_inference
 {
 namespace
@@ -44,6 +47,14 @@ public:
                      : OutputPlacement::kHost),
         node_(node)
   {
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+    if (node->get_parameter("execution_provider").as_string() == "cuda") {
+      native_transport_ =
+        std::make_unique<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport>(node,
+          static_cast<int>(node->get_parameter("gpu_device_id").as_int()), "tensor_output", false);
+      native_allocator_ = std::make_unique<NativeDeviceOutputAllocator>(*native_transport_);
+    }
+#endif
     if (publish_output) {
       publisher_ =
         std::make_unique<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
@@ -59,6 +70,15 @@ public:
   }
 
   OutputPlacement output_placement() const noexcept override { return placement_; }
+
+  DeviceOutputAllocator * device_output_allocator() noexcept override
+  {
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+    return native_allocator_.get();
+#else
+    return nullptr;
+#endif
+  }
 
   void Publish(TensorBundleOutput && output) override
   {
@@ -84,6 +104,10 @@ public:
   }
 
 private:
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+  std::unique_ptr<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport> native_transport_;
+  std::unique_ptr<NativeDeviceOutputAllocator> native_allocator_;
+#endif
   OutputPlacement placement_;
   std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
     publisher_;

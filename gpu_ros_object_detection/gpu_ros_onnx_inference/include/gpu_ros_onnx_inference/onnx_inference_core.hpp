@@ -78,7 +78,7 @@ public:
 
   std::vector<OutputTensor> RunInference(gpu_ros_managed::ManagedTensorBundleView inputs,
     OutputPlacement output_placement = OutputPlacement::kHost,
-    InferenceStageTiming * stage_timing = nullptr);
+    InferenceStageTiming * stage_timing = nullptr, DeviceOutputAllocator * allocator = nullptr);
 
   size_t GetInputCount() const;
   size_t GetOutputCount() const;

@@ -571,6 +571,25 @@ def _evidence_flags(boundary_evidence: Optional[Mapping[str, Any]]) -> Tuple[Lis
     return list(confirmed), list(unresolved)
 
 
+def pointer_address(value: Any) -> Optional[int]:
+    """Normalize positive integer and decimal/hex string pointer addresses."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if not isinstance(value, str):
+        return None
+
+    text = value.strip()
+    if re.fullmatch(r'0[xX][0-9a-fA-F]+', text):
+        address = int(text[2:], 16)
+    elif re.fullmatch(r'[0-9]+', text):
+        address = int(text, 10)
+    else:
+        return None
+    return address if address > 0 else None
+
+
 def looks_like_payload_kernel(name: str) -> bool:
     """Conservatively identify kernel names that need manual payload review."""
     return bool(re.search(r'copy|memcpy|memmove|blit|transfer', name.lower()))
@@ -591,6 +610,9 @@ def build_pair_report(
     profiler_complete: bool = True,
     kernel_payload_risk_names: Optional[Iterable[str]] = None,
     binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    expected_binding_transports: Optional[Mapping[str, str]] = None,
+    required_binding_payload_sizes: Optional[Iterable[int]] = None,
+    require_native_output_pointer_identity: bool = False,
 ) -> Dict[str, Any]:
     """Build the shared PASS/FAIL/INCONCLUSIVE transport audit report."""
     if (reference_frames is None) != (managed_frames is None):
@@ -603,6 +625,11 @@ def build_pair_report(
     payload_set = {int(size) for size in payload_sizes}
     binding_reports_provided = binding_reports is not None
     binding_reports = binding_reports or {}
+    expected_payload_sizes = (
+        {int(size) for size in required_binding_payload_sizes}
+        if required_binding_payload_sizes is not None
+        else None
+    )
     binding_report_errors: List[str] = []
     for lane in ('reference', 'managed') if binding_reports_provided else ():
         report = binding_reports.get(lane)
@@ -611,6 +638,12 @@ def build_pair_report(
             continue
         if report.get('first_frame') is not True:
             binding_report_errors.append(f'{lane}: first_frame marker missing')
+        expected_transport = (expected_binding_transports or {}).get(lane)
+        if expected_transport is not None and report.get('transport') != expected_transport:
+            binding_report_errors.append(
+                f'{lane}: expected transport {expected_transport!r}, '
+                f'got {report.get("transport")!r}'
+            )
         for side in ('inputs', 'outputs'):
             records = report.get(side)
             if not isinstance(records, list) or not records:
@@ -632,6 +665,51 @@ def build_pair_report(
                         binding_report_errors.append(f'{lane}: {side}[{index}] missing {key}')
                 if not record.get('lifetime_path'):
                     binding_report_errors.append(f'{lane}: {side}[{index}] lifetime path empty')
+                pointer_key = 'input_pointer' if side == 'inputs' else 'output_pointer'
+                if expected_transport is not None and pointer_key not in record:
+                    binding_report_errors.append(f'{lane}: {side}[{index}] missing {pointer_key}')
+                if require_native_output_pointer_identity and side == 'outputs':
+                    if record.get('pointer_identity') is not True:
+                        binding_report_errors.append(
+                            f'{lane}: outputs[{index}] native output pointer identity is not true'
+                        )
+                    if record.get('storage') != 'cuda_device':
+                        binding_report_errors.append(
+                            f'{lane}: outputs[{index}] native output storage is not cuda_device'
+                        )
+                    output_pointer = pointer_address(record.get('output_pointer'))
+                    ort_pointer = pointer_address(record.get('ort_pointer'))
+                    if (
+                        output_pointer is None
+                        or ort_pointer is None
+                        or output_pointer != ort_pointer
+                    ):
+                        binding_report_errors.append(
+                            f'{lane}: outputs[{index}] native output and ORT pointers differ'
+                        )
+                    if record.get('lifetime_path') != (
+                        'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                    ):
+                        binding_report_errors.append(
+                            f'{lane}: outputs[{index}] native output lifetime path is unexpected'
+                        )
+        if expected_payload_sizes is not None:
+            reported_sizes = set()
+            for side in ('inputs', 'outputs'):
+                records = report.get(side, [])
+                if not isinstance(records, list):
+                    continue
+                for record in records:
+                    if not isinstance(record, Mapping):
+                        continue
+                    value = record.get('bytes')
+                    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                        reported_sizes.add(value)
+            missing_sizes = expected_payload_sizes - reported_sizes
+            if missing_sizes:
+                binding_report_errors.append(
+                    f'{lane}: binding reports omit tensor byte sizes {sorted(missing_sizes)}'
+                )
     pointer_lifetime_complete = not binding_report_errors
     reference = summarize_events(reference_events, payload_set, platform, reference_frames)
     managed = summarize_events(managed_events, payload_set, platform, managed_frames)

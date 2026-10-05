@@ -109,12 +109,19 @@ claim they were.
 Read [the NVIDIA managed method](references/phase2b-nvidia.md). Use
 [Phase 1](references/phase1-nvidia.md) only when that wider reference scope is
 requested. The outer workspace is `/workspaces/isaac_ros-dev`, the checkout is
-`src/gpu-ros`, and pinned external sources are under `src/nvidia_external`.
+`src/gpu-ros`, and required source overlays live under `src/nvidia_external`.
+Use ROS 2 Lyrical from the selected official Isaac ROS 5.0 Docker image.
+Its digest and paired package versions are the ROS dependency authority;
+independently inspected upstream commits are research, not installation pins.
+Prefer image binaries. Require image-matched provenance for any source overlay.
+Set `GPU_ROS_NVIDIA_PROFILE=1` before NVIDIA colcon discovery, and `0` for CPU/AMD.
 
-Inspect GPU/driver identity, the existing image ID, external commits, actual
-ORT libraries, model bytes, and per-file input hashes. Preserve
-`OVG_NVIDIA_EXTERNAL_SOURCE_ROOT` and the existing external assets volume. A
-profile without a known expected SHA cannot be described as having passed a
+Inspect GPU/driver identity, image/package identities, any external commits,
+actual ORT libraries, model bytes, and per-file input hashes. Missing image
+identity blocks ROS/GPU acceptance, not standalone or source-only checks.
+Preserve existing external sources and the assets volume; do not implicitly
+mount historical source trees into the new image.
+A profile without a known expected SHA cannot be described as having passed a
 fixed-digest check. A historical 32-character framework hash is not SHA-256.
 
 Use the method's external Compose override, empty project build/install/log

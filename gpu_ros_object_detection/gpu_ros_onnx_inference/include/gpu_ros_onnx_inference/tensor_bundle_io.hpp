@@ -39,10 +39,11 @@ public:
   virtual ~ITensorBundleIO() = default;
   virtual void Subscribe(Callback callback) = 0;
   virtual OutputPlacement output_placement() const noexcept = 0;
+  virtual DeviceOutputAllocator * device_output_allocator() noexcept { return nullptr; }
   virtual void Publish(TensorBundleOutput && output) = 0;
 };
 
-// Factory: transport is "std", "nitros", or "managed".
+// Factory: transport is "std", "tensor_list", or "managed".
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   rclcpp::Node * node, const std::string & transport, bool publish_output = true);
 

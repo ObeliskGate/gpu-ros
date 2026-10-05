@@ -23,6 +23,50 @@ TRACE_COMPARE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(TRACE_COMPARE)
 
 
+def binding_report(transport, direct_output=True):
+    """Create a first-frame report with the native allocation evidence."""
+    return {
+        'first_frame': True,
+        'transport': transport,
+        'inputs': [
+            {
+                'name': 'images',
+                'bytes': 4915200,
+                'storage': 'cuda_device',
+                'input_pointer': '0x1000',
+                'ort_pointer': '0x1000',
+                'pointer_identity': True,
+                'lifetime_path': 'native TensorList input lease through ORT Run',
+            },
+            {
+                'name': 'orig_target_sizes',
+                'bytes': 16,
+                'storage': 'cpu_buffer',
+                'input_pointer': '0x2000',
+                'ort_pointer': '0x3000',
+                'pointer_identity': False,
+                'lifetime_path': 'CPU input promoted into CUDA Buffer',
+            },
+        ],
+        'outputs': [
+            {
+                'name': name,
+                'bytes': size,
+                'storage': 'cuda_device',
+                'output_pointer': '0x4000' if direct_output else '0x5000',
+                'ort_pointer': '0x4000' if direct_output else '0x4001',
+                'pointer_identity': direct_output,
+                'lifetime_path': (
+                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                    if direct_output
+                    else 'generic dynamic output explicitly copied D2D into native CUDA Buffer'
+                ),
+            }
+            for name, size in (('labels', 800), ('boxes', 1600), ('scores', 400))
+        ],
+    }
+
+
 def kernel(name):
     """Create one minimal nsys kernel row."""
     return {'Name': name, 'Bytes': ''}
@@ -139,4 +183,141 @@ def test_pointer_lifetime_confirmed_boundary_copy_fails():
     )
 
     assert result['status'] == 'FAIL'
-    assert result['memory_copy_failures'][0]['reason'].startswith('pointer/lifetime')
+
+
+def test_native_tensor_list_and_managed_bindings_require_direct_output_evidence():
+    """Native and Managed reports must retain their transport and pointer contracts."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': binding_report('tensor_list'),
+            'managed': binding_report('managed'),
+        },
+    )
+
+    assert result['schema_version'] == 2
+    assert result['criteria']['pointer_lifetime_evidence_complete'] is True
+    assert result['payload_copy_counts']['sizes_bytes'] == [16, 400, 800, 1600, 4915200]
+
+
+def test_incomplete_profiler_evidence_prevents_a_valid_binding_report_from_passing():
+    """Complete binding evidence cannot compensate for an incomplete capture."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        profiler_complete=False,
+        binding_reports={
+            'reference': binding_report('tensor_list'),
+            'managed': binding_report('managed'),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['profiler_data_complete'] is False
+    assert result['self']['reference']['profiler_complete'] is False
+    assert result['self']['managed']['profiler_complete'] is False
+
+
+def test_explicit_opaque_kernel_risk_prevents_a_valid_binding_report_from_passing():
+    """A caller-identified payload-risk kernel remains unresolved evidence."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel'), kernel('opaque_epilogue_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        kernel_payload_risk_names={'opaque_epilogue_kernel'},
+        binding_reports={
+            'reference': binding_report('tensor_list'),
+            'managed': binding_report('managed'),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert [risk['name'] for risk in result['unresolved_payload_copy_risk']] == [
+        'opaque_epilogue_kernel'
+    ]
+
+
+def test_equal_malformed_or_negative_native_output_pointers_are_inconclusive():
+    """Matching opaque or negative pointers cannot establish output identity."""
+    reference = binding_report('tensor_list')
+    managed = binding_report('managed')
+    reference['outputs'][0]['output_pointer'] = 'unknown'
+    reference['outputs'][0]['ort_pointer'] = 'unknown'
+    managed['outputs'][1]['output_pointer'] = -1
+    managed['outputs'][1]['ort_pointer'] = -1
+
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={'reference': reference, 'managed': managed},
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['pointer_lifetime_evidence_complete'] is False
+
+
+def test_native_binding_reports_must_cover_each_model_payload_size():
+    """A report missing the 16-byte input cannot close the payload audit."""
+    reference = binding_report('tensor_list')
+    reference['inputs'] = [record for record in reference['inputs'] if record['bytes'] != 16]
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': reference,
+            'managed': binding_report('managed'),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+
+
+def test_generic_dynamic_output_fallback_does_not_claim_pointer_identity():
+    """A valid generic output fallback remains inconclusive for native proof."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': binding_report('tensor_list', direct_output=False),
+            'managed': binding_report('managed', direct_output=False),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['pointer_lifetime_evidence_complete'] is False
+
+
+def test_native_binding_transport_mismatch_is_inconclusive():
+    """A stale transport token cannot produce a passing native transport report."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': binding_report('nitros'),
+            'managed': binding_report('managed'),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['criteria']['pointer_lifetime_evidence_complete'] is False

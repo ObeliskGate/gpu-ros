@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "host_buffer_access.hpp"
 
 namespace gpu_ros::nvidia_tensor_bundle_compat
 {
@@ -162,7 +163,9 @@ std::vector<int64_t> ReadShape(const NvidiaTensor & tensor)
   }
   std::vector<int64_t> shape;
   shape.reserve(tensor.shape.dims.size());
-  for (const auto dimension : tensor.shape.dims) {
+  std::vector<uint32_t> materialized_dimensions;
+  const auto & dimensions = detail::HostValues(tensor.shape.dims, materialized_dimensions);
+  for (const auto dimension : dimensions) {
     if (dimension == 0) {
       throw std::invalid_argument("TensorBundle compatibility: tensor dimensions must be positive");
     }
@@ -181,7 +184,9 @@ void ValidateNvidiaTensor(const NvidiaTensor & tensor)
                                 "' payload size does not match shape and dtype");
   }
   const auto expected_strides = ContiguousStrides(shape, data_type);
-  if (!tensor.strides.empty() && tensor.strides != expected_strides) {
+  std::vector<uint64_t> materialized_strides;
+  const auto & strides = detail::HostValues(tensor.strides, materialized_strides);
+  if (!strides.empty() && strides != expected_strides) {
     throw std::invalid_argument(
       "TensorBundle compatibility: tensor '" + tensor.name + "' is non-contiguous");
   }
@@ -201,7 +206,11 @@ TensorBundle ToTensorBundle(const NvidiaTensorList & source)
     tensor.name = source_tensor.name;
     tensor.data_type = ToBundleDataType(source_tensor.data_type);
     tensor.shape = shape;
-    tensor.data = source_tensor.data;
+    if (source_tensor.data.get_backend_type() == "cpu") {
+      tensor.data = source_tensor.data;
+    } else {
+      tensor.data = source_tensor.data.to_vector();
+    }
   }
   return output;
 }
@@ -212,7 +221,9 @@ NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source)
   output.header = source.header;
   output.tensors.reserve(source.tensors.size());
   for (const auto & source_tensor : source.tensors) {
-    const auto expected_bytes = ExpectedBytes(source_tensor.shape, source_tensor.data_type);
+    std::vector<int64_t> materialized_shape;
+    const auto & shape = detail::HostValues(source_tensor.shape, materialized_shape);
+    const auto expected_bytes = ExpectedBytes(shape, source_tensor.data_type);
     if (source_tensor.data.size() != expected_bytes) {
       throw std::invalid_argument("TensorBundle compatibility: tensor '" + source_tensor.name +
                                   "' payload size does not match shape and dtype");
@@ -222,7 +233,7 @@ NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source)
     }
     std::vector<uint32_t> dimensions;
     dimensions.reserve(source_tensor.shape.size());
-    for (const int64_t dimension : source_tensor.shape) {
+    for (const int64_t dimension : shape) {
       if (dimension <= 0 || static_cast<uint64_t>(dimension) > std::numeric_limits<uint32_t>::max())
       {
         throw std::invalid_argument(
@@ -236,8 +247,12 @@ NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source)
     tensor.data_type = ToNvidiaDataType(source_tensor.data_type);
     tensor.shape.rank = static_cast<decltype(tensor.shape.rank)>(dimensions.size());
     tensor.shape.dims = std::move(dimensions);
-    tensor.strides = ContiguousStrides(source_tensor.shape, source_tensor.data_type);
-    tensor.data = source_tensor.data;
+    tensor.strides = ContiguousStrides(shape, source_tensor.data_type);
+    if (source_tensor.data.get_backend_type() == "cpu") {
+      tensor.data = source_tensor.data;
+    } else {
+      tensor.data = source_tensor.data.to_vector();
+    }
   }
   return output;
 }

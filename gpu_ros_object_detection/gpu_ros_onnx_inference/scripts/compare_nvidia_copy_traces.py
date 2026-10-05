@@ -34,6 +34,7 @@ try:
         counter_deltas,
         load_trace_records,
         looks_like_payload_kernel,
+        pointer_address,
         self_report_from_summary,
         serialize_counter,
         summarize_events,
@@ -44,6 +45,7 @@ except ModuleNotFoundError:  # Direct source-tree imports used by pytest.
         counter_deltas,
         load_trace_records,
         looks_like_payload_kernel,
+        pointer_address,
         self_report_from_summary,
         serialize_counter,
         summarize_events,
@@ -100,27 +102,68 @@ def _load_binding_report(path: Optional[Path]) -> Optional[Dict[str, Any]]:
     return report
 
 
-def _binding_errors(report: Optional[Mapping[str, Any]], label: str) -> list[str]:
-    """Return missing first-frame fields without hiding copy evidence."""
+def _binding_errors(
+    report: Optional[Mapping[str, Any]],
+    label: str,
+    expected_transport: Optional[str] = None,
+    require_direct_output_pointer_identity: bool = False,
+) -> list[str]:
+    """Return missing or inconsistent first-frame pointer/lifetime evidence."""
     if report is None:
         return [f'{label}: binding report was not supplied']
     errors = []
     if report.get('first_frame') is not True:
         errors.append(f'{label}: first_frame marker missing')
+    if expected_transport is not None and report.get('transport') != expected_transport:
+        errors.append(
+            f'{label}: expected transport {expected_transport!r}, got {report.get("transport")!r}'
+        )
     for side in ('inputs', 'outputs'):
         records = report.get(side)
         if not isinstance(records, list) or not records:
             errors.append(f'{label}: {side} records missing')
             continue
+        pointer_key = 'input_pointer' if side == 'inputs' else 'output_pointer'
         for index, record in enumerate(records):
             if not isinstance(record, Mapping):
                 errors.append(f'{label}: {side}[{index}] is not an object')
                 continue
-            for key in ('name', 'bytes', 'storage', 'lifetime_path'):
+            for key in (
+                'name',
+                'bytes',
+                'storage',
+                pointer_key,
+                'ort_pointer',
+                'pointer_identity',
+                'lifetime_path',
+            ):
                 if key not in record:
                     errors.append(f'{label}: {side}[{index}] missing {key}')
             if not record.get('lifetime_path'):
                 errors.append(f'{label}: {side}[{index}] lifetime path empty')
+            if not isinstance(record.get('pointer_identity'), bool):
+                errors.append(f'{label}: {side}[{index}] pointer_identity is not boolean')
+            if require_direct_output_pointer_identity and side == 'outputs':
+                if record.get('pointer_identity') is not True:
+                    errors.append(
+                        f'{label}: outputs[{index}] native output pointer identity is not true'
+                    )
+                if record.get('storage') != 'cuda_device':
+                    errors.append(
+                        f'{label}: outputs[{index}] native output storage is not cuda_device'
+                    )
+                output_pointer = pointer_address(record.get('output_pointer'))
+                ort_pointer = pointer_address(record.get('ort_pointer'))
+                if output_pointer is None or ort_pointer is None or output_pointer != ort_pointer:
+                    errors.append(
+                        f'{label}: outputs[{index}] native output and ORT pointers differ'
+                    )
+                if record.get('lifetime_path') != (
+                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                ):
+                    errors.append(
+                        f'{label}: outputs[{index}] native output lifetime path is unexpected'
+                    )
     return errors
 
 
@@ -283,9 +326,12 @@ def compare(
     reports = binding_reports or {}
     reference_binding = reports.get('reference')
     candidate_binding = reports.get('candidate')
-    binding_errors = _binding_errors(reference_binding, reference_label) + _binding_errors(
-        candidate_binding, candidate_label
-    )
+    binding_errors = _binding_errors(
+        reference_binding,
+        reference_label,
+        'tensor_list',
+        require_direct_output_pointer_identity=True,
+    ) + _binding_errors(candidate_binding, candidate_label, 'std')
     deltas = _memory_total_deltas(
         reference_summary, candidate_summary, reference_frames, candidate_frames
     )

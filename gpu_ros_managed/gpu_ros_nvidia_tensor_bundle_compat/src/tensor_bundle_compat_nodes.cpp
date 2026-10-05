@@ -31,7 +31,7 @@ public:
   {
     publisher_ = create_publisher<TensorBundle>("tensor_output", 10);
     subscription_ = create_subscription<NvidiaTensorList>(
-      "tensor_input", 10, [this](const NvidiaTensorList::SharedPtr message) {
+      "tensor_input", 10, [this](NvidiaTensorList::ConstSharedPtr message) {
         try {
           publisher_->publish(ToTensorBundle(*message));
         } catch (const std::exception & error) {
@@ -55,7 +55,7 @@ public:
   {
     publisher_ = create_publisher<NvidiaTensorList>("tensor_output", 10);
     subscription_ = create_subscription<TensorBundle>(
-      "tensor_input", 10, [this](const TensorBundle::SharedPtr message) {
+      "tensor_input", 10, [this](TensorBundle::ConstSharedPtr message) {
         try {
           publisher_->publish(ToNvidiaTensorList(*message));
         } catch (const std::exception & error) {

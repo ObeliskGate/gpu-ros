@@ -9,7 +9,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
@@ -17,6 +17,7 @@ ament_auto_find_build_dependencies()
 find_package(gpu_ros_managed_core REQUIRED)
 find_package(gpu_ros_managed_ros REQUIRED)
 find_package(gpu_ros_managed_tensor_bundle REQUIRED)
+find_package(rosidl_buffer REQUIRED)
 
 # ── ONNX Runtime ──────────────────────────────────────────────────────────────
 set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation root")
@@ -114,8 +115,18 @@ option(
   "Build the direct strict Managed HIP proof-of-life test"
   OFF)
 
-# ── NITROS transport (optional, NVIDIA-only) ──────────────────────────────────
-option(BUILD_NITROS_TRANSPORT "Build NITROS pub/sub transport path (requires NVIDIA Isaac ROS)" OFF)
+# Native CUDA Buffer transport is enabled only in the NVIDIA manifest profile.
+option(BUILD_NATIVE_TENSOR_LIST_TRANSPORT "Build native CUDA TensorList transport" OFF)
+if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
+  if(NOT "$ENV{GPU_ROS_NVIDIA_PROFILE}" STREQUAL "1")
+    message(FATAL_ERROR "Native TensorList requires GPU_ROS_NVIDIA_PROFILE=1 before colcon discovery")
+  endif()
+  if(NOT ORT_ENABLE_CUDA)
+    message(FATAL_ERROR "Native TensorList requires ORT_ENABLE_CUDA=ON")
+  endif()
+  find_package(gpu_ros_nvidia_tensor_bundle_compat REQUIRED)
+  find_package(CUDAToolkit REQUIRED)
+endif()
 
 # ── Inference core library ────────────────────────────────────────────────────
 ament_auto_add_library(onnx_inference_core SHARED
@@ -128,7 +139,7 @@ target_compile_definitions(onnx_inference_core PRIVATE
   $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
   $<$<BOOL:${ORT_ENABLE_MIGRAPHX}>:ORT_MIGRAPHX_AVAILABLE>
 )
-if(ORT_ENABLE_CUDA OR BUILD_NITROS_TRANSPORT)
+if(ORT_ENABLE_CUDA OR BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
   find_package(gpu_ros_managed_cuda REQUIRED)
   if(NOT TARGET gpu_ros_managed::cuda)
     message(FATAL_ERROR
@@ -155,7 +166,7 @@ set(node_sources
 if(BUILD_MANAGED_HIP_TRANSPORT)
   list(APPEND node_sources src/managed_hip_tensor_bundle_nodes.cpp)
 endif()
-if(BUILD_NITROS_TRANSPORT)
+if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
   list(APPEND node_sources
     src/nitros_tensor_bundle_io.cpp
     src/nitros_managed_tensor_bundle_adapter.cpp
@@ -183,27 +194,10 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-if(BUILD_NITROS_TRANSPORT)
-  find_package(isaac_ros_nitros QUIET)
-  find_package(isaac_ros_managed_nitros QUIET)
-  find_package(isaac_ros_nitros_tensor_list_type QUIET)
-  find_package(CUDAToolkit QUIET)
-  if(NOT isaac_ros_nitros_FOUND OR
-    NOT isaac_ros_managed_nitros_FOUND OR
-    NOT isaac_ros_nitros_tensor_list_type_FOUND OR
-    NOT CUDAToolkit_FOUND)
-    message(FATAL_ERROR
-      "BUILD_NITROS_TRANSPORT=ON requires isaac_ros_nitros, "
-      "isaac_ros_managed_nitros, isaac_ros_nitros_tensor_list_type, and CUDA. "
-      "Set -DBUILD_NITROS_TRANSPORT=OFF for AMD/CPU standard ROS2 builds.")
-  endif()
-  target_compile_definitions(onnx_inference_node PRIVATE BUILD_NITROS_TRANSPORT)
-  ament_target_dependencies(onnx_inference_node
-    isaac_ros_nitros
-    isaac_ros_managed_nitros
-    isaac_ros_nitros_tensor_list_type)
-  target_link_libraries(onnx_inference_node CUDA::cudart)
-  target_link_libraries(onnx_inference_node gpu_ros_managed::cuda)
+if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
+  target_compile_definitions(onnx_inference_node PRIVATE BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
+  ament_target_dependencies(onnx_inference_node gpu_ros_nvidia_tensor_bundle_compat)
+  target_link_libraries(onnx_inference_node CUDA::cudart gpu_ros_managed::cuda)
   rclcpp_components_register_nodes(onnx_inference_node
     "gpu_ros::onnx_inference::TensorBundleBridgeNode"
     "gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode"
@@ -265,14 +259,14 @@ if(BUILD_TESTING)
   set(CUDA_IO_BINDING_TEST_MODEL
     "/workspaces/isaac_ros-dev/assets/models/yolov8/yolov8s.onnx"
     CACHE FILEPATH "Valid YOLOv8 ONNX model used by the CUDA I/O Binding test")
-  if(ORT_ENABLE_CUDA AND BUILD_NITROS_TRANSPORT)
+  if(ORT_ENABLE_CUDA AND BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
     if(EXISTS "${CUDA_IO_BINDING_TEST_MODEL}")
       target_compile_definitions(test_onnx_inference_core PRIVATE
         TEST_CUDA_IO_BINDING_MODEL_PATH="${CUDA_IO_BINDING_TEST_MODEL}")
       target_link_libraries(test_onnx_inference_core CUDA::cudart)
     else()
-      message(WARNING
-        "CUDA I/O Binding test disabled because its model does not exist: "
+      message(FATAL_ERROR
+        "CUDA I/O Binding test requires its real model: "
         "${CUDA_IO_BINDING_TEST_MODEL}")
     endif()
   endif()
@@ -294,18 +288,23 @@ if(BUILD_TESTING)
     test/test_analyze_rocprof_traces.py
   )
 
-  if(BUILD_NITROS_TRANSPORT)
+  if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
     find_package(launch_testing_ament_cmake REQUIRED)
-    ament_add_gtest(test_nitros_managed_tensor_bundle_adapter
-      test/test_nitros_managed_tensor_bundle_adapter.cpp)
-    target_link_libraries(test_nitros_managed_tensor_bundle_adapter
-      onnx_inference_node
-      gpu_ros_managed::cuda
-      CUDA::cudart)
-    ament_target_dependencies(test_nitros_managed_tensor_bundle_adapter
-      isaac_ros_nitros
-      isaac_ros_managed_nitros
-      isaac_ros_nitros_tensor_list_type)
+    target_link_libraries(test_onnx_inference_core onnx_inference_node)
+    target_compile_definitions(test_onnx_inference_core PRIVATE BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(dynamic_output_test_model "${CMAKE_CURRENT_BINARY_DIR}/test_models/dynamic_native_output.onnx")
+    add_custom_command(
+      OUTPUT "${dynamic_output_test_model}"
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/generate_dynamic_output_model.py"
+        "${dynamic_output_test_model}"
+      DEPENDS test/generate_dynamic_output_model.py
+      VERBATIM)
+    add_custom_target(native_dynamic_output_test_model DEPENDS "${dynamic_output_test_model}")
+    add_dependencies(test_onnx_inference_core native_dynamic_output_test_model)
+    target_sources(test_onnx_inference_core PRIVATE test/test_native_output_binding.cpp)
+    target_compile_definitions(test_onnx_inference_core PRIVATE
+      TEST_DYNAMIC_OUTPUT_MODEL_PATH="${dynamic_output_test_model}")
     add_launch_test(test/gpu_ros_onnx_rtdetr_pol_test.py TIMEOUT "600")
     add_launch_test(test/gpu_ros_onnx_rtdetr_managed_pol_test.py TIMEOUT "600")
   endif()

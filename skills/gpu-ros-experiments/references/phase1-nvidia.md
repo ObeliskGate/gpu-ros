@@ -1,6 +1,6 @@
 # Phase 1 NVIDIA runbook
 
-This is the NVIDIA reference campaign for the Isaac ROS 4.5-compatible runtime.
+This is the NVIDIA reference campaign for an official Isaac ROS 5.0/Lyrical image.
 It is separate from the AMD/CPU runbooks and does not use Apptainer. Keep
 source checkouts, model files, the R2B bag, external checkouts, plans, traces,
 and reports outside the repository.
@@ -13,7 +13,7 @@ repository below `src/gpu-ros`:
 ```text
 /workspaces/isaac_ros-dev/
 ├── src/gpu-ros/                 this repository
-├── src/nvidia_external/         pinned external Isaac ROS checkouts
+├── src/nvidia_external/         optional image-paired source overlay
 ├── build/                       outer-workspace build state
 ├── install/                     outer-workspace install state
 └── log/                         outer-workspace logs
@@ -32,9 +32,9 @@ The formal throughput matrix is:
 
 | Lane | RT-DETR | YOLOv8 |
 | --- | --- | --- |
-| A | TensorRT FP32 + NITROS | TensorRT FP16 + NITROS |
+| A | TensorRT FP32 + native TensorList | TensorRT FP16 + native TensorList |
 | B | TensorRT FP32 + standard ROS 2 boundary | TensorRT FP16 + standard ROS 2 boundary |
-| C | ORT CUDA + NITROS | ORT CUDA + NITROS |
+| C | ORT CUDA + native TensorList | ORT CUDA + native TensorList |
 | D | ORT CUDA + standard ROS 2 | ORT CUDA + standard ROS 2 |
 | Managed | Managed RT-DETR comparison with C | Not part of this Phase 1 matrix |
 
@@ -59,10 +59,10 @@ Record these values in the external archive for every run:
 
 | Item | Policy |
 | --- | --- |
-| Runtime image | Use the pinned Isaac ROS 4.5-compatible image; store its immutable digest externally. |
+| Runtime image | Use the verified official Isaac ROS 5.0 image; its digest and paired ROS packages are the version authority. |
 | Monorepo | Record the exact `monorepo_revision`, tracked-diff hash, untracked paths/content hash, and dirty state. |
-| External object detection | Use the revision pinned by `gpu_ros_object_detection/external/nvidia-isaac-ros.repos`. |
-| External benchmark | Use the revision pinned by `gpu_ros_object_detection/external/nvidia-isaac-ros.repos`. |
+| External object detection | Prefer the image binary; any required source overlay must match the image's verifiable source provenance. |
+| External benchmark | Prefer image-paired benchmark packages, not a separately selected upstream release head. |
 | ORT | Record the selected 1.23.1 source/library identity. |
 | Model/data | Record the selected profile and asset/dataset hashes. |
 
@@ -70,6 +70,11 @@ Do not put host, user, scheduler, device-instance, or deployment-path
 identifiers in this document. Runtime image, driver, and provider versions are
 scientific provenance and belong in the public result record when captured;
 they are not deployment secrets.
+
+Target-image runtime acceptance remains pending until the selected image is
+exercised. A historical 4.5/Jazzy result retains its original identity and does
+not validate the new stack. Missing image identity blocks runtime verification,
+not source-only checks. Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery.
 
 ## Fresh runtime layout
 
@@ -99,18 +104,20 @@ Dirty state is evidence, not a benchmark gate; preserve and record it.
 
 ## External sources and assets
 
-The tracked `gpu_ros_object_detection/external/nvidia-isaac-ros.repos` is a
-source manifest, not a submodule. Reuse matching checkouts; bootstrap only
-when they are missing:
+Use image-installed binary packages first. The tracked
+`gpu_ros_object_detection/external/nvidia-isaac-ros.repos` is an optional
+standard vcstool source manifest, not a submodule or a verified 5.0 lock.
+Its empty mapping blocks bootstrap until image-paired exact revisions are
+supplied. If a source overlay is necessary:
 
 ```bash
+export ISAAC_ROS_BASE_IMAGE="${VERIFIED_ISAAC_ROS_5_IMAGE_WITH_DIGEST:?required}"
 "${REPO_ROOT}/gpu_ros_object_detection/tools/bootstrap-nvidia-external.sh" \
   --source-root "${NVIDIA_EXTERNAL_ROOT}"
-
-export OVG_NVIDIA_EXTERNAL_SOURCE_ROOT="${NVIDIA_EXTERNAL_ROOT}"
 ```
 
-The Compose file mounts those checkouts read-only under
+The tracked Compose file does not bind old external source trees. Add any
+verified image-paired overlay explicitly in the run-specific override, under
 `/workspaces/isaac_ros-dev/src/nvidia_external`. Acquire Synthetica/YOLO assets
 and the R2B bag with the offline import tools. Record their hashes in the
 external archive. Keep source and asset roots separate from Git and never
@@ -174,7 +181,7 @@ The B standard-transport boundary is intentionally explicit:
 
 ```text
 std TensorBundle -> TensorBundleBridge (managed device buffer) ->
-NITROS TensorRT -> NvidiaTensorListToTensorBundle -> std decoder
+native TensorList TensorRT -> NvidiaTensorListToTensorBundle -> std decoder
 ```
 
 ## Fixed-input and provider/copy evidence

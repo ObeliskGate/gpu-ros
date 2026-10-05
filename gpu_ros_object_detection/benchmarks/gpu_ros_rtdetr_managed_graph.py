@@ -3,7 +3,7 @@
 # in 2026;
 # see THIRD_PARTY_NOTICES.md for the external source boundary.
 # SPDX-License-Identifier: Apache-2.0
-"""Managed RT-DETR: official NITROS pre/post-processing and ORT CUDA."""
+"""Managed RT-DETR: official TensorList pre/post-processing and ORT CUDA."""
 
 import os
 import sys
@@ -45,6 +45,11 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 ),
                 'execution_provider': 'cuda',
                 'transport': 'managed',
+                'managed_output_contracts': [
+                    'labels=int64[1,100]',
+                    'boxes=float32[1,100,4]',
+                    'scores=float32[1,100]',
+                ],
             }
         ],
         remappings=[
@@ -93,7 +98,7 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrManaged(ROS2BenchmarkTest):
-    """ORT CUDA transport=managed versus Config C NITROS transport."""
+    """ORT CUDA transport=managed versus Config C native TensorList transport."""
 
     config = ROS2BenchmarkConfig(
         benchmark_name='GPU ROS RT-DETR (NVIDIA reference M: ORT CUDA + Managed)',

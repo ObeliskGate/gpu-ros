@@ -1,7 +1,7 @@
 # Phase 2B NVIDIA managed transport
 
-This method compares the NVIDIA/NITROS Config C reference with managed
-TensorBundle bridges around ORT CUDA for RT-DETR and YOLOv8. It is separate
+This method compares the Isaac ROS 5.0 native TensorList Config C reference with
+managed TensorBundle bridges around ORT CUDA for RT-DETR and YOLOv8. It is separate
 from the [Phase 1 A/B/C/D matrix](phase1-nvidia.md). Managed transport must
 preserve pointer ownership without an extra tensor-payload copy at the
 inference boundary; it does not make the complete pipeline copy-free.
@@ -9,30 +9,44 @@ inference boundary; it does not make the complete pipeline copy-free.
 ## Workspace and identity
 
 The outer workspace is `/workspaces/isaac_ros-dev`. The repository is mounted
-once at `src/gpu-ros`, and pinned external sources are mounted read-only at
-`src/nvidia_external`. `gpu_ros_object_detection/` owns detection facilities,
-not the outer workspace or monorepo identity.
+once at `src/gpu-ros`; image-matched source overlays, when needed, are mounted
+read-only at `src/nvidia_external`. `gpu_ros_object_detection/` owns detection
+facilities, not the outer workspace or monorepo identity.
 
-Before running anything, verify GPU model/architecture and driver, the existing
-image ID, external commits against
-`gpu_ros_object_detection/external/nvidia-isaac-ros.repos`, loaded ORT library
-identity, source revision and dirty/untracked hashes, model bytes, and each
+Use an official Isaac ROS 5.0 Docker image with Lyrical. Its immutable digest,
+paired package versions and actual installed headers/libraries define the ROS
+baseline. Prefer image binaries over duplicate source overlays. Resolve any
+required external source commit from the image's official provenance, not a
+current upstream release head. Missing image identity or source provenance
+blocks that runtime step; it does not authorize upgrading the image.
+
+Before running anything, verify GPU model/architecture and driver, the image
+identity, ROS package versions/prefixes, any external source revisions, loaded
+ORT library identity, source revision and dirty/untracked hashes, model bytes, and each
 R2B file. Preserve original asset volumes. A model profile without a fixed
 expected SHA needs independent provenance and a recorded actual digest; it has
 not passed a known-digest check. Do not treat the framework's 32-character
 input hash as SHA-256.
 
 For migration verification, retain the actual pre-change worktree in an
-independent checkout with real Git metadata. Both versions use the same verified
-image, external sources, and asset bytes, but separate empty build/install/log
-and result directories. Do not pull over a dirty experiment checkout or source
-an old project overlay to fill a missing package.
+independent checkout with real Git metadata. Preserve model/data bytes and use
+separate empty build/install/log and result directories. A 4.5/Jazzy baseline
+and a 5.0/Lyrical candidate have different runtime identities: compare them as
+migration observations, not same-stack performance reproduction. If no usable
+old runtime or raw baseline exists, report the before/after comparison blocked.
+Do not source an old project overlay to fill a missing package.
 
 ## Reuse the dependency image
 
-Set `REPO_ROOT`, `VERIFY_ROOT`, and `OVG_NVIDIA_EXTERNAL_SOURCE_ROOT` to the
-verified checkout, external run state, and pinned external-source directory.
-Create a run-specific override outside Git at `NV_OVERRIDE` with:
+Set `REPO_ROOT` and `VERIFY_ROOT` to the verified checkout and external run
+state. Prefer image-installed binary dependencies. Only a required,
+image-matched source overlay belongs under `src/nvidia_external`; add its
+read-only bind explicitly to the run-specific override.
+Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon package discovery. Target-image
+ROS/GPU acceptance remains pending until this method is exercised on the
+identified image. Use the supplied existing environment entrypoint; do not
+start another container when that would bypass its deployment contract.
+When Compose is the selected entrypoint, create an external `NV_OVERRIDE` with:
 
 - the literal verified existing image ID for service `dev`;
 - a unique Compose project and fresh binds for outer-workspace build, install,
@@ -41,9 +55,9 @@ Create a run-specific override outside Git at `NV_OVERRIDE` with:
 - the existing `assets` volume declared `external: true` with its verified
   name, rather than a new empty volume.
 
-Keep the NVIDIA runtime hook, GPU reservation, host networking, external-source
-binds, and container working directory from the tracked Compose file. Resolve
-the combined configuration before starting it:
+Keep the NVIDIA runtime hook, GPU reservation, host networking, and container
+working directory from the tracked Compose file. It no longer mounts old 4.5
+source trees. Resolve the combined configuration before starting it:
 
 ```bash
 NV_COMPOSE="${REPO_ROOT}/gpu_ros_object_detection/docker/docker-compose.yaml"
@@ -62,7 +76,7 @@ Build from the fresh outer workspace without sourcing an old project install:
 
 ```bash
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
-  bash -lc 'set -e; source /opt/ros/jazzy/setup.bash; colcon build'
+  bash -lc 'set -e; export GPU_ROS_NVIDIA_PROFILE=1; source /opt/ros/lyrical/setup.bash; colcon build'
 ```
 
 Run the selected colcon tests and the packages not selected by the NVIDIA test
@@ -71,7 +85,8 @@ defaults. Keep every command failure visible:
 ```bash
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
   bash -lc 'set -e
-    source /opt/ros/jazzy/setup.bash
+    export GPU_ROS_NVIDIA_PROFILE=1
+    source /opt/ros/lyrical/setup.bash
     source install/setup.bash
     colcon test --event-handlers console_direct+
     colcon test-result --all --verbose
@@ -98,7 +113,8 @@ enter an interactive shell or introduce another graph runner:
 ```bash
 docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
   bash -lc "set -e; ulimit -c 0
-    source /opt/ros/jazzy/setup.bash
+    export GPU_ROS_NVIDIA_PROFILE=1
+    source /opt/ros/lyrical/setup.bash
     source /workspaces/isaac_ros-dev/install/setup.bash
     ${PAYLOAD}"
 ```
@@ -160,6 +176,33 @@ Use `run_nvidia_transport_audit.sh` separately for each model with
 [transport audits](detection-validation.md#transport-audits). Capture parameters
 must match the corresponding baseline. Keep provider activity, pointer/lifetime
 binding reports, CUDA traces, copy and detection reports, and lifecycle logs.
+
+The native transport token is `tensor_list`; the managed lane remains
+`managed`. Both CUDA lanes bind formal model outputs directly to native
+Buffer allocations. Managed outputs retain a typed envelope attachment so the
+egress bridge can reuse the original TensorList. Validate ORT, native writer
+and Managed pointer identity within the allocating process; mapped addresses
+in another process need not be equal.
+Pointer evidence must contain positive numeric addresses (integers or decimal/
+hexadecimal strings); equal placeholders such as `unknown` are not identity
+evidence. An explicitly incomplete profiler capture or a caller-identified
+payload-risk kernel keeps the audit INCONCLUSIVE even with valid binding reports.
+
+Immutable native-message republishing disables intra-process optimization on
+that publisher to avoid the deep copy performed by `publish(const T&)`.
+Record the selected RMW/Buffer backend and its actual transport behavior.
+Unsupported IPC topology may legitimately materialize CPU data; record that
+fallback rather than claiming an unconditional inter-process zero-copy path.
+Generic dynamic models without output contracts and Managed buffers without
+a reusable envelope use explicit copy fallback; they do not satisfy the formal
+C/managed inference-boundary no-copy criterion. Standard TensorBundle
+conversion remains a host boundary.
+
+The adapter CTest now belongs to `gpu_ros_nvidia_tensor_bundle_compat`
+(`test_tensor_list_buffer_adapter`); the ORT CTest remains in
+`gpu_ros_onnx_inference` (`test_onnx_inference_core`). The audit must execute
+both build directories with `--no-tests=error`, not match the old adapter name
+in the ONNX directory and silently run only one test.
 
 Complete copy records and CUDA activity are required. CPU shape/decoder
 bookkeeping is diagnostic rather than a fixed forbidden-node count. A copy

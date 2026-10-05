@@ -4,16 +4,20 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "gpu_ros_managed_core/detail/backend_ops.hpp"
 #include "gpu_ros_managed_ros/managed_pub_sub.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 #include "gpu_ros_managed_tensor_bundle/type_adapter.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
+#include "rosidl_buffer/buffer.hpp"
 
 using namespace std::chrono_literals;
 using gpu_ros_managed::ManagedTensor;
@@ -22,6 +26,60 @@ using gpu_ros_managed::ManagedTensorBundleView;
 using gpu_ros_managed::TensorDataType;
 using RosTensorBundle = gpu_ros_tensor_bundle_msgs::msg::TensorBundle;
 using Adapter = rclcpp::TypeAdapter<ManagedTensorBundle, RosTensorBundle>;
+
+template <typename T> class TestNonCpuBufferImpl final : public rosidl::BufferImplBase<T>
+{
+public:
+  explicit TestNonCpuBufferImpl(std::vector<T> bytes) : bytes_(std::move(bytes)) {}
+
+  std::string get_backend_type() const override { return "test_non_cpu"; }
+  size_t size() const override { return bytes_.size(); }
+
+  std::unique_ptr<rosidl::BufferImplBase<T>> to_cpu() const override
+  {
+    auto cpu = std::make_unique<rosidl::CpuBufferImpl<T>>();
+    cpu->get_storage() = bytes_;
+    return cpu;
+  }
+
+  std::unique_ptr<rosidl::BufferImplBase<T>> clone() const override
+  {
+    return std::make_unique<TestNonCpuBufferImpl<T>>(bytes_);
+  }
+
+private:
+  std::vector<T> bytes_;
+};
+
+template <typename T> rosidl::Buffer<T> MakeTestNonCpuBuffer(std::vector<T> bytes)
+{
+  return rosidl::Buffer<T>(std::make_unique<TestNonCpuBufferImpl<T>>(std::move(bytes)));
+}
+
+TEST(TypeAdapterProbe, NonCpuRosBufferMaterializesIntoManagedHostStorage)
+{
+  const std::vector<float> values{2.5F, -7.0F};
+  std::vector<uint8_t> bytes(values.size() * sizeof(float));
+  std::memcpy(bytes.data(), values.data(), bytes.size());
+
+  RosTensorBundle ros;
+  auto & tensor = ros.tensors.emplace_back();
+  tensor.name = "device_input";
+  tensor.data_type = gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32;
+  tensor.shape = MakeTestNonCpuBuffer<int64_t>(std::vector<int64_t>{1, 2});
+  tensor.data = MakeTestNonCpuBuffer(std::move(bytes));
+
+  ManagedTensorBundle managed;
+  Adapter::convert_to_custom(ros, managed);
+
+  ASSERT_EQ(managed.tensors().size(), 1U);
+  const auto & output = managed.tensors().front();
+  EXPECT_EQ(output.shape(), (std::vector<int64_t>{1, 2}));
+  ASSERT_TRUE(output.is_host());
+  const auto & host = std::get<gpu_ros_managed::HostBuffer>(output.storage());
+  ASSERT_EQ(host.size(), values.size() * sizeof(float));
+  EXPECT_EQ(std::memcmp(host.data(), values.data(), host.size()), 0);
+}
 
 ManagedTensorBundle host_message()
 {

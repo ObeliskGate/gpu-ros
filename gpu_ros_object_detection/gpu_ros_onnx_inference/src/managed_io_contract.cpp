@@ -247,4 +247,11 @@ void ValidateManagedTensorContracts(Ort::Session & session,
   ValidateOneSide(session, outputs, false, "managed_output_contracts");
 }
 
+void ValidateManagedOutputContracts(
+  Ort::Session & session, const std::vector<ManagedTensorContract> & outputs)
+{
+  CheckUniqueNames(outputs, "managed_output_contracts");
+  ValidateOneSide(session, outputs, false, "managed_output_contracts");
+}
+
 } // namespace gpu_ros::onnx_inference

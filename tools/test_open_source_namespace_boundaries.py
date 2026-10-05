@@ -169,7 +169,6 @@ def assert_nvidia_namespace_allowlist() -> None:
     allowed_external_prefixes = (
         "nvidia::isaac_ros::dnn_inference::",
         "nvidia::isaac_ros::image_proc::",
-        "nvidia::isaac_ros::nitros",
         "nvidia::isaac_ros::rtdetr::",
         "nvidia::isaac_ros::yolov8::",
     )

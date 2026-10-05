@@ -10,20 +10,21 @@ The monorepo contains both library collections. It is mounted once at
 
 ## Required software identity
 
-The following identities are the baseline for formal Phase 2A and Phase 2B
-runs:
+The following identities define the Lyrical migration target for Phase 2A and
+Phase 2B. AMD Lyrical GPU acceptance is pending; historical Jazzy runs are not
+evidence that this new combination has passed:
 
 | Layer | Required identity | Public source of truth |
 | --- | --- | --- |
 | Base OS | Ubuntu 24.04 userland | `AMD_BASE_IMAGE` below |
-| ROS | ROS 2 Jazzy | `ROS_DISTRO=jazzy` and the Dockerfile |
+| ROS | ROS 2 Lyrical, generic ROS packages only | Versions traced to the selected official Isaac ROS 5.0 image; `ROS_DISTRO=lyrical` |
 | ROCm/HIP | ROCm 7.1.1 | `rocm/dev-ubuntu-24.04:7.1.1-complete` and `phase2 env --verify` |
 | GPU target | The actual target reported by the device; the campaign baseline is `gfx950` | `AMD_GPU_TARGETS` and `rocminfo` |
 | GPU driver | The compatible AMD kernel/user-space driver release for the device | `rocminfo`, `rocminfo --version`, and the site package query; record it in the result archive |
 | MIGraphX | MIGraphX 2.14 behavior shipped by the ROCm 7.1.1 package set | `migraphx`, `migraphx-dev`, and the provider audit |
 | ONNX Runtime | 1.23.1 at the commit in `gpu_ros_object_detection/config/onnxruntime.lock` | `gpu_ros_object_detection/config/onnxruntime.lock` |
 | ORT provider patches | The tracked build, GridSample, int64-div CPU-fallback, and Linux provider-lifetime patches | `gpu_ros_object_detection/docker/patches/onnxruntime-1.23.1-migraphx-*.patch` and `.series` |
-| Benchmark framework | `ros2_benchmark` `v4.5-0`, plus the tracked standalone patch | `gpu_ros_object_detection/docker/phase2a-amd.Dockerfile` |
+| Benchmark framework | Image-paired `ros2_benchmark` source, with only the standalone build-dependency patch | Verified image provenance and `gpu_ros_object_detection/docker/phase2a-amd.Dockerfile` |
 
 MIGraphX is installed from the ROCm package repository rather than built from a
 separately pinned source checkout in this repository. Capture its package
@@ -59,16 +60,32 @@ is unavailable and a dependency build is authorized:
 export OVG_RUNTIME=docker
 export AMD_BASE_IMAGE=rocm/dev-ubuntu-24.04:7.1.1-complete
 export AMD_GPU_TARGETS=gfx950
+export ISAAC_ROS_BASE_IMAGE="${VERIFIED_ISAAC_ROS_5_IMAGE_WITH_DIGEST:?required}"
+export ROS_LYRICAL_APT_PACKAGE_SPECS="${VERIFIED_GENERAL_ROS_EXACT_PACKAGE_SPECS:?required}"
+export ROS2_BENCHMARK_COMMIT="${VERIFIED_IMAGE_PAIRED_BENCHMARK_COMMIT:?required}"
 docker compose \
   -f gpu_ros_object_detection/docker/docker-compose.phase2a-amd.yaml build amd
 ```
 
-The image builds ROS 2 Jazzy, MIGraphX, the benchmark framework, and a
+The image builds ROS 2 Lyrical, MIGraphX, the benchmark framework, and a
 build-only ORT copy. Formal runs must use the separately built external ORT
 install selected by `OVG_ORT_ROOT`; `/opt/onnxruntime` in the image is not a
 formal fallback. If a new external install is required, use
 `gpu_ros_object_detection/tools/build-phase2a-external-ort.sh` with the locked
 recursive source, and retain its `build-info.txt` and fingerprint marker.
+
+ROS package versions must match the selected official Isaac ROS 5.0 release
+baseline without installing NVIDIA runtime packages on AMD. An unresolved
+image/package/source identity blocks a new dependency-image build; it does not
+authorize using the latest apt candidate or a release-branch head. Simulate the
+exact-version apt installation and reject a closure that adds CUDA/Isaac
+runtime dependencies. Set `GPU_ROS_NVIDIA_PROFILE=0` before package discovery.
+`ISAAC_ROS_BASE_IMAGE` records the digest-qualified NVIDIA version authority;
+it is not the AMD base image. `ROS_LYRICAL_APT_PACKAGE_SPECS` is a single-line,
+space-separated complete general ROS inventory (`ros-lyrical-package=version`).
+`ROS2_BENCHMARK_COMMIT` is the paired lowercase 40-character source revision.
+These build-only inputs are required for a new image, not for reuse via
+Compose `config`, `exec`, or `up --no-build`.
 
 The Apptainer recipe is `gpu_ros_object_detection/apptainer/phase2-amd.def`.
 Record the full SIF SHA-256 and adapter identity. Docker and Apptainer share
@@ -133,7 +150,7 @@ container paths:
 | `OVG_RESULTS_ROOT` | Inside runtime | Stable result path; the launcher sets `/workspaces/ovg-results`. |
 | `GPU_ROS_REPO_ROOT` | Inside runtime | Stable repository path; the launcher sets `/workspaces/gpu-ros`. |
 | `OVG_WORKSPACE_ROOT` | Inside runtime | Workspace path; the launcher sets `/workspaces/gpu-ros`. |
-| `ROS_DISTRO` | Inside runtime | Must be `jazzy`. |
+| `ROS_DISTRO` | Inside runtime | Must be `lyrical`. |
 | `COLCON_DEFAULTS_FILE` | Inside runtime | Must be the tracked `gpu_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml` under `/workspaces/gpu-ros`. |
 
 The launcher derives `OVG_RUNTIME_EFFECTIVE`, `OVG_IMAGE_FINGERPRINT`, and
@@ -272,7 +289,7 @@ only explicitly authorized diagnostics or measurements may proceed without
 promotion. Record component logs because wrapper exit codes alone can miss
 teardown faults.
 
-`phase2 env --verify` must show Jazzy, ROCm 7.1.1, the actual device target,
+`phase2 env --verify` must show Lyrical, ROCm 7.1.1, the actual device target,
 external ORT fingerprint/provider library, and image manifest. Record the
 loaded library paths and digests alongside the configured path. The
 external archive also retains source revision and dirty/untracked hashes,

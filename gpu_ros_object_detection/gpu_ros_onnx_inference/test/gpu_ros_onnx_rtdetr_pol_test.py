@@ -13,50 +13,42 @@
 # limitations under the License.
 
 """
-Proof-Of-Life test for OnnxInferenceNode in the NITROS transport path (config C).
+Proof-of-life for native TensorList and managed CUDA RT-DETR inference.
 
-Forks the upstream isaac_ros_rtdetr POL test, replacing only the TensorRTNode
-with our OnnxInferenceNode (transport=nitros). The 6 upstream NITROS preprocess
-nodes + NITROS RtDetrPreprocessor + NITROS RtDetrDecoder are reused as-is.
-
-Verifies the ORT node can drop into a real RT-DETR NITROS graph and produce a
-Detection2DArray. Uses a random-weight RT-DETR-shaped ONNX (data not checked).
+Uses the existing NVIDIA Synthetica model and official Isaac ROS 5 components.
+This functional smoke does not replace fixed-input accuracy or lifecycle capture.
 """
 
 import os
 import pathlib
 import time
 
-from isaac_ros_test import IsaacROSBaseTest, JSONConversion, MockModelGenerator
+from isaac_ros_test import IsaacROSBaseTest, JSONConversion
 from launch_ros.actions.composable_node_container import ComposableNodeContainer
 from launch_ros.descriptions.composable_node import ComposableNode
 import pytest
 import rclpy
 from sensor_msgs.msg import CameraInfo, Image
-import torch
 from vision_msgs.msg import Detection2DArray
 
 
-MODEL_ONNX_PATH = '/tmp/rtdetr_ort_pol_model.onnx'
-MODEL_GENERATION_TIMEOUT_SEC = 300
+MODEL_ONNX_PATH = os.environ.get(
+    'RTDETR_MODEL_PATH',
+    '/workspaces/isaac_ros-dev/assets/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx',
+)
+OUTPUT_CONTRACTS = [
+    'labels=int64[1,100]',
+    'boxes=float32[1,100,4]',
+    'scores=float32[1,100]',
+]
 INIT_WAIT_SEC = 10
 
 
 @pytest.mark.rostest
 def generate_rtdetr_pol_description(test_class, transport):
     """Generate the shared C or Managed RT-DETR proof-of-life graph."""
-    MockModelGenerator.generate(
-        input_bindings=[
-            MockModelGenerator.Binding('images', [-1, 3, 640, 640], torch.float32),
-            MockModelGenerator.Binding('orig_target_sizes', [-1, 2], torch.int64),
-        ],
-        output_bindings=[
-            MockModelGenerator.Binding('labels', [-1, 300], torch.int64),
-            MockModelGenerator.Binding('boxes', [-1, 300, 4], torch.float32),
-            MockModelGenerator.Binding('scores', [-1, 300], torch.float32),
-        ],
-        output_onnx_path=MODEL_ONNX_PATH,
-    )
+    if not os.path.isfile(MODEL_ONNX_PATH):
+        raise FileNotFoundError(f'Real RT-DETR POL model missing: {MODEL_ONNX_PATH}')
 
     ns = test_class.generate_namespace()
 
@@ -139,8 +131,7 @@ def generate_rtdetr_pol_description(test_class, transport):
         remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
-    # Config C replaces TensorRT directly. Managed keeps the official NITROS
-    # preprocessor/decoder and inserts explicit zero-payload-copy boundaries.
+    # Managed preserves the official native preprocessor/decoder boundaries.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
@@ -151,6 +142,7 @@ def generate_rtdetr_pol_description(test_class, transport):
                 'model_file_path': MODEL_ONNX_PATH,
                 'execution_provider': 'cuda',
                 'transport': transport,
+                'managed_output_contracts': OUTPUT_CONTRACTS,
             }
         ],
         remappings=[
@@ -185,6 +177,7 @@ def generate_rtdetr_pol_description(test_class, transport):
                     'model_file_path': MODEL_ONNX_PATH,
                     'execution_provider': 'cuda',
                     'transport': 'managed',
+                    'managed_output_contracts': OUTPUT_CONTRACTS,
                 }
             ],
             remappings=[
@@ -224,12 +217,12 @@ def generate_rtdetr_pol_description(test_class, transport):
 
 
 def generate_test_description():
-    """Generate Config C's direct NITROS proof-of-life graph."""
-    return generate_rtdetr_pol_description(GpuRosOnnxRtDetrPOLTest, 'nitros')
+    """Generate Config C's direct native TensorList proof-of-life graph."""
+    return generate_rtdetr_pol_description(GpuRosOnnxRtDetrPOLTest, 'tensor_list')
 
 
 class GpuRosOnnxRtDetrPOLTest(IsaacROSBaseTest):
-    """Validate OnnxInferenceNode produces detections inside a RT-DETR NITROS graph."""
+    """Validate detections inside the native RT-DETR graph."""
 
     filepath = pathlib.Path(os.path.dirname(__file__))
     INIT_WAIT_SEC = 10
@@ -237,12 +230,7 @@ class GpuRosOnnxRtDetrPOLTest(IsaacROSBaseTest):
     @IsaacROSBaseTest.for_each_test_case()
     def test_object_detection(self, test_folder):
         """Expect the pipeline to produce a detection array given an image."""
-        self.node._logger.info(f'Generating model (timeout={MODEL_GENERATION_TIMEOUT_SEC}s)')
-        start_time = time.time()
-        while not os.path.isfile(MODEL_ONNX_PATH):
-            if time.time() - start_time > MODEL_GENERATION_TIMEOUT_SEC:
-                self.fail('Model generation timed out')
-            time.sleep(1)
+        self.assertTrue(os.path.isfile(MODEL_ONNX_PATH), 'Real RT-DETR model missing')
 
         received_messages = {}
         self.generate_namespace_lookup(['image', 'camera_info', 'detections_output'])

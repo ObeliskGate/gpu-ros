@@ -18,13 +18,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Config B benchmark: TensorRT + standard ROS 2-compatible migrated pipeline.
 
-Compares the NVIDIA/NITROS TensorRT configuration with the project-owned
+Compares the native TensorList TensorRT configuration with the project-owned
 standard ROS 2-compatible configuration. The shared six-node image/tensor
-preprocessing remains NITROS. The RT-DETR-specific preprocessor and decoder
-use the project TensorBundle interface; TensorRT remains NITROS-only, so
-explicit TensorBundle/NITROS compatibility boundaries surround the TensorRT
-node. This is a complete pipeline comparison, not a transport-only ablation.
-Shares framework + preprocessing with the other configs (see rtdetr_common).
+preprocessing remains on the native TensorList path. The RT-DETR-specific
+preprocessor and decoder use the project TensorBundle interface; TensorRT
+remains TensorList-only, so explicit TensorBundle/TensorList compatibility
+boundaries surround the TensorRT node. This is a complete pipeline comparison,
+not a transport-only ablation. Shares framework + preprocessing with the other
+configs (see rtdetr_common).
 """
 
 import os
@@ -63,8 +64,8 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         remappings=[('encoded_tensor', 'tensor_bundle_input')],
     )
 
-    # std -> NITROS bridge: TensorRT only speaks NITROS and cannot be fed by a
-    # std publisher directly.
+    # std -> TensorList bridge: TensorRT only speaks TensorList and cannot be
+    # fed by a std publisher directly.
     bridge_node = ComposableNode(
         name='TensorBundleBridge',
         namespace=ns,

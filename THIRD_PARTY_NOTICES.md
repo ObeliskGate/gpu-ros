@@ -32,12 +32,12 @@ message package; the NVIDIA conversion boundary lives in the monorepo's
 
 ## NVIDIA Isaac ROS object-detection sources
 
-The opt-in `gpu_ros_object_detection/external/nvidia-isaac-ros.repos` manifest records
-`isaac_ros_object_detection` at commit
-`060ced887bd8a3a0be60b1fa454365942eefd128`. The following local groups are
-derived from its file-level Apache-2.0 sources and retain the NVIDIA
-attribution plus a notice describing the standard-ROS, HIP, or file-splitting
-changes. The materially migrated decoder/preprocessor files also carry a
+The following local groups were derived from file-level Apache-2.0 sources in
+`isaac_ros_object_detection` commit
+`060ced887bd8a3a0be60b1fa454365942eefd128`. This records historical source
+provenance, not an active Isaac ROS 5.0 dependency pin. The files retain the
+NVIDIA attribution plus a notice describing the standard-ROS, HIP, or
+file-splitting changes. The materially migrated decoder/preprocessor files also carry a
 parallel Boshen copyright for local original additions; benchmark composition
 files do not mechanically claim one:
 
@@ -76,14 +76,14 @@ License 2.0 in `LICENSE`.
 
 ## NVIDIA Isaac ROS benchmark sources
 
-The opt-in external manifest records `isaac_ros_benchmark` at commit
-`f46699e124262c5bfb6f00099061f6718f026b3f`. `gpu_ros_object_detection/benchmarks/rtdetr_common.py`
-and the RT-DETR benchmark compositions are adapted from the file-level
-Apache-2.0 RT-DETR benchmark graph at that commit. The local YOLOv8 benchmark
-composition has no exact upstream YOLOv8 benchmark counterpart in the pinned
-checkout; it is an adaptation of the ROS 2 benchmark framework and is
-documented as other-open-source-derived/project composition rather than
-unresolved.
+`gpu_ros_object_detection/benchmarks/rtdetr_common.py` and the RT-DETR benchmark
+compositions were adapted from the file-level Apache-2.0 RT-DETR benchmark
+graph in `isaac_ros_benchmark` commit
+`f46699e124262c5bfb6f00099061f6718f026b3f`. This records source provenance, not
+the active Isaac ROS 5.0 runtime version. The local YOLOv8 benchmark
+composition has no exact upstream YOLOv8 benchmark counterpart in that
+historical checkout; it is an adaptation of the ROS 2 benchmark framework and
+is documented as other-open-source-derived/project composition.
 
 The external `isaac_ros_benchmark` checkout contains packages with different
 license boundaries, including NVIDIA Isaac ROS Software License metadata. It
@@ -98,18 +98,19 @@ copy is preserved in `LICENSES/ONNXRUNTIME-MIT.txt`. The Linux unused-helper
 patch also records Microsoft upstream commit
 `935affb848b1635be7d48d9c21c625300e7a3571`.
 
-## Isaac ROS common and ros2_benchmark patches
+## Standalone ros2_benchmark preparation
 
-`gpu_ros_object_detection/docker/patches/isaac-ros-common-v4.5-tensor-list-standalone.patch` now
-contains only the file-level Apache-licensed CMake change. Its package
-dependency change is performed by the XML-aware semantic editor against the
-user's verified exact checkout; no proprietary package XML or long context is
-embedded in this repository.
-
-`gpu_ros_object_detection/docker/patches/ros2-benchmark-v4.5-standalone.patch` is a source patch for the
-external benchmark checkout. Its file-level Apache source boundary and the
-external package's own license metadata remain separate from this root
-license.
+The old Isaac ROS 4.5 TensorList patch, its package editor, and the 4.5
+benchmark patch have been removed from the active build.
+`gpu_ros_object_detection/docker/prepare_ros2_benchmark_standalone.py`
+adapts the selected image-paired external benchmark checkout's
+`ros2_benchmark/CMakeLists.txt`, `ros2_benchmark/package.xml`,
+`ros2_benchmark_interfaces/CMakeLists.txt`, and
+`ros2_benchmark_interfaces/package.xml`. It removes only the standalone
+build's version-stamp and `isaac_ros_common` build dependency, generating the
+patch from the verified external revision rather than embedding package XML.
+Upstream file-level notices and the external packages' license metadata
+remain authoritative and separate from this repository's root license.
 
 ## NVIDIA test image fixture
 

@@ -60,9 +60,13 @@ LOG_ROOT="${AUDIT_ROOT}/logs"
 ORT_PROFILE_FRAMES="${AUDIT_ORT_PROFILE_FRAMES:-50}"
 
 if [[ ${MODEL} == yolov8 ]]; then
+  PAYLOAD_SIZES=(4915200 2822400)
   REFERENCE_LANE="yolov8-c"
   CANDIDATE_LANE="yolov8-d"
 else
+  # Formal RT-DETR payloads: images=4915200, orig_target_sizes=16,
+  # labels=800, boxes=1600, and scores=400 bytes.
+  PAYLOAD_SIZES=(4915200 16 800 1600 400)
   REFERENCE_LANE="rtdetr-c"
   CANDIDATE_LANE="rtdetr-d"
 fi
@@ -80,7 +84,7 @@ if [[ ! -x ${CAPTURE_RUNNER} ]]; then
   exit 1
 fi
 
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then
   set +u
   # shellcheck disable=SC1090
@@ -100,25 +104,36 @@ for command_name in awk ctest find grep nsys ros2 tee; do
     exit 1
   fi
 done
-if [[ ! -d ${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference ]]; then
-  echo "ERROR: build gpu_ros_onnx_inference before running the audit." >&2
-  exit 1
-fi
+for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference; do
+  if [[ ! -d ${WORKSPACE_ROOT}/build/${package} ]]; then
+    echo "ERROR: build ${package} before running the audit." >&2
+    exit 1
+  fi
+done
 
 mkdir -p "${ORT_ROOT}" "${NSYS_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
   "${REPORT_ROOT}" "${LOG_ROOT}"
 
 echo "Running pointer-identity, lifetime and CUDA I/O Binding tests..."
-ctest \
-  --test-dir "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
-  --tests-regex 'test_(nitros_managed_tensor_bundle_adapter|onnx_inference_core)' \
-  --output-on-failure \
-  --verbose \
-  2>&1 | tee "${LOG_ROOT}/ctest.log"
-if ! grep -Eq 'tests failed out of ([2-9]|[1-9][0-9]+)' "${LOG_ROOT}/ctest.log"; then
-  echo "ERROR: fewer than two required C++ transport tests were executed." >&2
-  exit 1
-fi
+for ctest_case in \
+  gpu_ros_nvidia_tensor_bundle_compat:test_tensor_list_buffer_adapter \
+  gpu_ros_onnx_inference:test_onnx_inference_core; do
+  package="${ctest_case%%:*}"
+  test_name="${ctest_case#*:}"
+  ctest_log="${LOG_ROOT}/ctest_${test_name}.log"
+  ctest \
+    --test-dir "${WORKSPACE_ROOT}/build/${package}" \
+    --tests-regex "^${test_name}$" \
+    --output-on-failure \
+    --verbose \
+    --no-tests=error \
+    2>&1 | tee "${ctest_log}"
+  if ! grep -Eq '100% tests passed, 0 tests failed out of 1' "${ctest_log}" ||
+    ! grep -Eq "1/1 Test #[0-9]+: ${test_name}.*Passed" "${ctest_log}"; then
+    echo "ERROR: expected exactly one passing ${test_name} CTest entry." >&2
+    exit 1
+  fi
+done
 
 run_capture() {
   local lane="$1"
@@ -137,7 +152,7 @@ run_capture() {
     "${CAPTURE_RUNNER}" "${lane}" "${output_name}"
 }
 
-echo "Capturing ${MODEL} Config C (ORT CUDA + NITROS)..."
+echo "Capturing ${MODEL} Config C (ORT CUDA + native TensorList)..."
 run_capture "${REFERENCE_LANE}" config_c \
   "${ORT_ROOT}/config_c_" "${NSYS_ROOT}/config_c" \
   "${BINDING_ROOT}/config_c.json"
@@ -200,6 +215,10 @@ ros2 run gpu_ros_onnx_inference summarize_ort_profile.py \
   2>&1 | tee "${LOG_ROOT}/ort_provider_layout.log"
 
 echo "Writing Config C and Config D self sections plus copy delta..."
+PAYLOAD_ARGS=()
+for payload_size in "${PAYLOAD_SIZES[@]}"; do
+  PAYLOAD_ARGS+=(--payload-size "${payload_size}")
+done
 ros2 run gpu_ros_onnx_inference compare_nvidia_copy_traces.py \
   --reference-trace "${NSYS_ROOT}/config_c_cuda_gpu_trace.json" \
   --candidate-trace "${NSYS_ROOT}/config_d_cuda_gpu_trace.json" \
@@ -209,6 +228,7 @@ ros2 run gpu_ros_onnx_inference compare_nvidia_copy_traces.py \
   --candidate-frames "${CONFIG_D_FRAMES}" \
   --reference-binding-report "${BINDING_ROOT}/config_c.json" \
   --candidate-binding-report "${BINDING_ROOT}/config_d.json" \
+  "${PAYLOAD_ARGS[@]}" \
   --output-json "${REPORT_ROOT}/cuda_copy_delta.json" \
   2>&1 | tee "${LOG_ROOT}/cuda_copy_delta.log"
 
@@ -233,6 +253,9 @@ fi
   echo "Config C captured frames: ${CONFIG_C_FRAMES}"
   echo "Config D captured frames: ${CONFIG_D_FRAMES}"
   echo "ORT profile frames per lane: ${ORT_PROFILE_FRAMES}"
+  printf 'Payload sizes (bytes):'
+  printf ' %s' "${PAYLOAD_SIZES[@]}"
+  echo
   echo "The machine-readable report contains both self sections and D-minus-C deltas."
   echo "Positive H2D/D2H deltas are direct evidence of additional explicit host/device copies in D."
   echo "D2D deltas are reported separately and are not conflated with H2D/D2H."

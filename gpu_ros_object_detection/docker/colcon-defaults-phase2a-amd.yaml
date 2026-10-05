@@ -15,7 +15,7 @@ build:
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
-    - -DBUILD_NITROS_TRANSPORT=OFF
+    - -DBUILD_NATIVE_TENSOR_LIST_TRANSPORT=OFF
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=ON

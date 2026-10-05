@@ -19,7 +19,7 @@ This is the vendor-neutral target.
 
 Forks the upstream isaac_ros_rtdetr_oss launch, replacing the final three nodes
 (preprocessor / inference / decoder) with our standard-ROS2 + ORT versions.
-The upstream 6-node NITROS preprocessing chain is reused, then crosses an
+The upstream 6-node TensorList preprocessing chain is reused, then crosses an
 explicit NVIDIA TensorList-to-project-TensorBundle boundary before entering
 the project standard path. All nodes share one component container.
 """

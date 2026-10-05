@@ -24,6 +24,12 @@ enum class BufferReadiness
   kEventBackedReady
 };
 
+class DeviceBufferAttachment
+{
+public:
+  virtual ~DeviceBufferAttachment() = default;
+};
+
 namespace detail
 {
 struct BufferState;
@@ -134,6 +140,7 @@ public:
   DeviceId device_id() const noexcept;
   BufferReadiness readiness() const noexcept;
   bool failed() const noexcept;
+  std::shared_ptr<const DeviceBufferAttachment> attachment() const noexcept;
   WriteHandle get_write_handle(const DeviceStream & producer_stream);
   SynchronizedWriteHandle get_synchronized_write_handle();
   ReadHandle get_read_handle(const DeviceStream & consumer_stream) const;
@@ -156,10 +163,10 @@ class DeviceBufferFactory
 public:
   static DeviceStream make_stream(
     DeviceId, NativeStream, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
-  static std::shared_ptr<DeviceBuffer> make_fresh(
-    DeviceId, void *, size_t, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
-  static std::shared_ptr<DeviceBuffer> make_ready(
-    DeviceId, void *, size_t, std::shared_ptr<void>, std::shared_ptr<BackendOps>);
+  static std::shared_ptr<DeviceBuffer> make_fresh(DeviceId, void *, size_t, std::shared_ptr<void>,
+    std::shared_ptr<BackendOps>, std::shared_ptr<const DeviceBufferAttachment> attachment = {});
+  static std::shared_ptr<DeviceBuffer> make_ready(DeviceId, void *, size_t, std::shared_ptr<void>,
+    std::shared_ptr<BackendOps>, std::shared_ptr<const DeviceBufferAttachment> attachment = {});
 };
 } // namespace detail
 } // namespace gpu_ros_managed

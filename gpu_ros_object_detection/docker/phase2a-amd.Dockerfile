@@ -89,12 +89,15 @@ RUN mkdir -p /opt/onnxruntime/include /opt/onnxruntime/lib \
 
 FROM rocm-migraphx AS ros-runtime-base
 
-ARG ROS_DISTRO=jazzy
+ARG ROS_DISTRO=lyrical
 ARG DEBIAN_FRONTEND=noninteractive
+ARG ISAAC_ROS_BASE_IMAGE
+ARG ROS_LYRICAL_APT_PACKAGE_SPECS
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV ROS_DISTRO=${ROS_DISTRO}
+ENV GPU_ROS_NVIDIA_PROFILE=0
 ENV OVG_WORKSPACE_ROOT=/workspaces/gpu-ros
 ENV GPU_ROS_REPO_ROOT=/workspaces/gpu-ros
 ENV OVG_ORT_STATE_ROOT=/workspaces/ovg-ort
@@ -114,6 +117,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     sudo \
     unzip \
+    python3 \
     wget \
     && locale-gen en_US en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
@@ -124,12 +128,6 @@ RUN echo "/opt/onnxruntime/lib" > /etc/ld.so.conf.d/onnxruntime.conf \
     && test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h \
     && test -e /opt/onnxruntime/lib/libonnxruntime.so
 
-# ROS 2 apt repository. Keep this layer independent of project source edits.
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-      -o /usr/share/keyrings/ros-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo ${UBUNTU_CODENAME}) main" \
-      > /etc/apt/sources.list.d/ros2.list
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
@@ -137,53 +135,58 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libopencv-dev \
     pkg-config \
-    python3-colcon-common-extensions \
+    libgmock-dev \
+    libgtest-dev \
+    ninja-build \
+    patch \
+    python3-dev \
     python3-numpy \
     python3-onnx \
+    python3-packaging \
     python3-pip \
     python3-psutil \
-    python3-rosdep \
-    python3-vcstool \
-    python3-yaml \
-    ros-${ROS_DISTRO}-ament-cmake-auto \
-    ros-${ROS_DISTRO}-ament-cmake-gtest \
-    ros-${ROS_DISTRO}-ament-cmake-python \
-    ros-${ROS_DISTRO}-ament-cmake-pytest \
-    ros-${ROS_DISTRO}-ament-lint-auto \
-    ros-${ROS_DISTRO}-ament-lint-common \
-    ros-${ROS_DISTRO}-cv-bridge \
-    ros-${ROS_DISTRO}-launch-testing-ament-cmake \
-    ros-${ROS_DISTRO}-rclcpp \
-    ros-${ROS_DISTRO}-rclcpp-action \
-    ros-${ROS_DISTRO}-rclcpp-components \
-    ros-${ROS_DISTRO}-ros-base \
-    ros-${ROS_DISTRO}-rosbag2-compression-zstd \
-    ros-${ROS_DISTRO}-rosbag2-cpp \
-    ros-${ROS_DISTRO}-rosbag2-py \
-    ros-${ROS_DISTRO}-rosbag2-storage \
-    ros-${ROS_DISTRO}-rosbag2-storage-mcap \
-    ros-${ROS_DISTRO}-rosidl-default-generators \
-    ros-${ROS_DISTRO}-rosidl-default-runtime \
-    ros-${ROS_DISTRO}-sensor-msgs \
-    ros-${ROS_DISTRO}-std-msgs \
-    ros-${ROS_DISTRO}-vision-msgs \
+    python3-setuptools \
+    python3-wheel \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rosdep init 2>/dev/null || true
-RUN rosdep update --rosdistro ${ROS_DISTRO}
+COPY gpu_ros_object_detection/docker/install_isaac_ros_apt_packages.sh /usr/local/bin/install-isaac-ros-apt-packages
+RUN bash /usr/local/bin/install-isaac-ros-apt-packages
+
+
 
 FROM ros-runtime-base AS ros2-benchmark-builder
 
-ARG ROS2_BENCHMARK_REF=v4.5-0
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG ROS2_BENCHMARK_COMMIT
 
 WORKDIR /opt/src
-RUN git clone --branch "${ROS2_BENCHMARK_REF}" --depth 1 \
-      https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark.git
+RUN [[ "${ROS2_BENCHMARK_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || { \
+      echo "BLOCKED: ROS2_BENCHMARK_COMMIT must be the exact image-paired source SHA." >&2; \
+      exit 1; \
+    } \
+    && git init ros2_benchmark \
+    && git -C ros2_benchmark remote add origin https://github.com/NVIDIA-ISAAC-ROS/ros2_benchmark.git \
+    && git -C ros2_benchmark fetch --depth=1 origin "${ROS2_BENCHMARK_COMMIT}" \
+    && git -C ros2_benchmark checkout --detach FETCH_HEAD \
+    && test "$(git -C ros2_benchmark rev-parse HEAD)" = "${ROS2_BENCHMARK_COMMIT}"
 
-COPY gpu_ros_object_detection/docker/patches/ros2-benchmark-v4.5-standalone.patch /tmp/
-WORKDIR /opt/src/ros2_benchmark
-RUN git apply --check /tmp/ros2-benchmark-v4.5-standalone.patch \
-    && git apply /tmp/ros2-benchmark-v4.5-standalone.patch
+COPY gpu_ros_object_detection/docker/prepare_ros2_benchmark_standalone.py /usr/local/bin/prepare-ros2-benchmark-standalone
+RUN python3 /usr/local/bin/prepare-ros2-benchmark-standalone \
+      --source-root /opt/src/ros2_benchmark \
+      --expected-commit "${ROS2_BENCHMARK_COMMIT}" \
+    && git -C /opt/src/ros2_benchmark diff --binary \
+      > /tmp/ros2-benchmark-standalone.patch \
+    && test -s /tmp/ros2-benchmark-standalone.patch \
+    && git -C /opt/src/ros2_benchmark checkout -- \
+      ros2_benchmark/CMakeLists.txt \
+      ros2_benchmark/package.xml \
+      ros2_benchmark_interfaces/CMakeLists.txt \
+      ros2_benchmark_interfaces/package.xml \
+    && git -C /opt/src/ros2_benchmark apply --check \
+      /tmp/ros2-benchmark-standalone.patch \
+    && git -C /opt/src/ros2_benchmark apply \
+      /tmp/ros2-benchmark-standalone.patch \
+    && git -C /opt/src/ros2_benchmark diff --check
 
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" \
     && colcon --log-base /tmp/ros2_benchmark_log build \
@@ -206,28 +209,21 @@ COPY --from=ros2-benchmark-builder /opt/ros2_benchmark /opt/ros2_benchmark
 # The build toolchain needed by gpu_ros_object_detection/tools/build-phase2a-external-ort.sh
 # in the final image so that source, patches, build trees and installs can remain on
 # the host/SIF bind mounts rather than being hidden in an image layer.
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgmock-dev \
-    libgtest-dev \
-    ninja-build \
-    patch \
-    python3-dev \
-    python3-packaging \
-    python3-setuptools \
-    python3-wheel \
-    && rm -rf /var/lib/apt/lists/*
 
 ARG AMD_BASE_IMAGE
 ARG AMD_GPU_TARGETS
-ARG ROS_DISTRO=jazzy
-ARG ROS2_BENCHMARK_REF=v4.5-0
+ARG ROS_DISTRO=lyrical
+ARG ROS2_BENCHMARK_COMMIT
+ARG ISAAC_ROS_BASE_IMAGE
+ARG ROS_LYRICAL_APT_PACKAGE_SPECS
 COPY gpu_ros_object_detection/config/onnxruntime.lock /tmp/onnxruntime.lock
 RUN . /tmp/onnxruntime.lock \
+    && ROS_PACKAGE_LOCK_SHA256="$(python3 -c 'import json; print(json.load(open("/var/lib/gpu-ros/isaac-ros-5-ros-package-lock.json"))["package_specs_sha256"])')" \
     && mkdir -p /opt/ovg \
-    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","ros2_benchmark_ref":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
+    && printf '{"base_image":"%s","rocm":"7.1.1","ort":"%s","ros_distro":"%s","isaac_ros_base_image":"%s","ros_package_lock_sha256":"%s","ros2_benchmark_commit":"%s","gpu_targets":"%s","provider_patches":["migraphx-enable-gridsample","migraphx-int64-div-cpu-fallback-v1"]}\n' \
       "${AMD_BASE_IMAGE:-rocm/dev-ubuntu-24.04:7.1.1-complete}" \
-      "${ORT_VERSION}" "${ROS_DISTRO}" "${ROS2_BENCHMARK_REF}" "${AMD_GPU_TARGETS:-}" \
+      "${ORT_VERSION}" "${ROS_DISTRO}" "${ISAAC_ROS_BASE_IMAGE}" \
+      "${ROS_PACKAGE_LOCK_SHA256}" "${ROS2_BENCHMARK_COMMIT}" "${AMD_GPU_TARGETS:-}" \
       > /opt/ovg/image-manifest.json
 
 COPY gpu_ros_object_detection/docker/phase2a-amd-entrypoint.sh /usr/local/bin/phase2-amd-entrypoint.sh

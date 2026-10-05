@@ -66,7 +66,7 @@ ros2 run gpu_ros_detection_validation run_nvidia_fixed_input_capture.sh \
 Invoke the same command separately for each other requested lane. Do not run
 capture lanes concurrently on one GPU.
 
-The NVIDIA runner also requires a matching Jazzy component-container start PID
+The NVIDIA runner requires a matching Lyrical component-container start PID
 and clean exit record. A nonzero component exit fails even when the launch or
 profiling wrapper returns zero. Missing or contradictory records mean clean
 exit is unconfirmed, not that a crash was proved. SIGTERM/SIGKILL escalation

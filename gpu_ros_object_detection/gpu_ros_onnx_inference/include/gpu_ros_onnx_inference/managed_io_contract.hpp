@@ -41,6 +41,8 @@ size_t ManagedTensorByteSize(const ManagedTensorContract & contract);
 void ValidateManagedTensorContracts(Ort::Session & session,
   const std::vector<ManagedTensorContract> & inputs,
   const std::vector<ManagedTensorContract> & outputs);
+void ValidateManagedOutputContracts(
+  Ort::Session & session, const std::vector<ManagedTensorContract> & outputs);
 
 } // namespace gpu_ros::onnx_inference
 

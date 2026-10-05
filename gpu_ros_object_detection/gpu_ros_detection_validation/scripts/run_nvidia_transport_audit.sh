@@ -64,9 +64,9 @@ if [[ ${MODEL} == yolov8 ]]; then
   REFERENCE_LANE="yolov8-c"
   MANAGED_LANE="yolov8-managed"
 else
-  # input_tensor is 1x3x640x640 float32; the three RT-DETR outputs are
-  # labels(100 int64), boxes(100x4 float32), and scores(100 float32).
-  PAYLOAD_SIZES=(4915200 800 1600 400)
+  # Formal RT-DETR payloads: images=4915200, orig_target_sizes=16,
+  # labels=800, boxes=1600, and scores=400 bytes.
+  PAYLOAD_SIZES=(4915200 16 800 1600 400)
   REFERENCE_LANE="rtdetr-c"
   MANAGED_LANE="rtdetr-managed"
 fi
@@ -84,7 +84,7 @@ if [[ ! -x ${CAPTURE_RUNNER} ]]; then
   exit 1
 fi
 
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then
   set +u
   # shellcheck disable=SC1090
@@ -104,25 +104,44 @@ for command_name in awk ctest find grep nsys ros2 tee; do
     exit 1
   fi
 done
-if [[ ! -d ${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference ]]; then
-  echo "ERROR: build gpu_ros_onnx_inference before running the audit." >&2
-  exit 1
-fi
+for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference; do
+  if [[ ! -d ${WORKSPACE_ROOT}/build/${package} ]]; then
+    echo "ERROR: build ${package} before running the audit." >&2
+    exit 1
+  fi
+done
 
 mkdir -p "${ORT_ROOT}" "${NSYS_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
   "${REPORT_ROOT}" "${LOG_ROOT}"
 
-echo "Running pointer-identity, lifetime and CUDA I/O Binding tests..."
-ctest \
-  --test-dir "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
-  --tests-regex 'test_(nitros_managed_tensor_bundle_adapter|onnx_inference_core)' \
-  --output-on-failure \
-  --verbose \
-  2>&1 | tee "${LOG_ROOT}/ctest.log"
-if ! grep -Eq 'tests failed out of ([2-9]|[1-9][0-9]+)' "${LOG_ROOT}/ctest.log"; then
-  echo "ERROR: fewer than two required C++ transport tests were executed." >&2
-  exit 1
-fi
+run_required_ctest() {
+  local test_dir="$1"
+  local test_name="$2"
+  local log_path="$3"
+
+  ctest \
+    --test-dir "${test_dir}" \
+    --tests-regex "^${test_name}$" \
+    --output-on-failure \
+    --verbose \
+    --no-tests=error \
+    2>&1 | tee "${log_path}"
+  if ! grep -Eq '100% tests passed, 0 tests failed out of 1' "${log_path}" ||
+    ! grep -Eq "1/1 Test #[0-9]+: ${test_name}.*Passed" "${log_path}"; then
+    echo "ERROR: expected exactly one passing ${test_name} CTest entry." >&2
+    return 1
+  fi
+}
+
+echo "Running native TensorList adapter and ONNX inference core CTests..."
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_nvidia_tensor_bundle_compat" \
+  test_tensor_list_buffer_adapter \
+  "${LOG_ROOT}/ctest_tensor_list_buffer_adapter.log"
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
+  test_onnx_inference_core \
+  "${LOG_ROOT}/ctest_onnx_inference_core.log"
 
 run_capture() {
   local lane="$1"
@@ -141,7 +160,7 @@ run_capture() {
     "${CAPTURE_RUNNER}" "${lane}" "${output_name}"
 }
 
-echo "Capturing ${MODEL} Config C (ORT CUDA + NITROS)..."
+echo "Capturing ${MODEL} Config C (ORT CUDA + native TensorList)..."
 run_capture "${REFERENCE_LANE}" config_c \
   "${ORT_ROOT}/config_c_" "${NSYS_ROOT}/config_c" \
   "${BINDING_ROOT}/config_c.json"

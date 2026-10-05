@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config A_fp32 benchmark: TensorRT FP32 + NITROS.
+"""Config A_fp32 benchmark: TensorRT FP32 + native TensorList.
 
 This is the precision-aligned counterpart to config C/D, which currently run
 ORT against the FP32 ONNX model. Config A remains the Phase 0 / NVIDIA-style
@@ -111,10 +111,10 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigAFp32(ROS2BenchmarkTest):
-    """Config A_fp32: TensorRT FP32 + NITROS."""
+    """Config A_fp32: TensorRT FP32 + native TensorList."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS RT-DETR (NVIDIA reference A_fp32: TRT FP32 + NITROS)',
+        benchmark_name='GPU ROS RT-DETR (NVIDIA reference A_fp32: TRT FP32 + TensorList)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

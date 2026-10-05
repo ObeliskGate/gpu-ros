@@ -37,6 +37,7 @@
 #include "gpu_ros_managed_tensor_bundle/type_adapter.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 #include "gpu_ros_onnx_inference/staging_pool_limits.hpp"
+#include "rosidl_buffer/buffer.hpp"
 
 namespace gpu_ros::onnx_inference
 {
@@ -157,6 +158,8 @@ private:
       blocks.reserve(message->tensors.size());
       copy_submitted.reserve(message->tensors.size());
       writer_active.reserve(message->tensors.size());
+      std::vector<std::vector<int64_t>> shapes;
+      shapes.reserve(message->tensors.size());
       std::vector<gpu_ros_managed::ManagedTensor> tensors;
       tensors.reserve(message->tensors.size());
 
@@ -169,7 +172,10 @@ private:
       };
 
       for (const auto & tensor : message->tensors) {
-        const std::vector<int64_t> shape(tensor.shape.begin(), tensor.shape.end());
+        std::vector<int64_t> shape =
+          tensor.shape.get_backend_type() == "cpu"
+            ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
+            : tensor.shape.to_vector();
         const auto dtype = static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type);
         const size_t bytes = gpu_ros_managed::tensor_byte_size(shape, dtype);
         if (tensor.data.size() < bytes) {
@@ -182,7 +188,7 @@ private:
           ++pool_exhaustion_drops_;
           throw std::runtime_error("Std-to-Managed HIP pool exhausted for '" + tensor.name + "'");
         }
-        block->writer.retain_owner(std::static_pointer_cast<const void>(message));
+        shapes.push_back(std::move(shape));
         blocks.push_back(std::move(block));
         copy_submitted.push_back(false);
         writer_active.push_back(true);
@@ -190,10 +196,21 @@ private:
 
       for (size_t index = 0; index < message->tensors.size(); ++index) {
         const auto & tensor = message->tensors[index];
+        const auto dtype = static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type);
         const size_t bytes = blocks[index]->buffer->size();
+        std::shared_ptr<std::vector<uint8_t>> host_data;
+        const uint8_t * input_data = nullptr;
+        if (tensor.data.get_backend_type() == "cpu") {
+          input_data = tensor.data.data();
+          blocks[index]->writer.retain_owner(std::static_pointer_cast<const void>(message));
+        } else {
+          host_data = std::make_shared<std::vector<uint8_t>>(tensor.data.to_vector());
+          input_data = host_data->data();
+          blocks[index]->writer.retain_owner(std::static_pointer_cast<const void>(host_data));
+        }
         copy_submitted[index] = true;
-        const auto result = hipMemcpyAsync(blocks[index]->writer.data(), tensor.data.data(), bytes,
-          hipMemcpyHostToDevice, stream_.get());
+        const auto result = hipMemcpyAsync(
+          blocks[index]->writer.data(), input_data, bytes, hipMemcpyHostToDevice, stream_.get());
         if (result != hipSuccess) {
           throw std::runtime_error(
             "Std-to-Managed HIP H2D copy failed: " + std::string(hipGetErrorName(result)) + " (" +
@@ -201,11 +218,7 @@ private:
         }
         blocks[index]->writer.finalize();
         writer_active[index] = false;
-        const auto & source = message->tensors[index];
-        const auto shape = std::vector<int64_t>(source.shape.begin(), source.shape.end());
-        tensors.emplace_back(source.name,
-          static_cast<gpu_ros_managed::TensorDataType>(source.data_type), shape,
-          blocks[index]->buffer);
+        tensors.emplace_back(tensor.name, dtype, std::move(shapes[index]), blocks[index]->buffer);
       }
       publisher_.publish(gpu_ros_managed::ManagedTensorBundle(message->header, std::move(tensors)));
     } catch (const std::exception & error) {

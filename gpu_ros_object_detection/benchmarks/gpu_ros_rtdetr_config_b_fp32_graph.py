@@ -20,8 +20,8 @@
 
 This pairs with A_fp32/C/D for a precision-aligned FP32 matrix. It keeps
 TensorRT FP32 while using the project-owned standard RT-DETR preprocessor and
-decoder with explicit TensorBundle/NITROS compatibility boundaries. It is not
-the FP16 run and is not a transport-only ablation.
+decoder with explicit TensorBundle/TensorList compatibility boundaries. It is
+not the FP16 run and is not a transport-only ablation.
 """
 
 import os

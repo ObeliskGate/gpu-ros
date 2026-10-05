@@ -88,17 +88,32 @@ fresh dependency-image build.
 
 ## Runtime and asset boundaries
 
-The AMD compatibility target is ROS 2 Jazzy, Ubuntu 24.04, ROCm 7.1.1, the
+The AMD migration target is ROS 2 Lyrical, Ubuntu 24.04, ROCm 7.1.1, the
 actual device target, and the external ONNX Runtime 1.23.1/MIGraphX install
 selected by the [ORT lock](gpu_ros_object_detection/config/onnxruntime.lock).
-The checkout and workspace remain `/workspaces/gpu-ros`. The detection
-subdirectory is not `OVG_WORKSPACE_ROOT`. Image `/opt/onnxruntime` content is
-not a formal runtime fallback.
+Lyrical GPU acceptance remains pending; historical Jazzy runs retain their
+original identities. The checkout and workspace remain `/workspaces/gpu-ros`.
+The detection subdirectory is not `OVG_WORKSPACE_ROOT`. Image `/opt/onnxruntime`
+content is not a formal runtime fallback.
 
-NVIDIA uses the pinned Isaac ROS 4.5-compatible runtime and
-[external-source manifest](gpu_ros_object_detection/external/nvidia-isaac-ros.repos).
+NVIDIA targets an official Isaac ROS 5.0 Docker image with ROS 2 Lyrical.
+Its immutable image identity and paired package versions are the ROS dependency
+authority, including the CUDA Buffer backend. Upstream research commits are
+not substitute installation pins. Reuse image packages; source overlays are
+only for missing dependencies whose revisions can be traced to that image.
+The target image has not yet been validated by this migration.
 Its outer workspace remains `/workspaces/isaac_ros-dev`; this repository is
-mounted at `src/gpu-ros`, with external checkouts under `src/nvidia_external`.
+mounted at `src/gpu-ros`, with any required external checkouts under
+`src/nvidia_external`. Set `GPU_ROS_NVIDIA_PROFILE=1` before NVIDIA colcon
+discovery, and `0` for CPU/AMD package discovery.
+
+New NVIDIA image builds require digest-qualified `ISAAC_ROS_BASE_IMAGE`.
+CPU/AMD ROS installation additionally requires the complete, exact
+`ROS_LYRICAL_APT_PACKAGE_SPECS` inventory from that baseline; AMD builds also
+require image-paired `ROS2_BENCHMARK_COMMIT`. Missing inputs fail explicitly,
+without latest-version fallback. Existing-image Compose `config`, `exec`,
+and `up --no-build` do not require build-only inputs. See the
+[version and source contract](skills/gpu-ros-experiments/references/README.md#image-authoritative-ros-versions-and-optional-nvidia-sources).
 
 Reuse verified model and runtime bytes. Keep external checkouts, ORT installs,
 models, checkpoints, datasets, bags, caches, traces, images, build/install/log

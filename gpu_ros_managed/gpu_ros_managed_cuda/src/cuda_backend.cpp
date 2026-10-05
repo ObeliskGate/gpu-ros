@@ -124,19 +124,20 @@ std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int device_id)
   // allocation before moving its owner into the DeviceBuffer.
   void * pointer = owner.get();
   return detail::DeviceBufferFactory::make_fresh(
-    {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops());
+    {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops(), {});
 }
-std::shared_ptr<DeviceBuffer> adopt_external(
-  void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner)
+std::shared_ptr<DeviceBuffer> adopt_external(void * pointer, size_t bytes, int device_id,
+  std::shared_ptr<void> owner, std::shared_ptr<const DeviceBufferAttachment> attachment)
 {
-  return detail::DeviceBufferFactory::make_fresh(
-    {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops());
+  return detail::DeviceBufferFactory::make_fresh({BackendKind::kCuda, device_id}, pointer, bytes,
+    std::move(owner), ops(), std::move(attachment));
 }
-std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
-  void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner)
+std::shared_ptr<DeviceBuffer> adopt_synchronized_external(void * pointer, size_t bytes,
+  int device_id, std::shared_ptr<void> owner,
+  std::shared_ptr<const DeviceBufferAttachment> attachment)
 {
-  return detail::DeviceBufferFactory::make_ready(
-    {BackendKind::kCuda, device_id}, pointer, bytes, std::move(owner), ops());
+  return detail::DeviceBufferFactory::make_ready({BackendKind::kCuda, device_id}, pointer, bytes,
+    std::move(owner), ops(), std::move(attachment));
 }
 FixedDeviceMemoryPool make_fixed_device_pool(size_t block_size, size_t block_count, int device_id)
 {

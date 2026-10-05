@@ -9,7 +9,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
@@ -69,7 +69,7 @@ option(
 # The AMD profile deliberately does not provide isaac_ros_test, which is only
 # needed by the legacy NVIDIA POL. Force the legacy option off for the AMD
 # MIGraphX profile so a stale CMake cache cannot re-register that test.
-if(NOT BUILD_NITROS_TRANSPORT AND ORT_ENABLE_MIGRAPHX)
+if(NOT BUILD_NATIVE_TENSOR_LIST_TRANSPORT AND ORT_ENABLE_MIGRAPHX)
   set(BUILD_NVIDIA_YOLOV8_POL_TEST OFF CACHE BOOL
     "Build the existing NVIDIA std YOLOv8 proof-of-life test (opt-in)" FORCE)
 endif()
@@ -87,6 +87,8 @@ if(BUILD_TESTING)
   ament_add_gtest(test_yolov8_decoder test/test_yolov8_decoder.cpp)
   if(TARGET test_yolov8_decoder)
     target_link_libraries(test_yolov8_decoder yolov8_decoder_core)
+    ament_target_dependencies(test_yolov8_decoder
+      gpu_ros_tensor_bundle_msgs rosidl_buffer)
   endif()
 
   if(BUILD_NVIDIA_YOLOV8_POL_TEST OR BUILD_YOLOV8_MIGRAPHX_POL_TEST)

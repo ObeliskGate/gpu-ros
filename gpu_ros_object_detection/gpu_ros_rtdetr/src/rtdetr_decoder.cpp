@@ -21,12 +21,80 @@
 #include "gpu_ros_rtdetr/rtdetr_decoder.hpp"
 
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
+
+#include "rosidl_buffer/buffer.hpp"
 
 namespace gpu_ros::rtdetr
 {
+namespace
+{
+template <typename T>
+std::vector<T> TensorToVector(const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & message,
+  const std::string & name, uint8_t expected_dtype, const std::vector<int64_t> & expected_shape)
+{
+  for (const auto & tensor : message.tensors) {
+    if (tensor.name != name) {
+      continue;
+    }
+    bool shape_matches = false;
+    if (tensor.shape.get_backend_type() == "cpu") {
+      shape_matches = tensor.shape == expected_shape;
+    } else {
+      const auto host_shape = tensor.shape.to_vector();
+      shape_matches = host_shape == expected_shape;
+    }
+    size_t expected_elements = 1U;
+    for (const auto dimension : expected_shape) {
+      if (dimension <= 0 || expected_elements > std::numeric_limits<size_t>::max() / dimension) {
+        throw std::invalid_argument("RT-DETR tensor contract size overflow");
+      }
+      expected_elements *= static_cast<size_t>(dimension);
+    }
+    if (expected_elements > std::numeric_limits<size_t>::max() / sizeof(T)) {
+      throw std::invalid_argument("RT-DETR tensor byte size overflow");
+    }
+    const size_t expected_bytes = expected_elements * sizeof(T);
+    if (tensor.data_type != expected_dtype || !shape_matches ||
+        tensor.data.size() != expected_bytes)
+    {
+      throw std::invalid_argument("RT-DETR tensor '" + name + "' has the wrong contract");
+    }
+
+    std::vector<uint8_t> host_data;
+    const uint8_t * data = nullptr;
+    if (tensor.data.get_backend_type() == "cpu") {
+      data = tensor.data.data();
+    } else {
+      host_data = tensor.data.to_vector();
+      data = host_data.data();
+    }
+    std::vector<T> values(expected_elements);
+    std::memcpy(values.data(), data, expected_bytes);
+    return values;
+  }
+  throw std::invalid_argument("RT-DETR tensor '" + name + "' not found");
+}
+} // namespace
+
+vision_msgs::msg::Detection2DArray DecodeRtDetrTensorBundle(
+  const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & message, const RtDetrDecoderConfig & config)
+{
+  const auto labels = TensorToVector<int64_t>(
+    message, config.labels_tensor_name, gpu_ros_tensor_bundle_msgs::msg::Tensor::INT64, {1, 300});
+  const auto boxes = TensorToVector<float>(message, config.boxes_tensor_name,
+    gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32, {1, 300, 4});
+  const auto scores = TensorToVector<float>(
+    message, config.scores_tensor_name, gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32, {1, 300});
+  return DecodeRtDetrValues(message.header, labels.data(), labels.size(), boxes.data(),
+    boxes.size(), scores.data(), scores.size(), config);
+}
 
 vision_msgs::msg::Detection2DArray DecodeRtDetrValues(const std_msgs::msg::Header & header,
   const int64_t * labels, size_t label_count, const float * boxes, size_t box_value_count,

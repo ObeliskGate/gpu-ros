@@ -148,10 +148,11 @@ def compare(
     resulting report keeps the historical ``pass``/``criteria``/``memcpy``
     sections and adds explicit PASS/FAIL/INCONCLUSIVE evidence sections.
     """
+    payload_size_set = {int(size) for size in payload_sizes}
     result = build_pair_report(
         config_c_events,
         managed_events,
-        payload_sizes,
+        payload_size_set,
         reference_frames=config_c_frames,
         managed_frames=managed_frames,
         max_payload_copy_rate_delta=max_payload_copy_rate_delta,
@@ -161,6 +162,9 @@ def compare(
         profiler_complete=profiler_complete,
         kernel_payload_risk_names=kernel_payload_risk_names,
         binding_reports=binding_reports,
+        expected_binding_transports={'reference': 'tensor_list', 'managed': 'managed'},
+        required_binding_payload_sizes=payload_size_set,
+        require_native_output_pointer_identity=True,
     )
     return result
 

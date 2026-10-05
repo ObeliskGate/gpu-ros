@@ -28,6 +28,7 @@
 
 #include "std_msgs/msg/header.hpp"
 #include "vision_msgs/msg/detection2_d_array.hpp"
+#include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 
 namespace gpu_ros::rtdetr
 {
@@ -43,6 +44,9 @@ struct RtDetrDecoderConfig
 vision_msgs::msg::Detection2DArray DecodeRtDetrValues(const std_msgs::msg::Header & header,
   const int64_t * labels, size_t label_count, const float * boxes, size_t box_value_count,
   const float * scores, size_t score_count, const RtDetrDecoderConfig & config);
+vision_msgs::msg::Detection2DArray DecodeRtDetrTensorBundle(
+  const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & message,
+  const RtDetrDecoderConfig & config);
 
 } // namespace gpu_ros::rtdetr
 

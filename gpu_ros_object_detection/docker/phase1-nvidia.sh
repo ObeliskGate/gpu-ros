@@ -4,26 +4,36 @@ trap 'echo "ERROR: Phase 1 NVIDIA setup failed at line ${LINENO}: ${BASH_COMMAND
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/gpu_ros_object_detection/docker/docker-compose.yaml"
-EXPECTED_BASE="nvcr.io/nvidia/isaac/ros:isaac_ros_89df02a734965ed64c227ef531c09d65-amd64"
 ORT_LOCK="${ROOT_DIR}/gpu_ros_object_detection/config/onnxruntime.lock"
 # shellcheck source=/dev/null
 source "${ORT_LOCK}"
 GPU_ROS_REPO_ROOT="${GPU_ROS_REPO_ROOT:-${ISAAC_ROS_WS:-/workspaces/isaac_ros-dev}/src/gpu-ros}"
 export GPU_ROS_REPO_ROOT
-EXPECTED_OBJECT_DETECTION_COMMIT="060ced887bd8a3a0be60b1fa454365942eefd128"
-EXPECTED_BENCHMARK_COMMIT="f46699e124262c5bfb6f00099061f6718f026b3f"
 
 cd "${ROOT_DIR}" || exit
 COMPOSE=(docker compose -f "${COMPOSE_FILE}")
 
 check_pins() {
-  grep -Fqx "FROM ${EXPECTED_BASE}" gpu_ros_object_detection/docker/Dockerfile || {
-    echo "ERROR: Dockerfile no longer uses the Phase 1 Isaac ROS image." >&2
+  grep -Fqx "ARG ISAAC_ROS_BASE_IMAGE" gpu_ros_object_detection/docker/Dockerfile || {
+    echo "ERROR: NVIDIA Dockerfile must consume ISAAC_ROS_BASE_IMAGE." >&2
+    exit 1
+  }
+  grep -Fq "ISAAC_ROS_BASE_IMAGE: \${ISAAC_ROS_BASE_IMAGE:-}" \
+    gpu_ros_object_detection/docker/docker-compose.yaml || {
+    echo "ERROR: NVIDIA Compose must pass the optional image build argument without blocking no-build commands." >&2
     exit 1
   }
   grep -Fq "COPY gpu_ros_object_detection/config/onnxruntime.lock" gpu_ros_object_detection/docker/Dockerfile || {
     echo "ERROR: Dockerfile no longer reads the ONNX Runtime lock." >&2
     exit 1
+  }
+}
+
+require_base_image_for_build() {
+  local image="${ISAAC_ROS_BASE_IMAGE:-}"
+  [[ "${image}" =~ ^nvcr\.io/nvidia/isaac/ros(:[^@[:space:]]+)?@sha256:[0-9a-f]{64}$ ]] || {
+    echo "BLOCKED: set ISAAC_ROS_BASE_IMAGE to the official Isaac ROS 5.0 reference including its verified sha256 digest before building." >&2
+    return 1
   }
 }
 
@@ -57,49 +67,30 @@ check_host() {
   command -v nvidia-smi >/dev/null
   nvidia-smi >/dev/null
   check_pins
-  [[ -n "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT:-}" ]] || {
-    echo "ERROR: set OVG_NVIDIA_EXTERNAL_SOURCE_ROOT to an explicit external checkout." >&2
-    exit 1
-  }
-  [[ -d "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection/.git" ]] || {
-    echo "ERROR: external isaac_ros_object_detection checkout is missing." >&2
-    exit 1
-  }
-  [[ -d "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark/.git" ]] || {
-    echo "ERROR: external isaac_ros_benchmark checkout is missing." >&2
-    exit 1
-  }
-  local object_detection_commit benchmark_commit
-  object_detection_commit="$(
-    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_object_detection" rev-parse HEAD
-  )"
-  benchmark_commit="$(
-    git -C "${OVG_NVIDIA_EXTERNAL_SOURCE_ROOT}/isaac_ros_benchmark" rev-parse HEAD
-  )"
-  [[ "${object_detection_commit}" == "${EXPECTED_OBJECT_DETECTION_COMMIT}" ]] || {
-    echo "ERROR: external isaac_ros_object_detection is not at the manifest commit." >&2
-    exit 1
-  }
-  [[ "${benchmark_commit}" == "${EXPECTED_BENCHMARK_COMMIT}" ]] || {
-    echo "ERROR: external isaac_ros_benchmark is not at the manifest commit." >&2
-    exit 1
-  }
   report_repo_state "gpu-ros" "${ROOT_DIR}"
   echo "Monorepo commit is recorded; compatibility is decided by build/tests."
-  echo "NVIDIA Phase 1 environment: Isaac ROS pinned image, ORT ${ORT_VERSION}"
+  echo "NVIDIA Phase 1 runtime contract: Lyrical, native TensorList, ORT ${ORT_VERSION}"
 }
 
 verify_container() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
-    source /opt/ros/jazzy/setup.bash
+    set -euo pipefail
+    source /opt/ros/lyrical/setup.bash
+    test "${ROS_DISTRO}" = lyrical
+    test "${GPU_ROS_NVIDIA_PROFILE}" = 1
     test "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}" = \
       /workspaces/isaac_ros-dev/assets
     test -d "${ROS2_BENCHMARK_OVERRIDE_ASSETS_ROOT}"
     nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
     test -f /opt/onnxruntime/include/onnxruntime_cxx_api.h
     test -e /opt/tritonserver/backends/onnxruntime/libonnxruntime.so
-    ros2 pkg prefix isaac_ros_rtdetr_benchmark
-    ros2 pkg prefix isaac_ros_grounding_dino_benchmark
+    for package in \
+      rclcpp rosidl_buffer cuda_buffer cuda_buffer_backend \
+      isaac_ros_tensor_list_interfaces isaac_ros_benchmark ros2_benchmark \
+      isaac_ros_image_proc isaac_ros_tensor_proc isaac_ros_rtdetr \
+      isaac_ros_yolov8 isaac_ros_tensor_rt; do
+      ros2 pkg prefix "${package}"
+    done
   '
 }
 
@@ -117,7 +108,14 @@ verify_release_caches() {
         exit 1
       }
     done
-    source /opt/ros/jazzy/setup.bash
+    grep -Fqx "BUILD_NATIVE_TENSOR_LIST_TRANSPORT:BOOL=ON" \
+      /workspaces/isaac_ros-dev/build/gpu_ros_onnx_inference/CMakeCache.txt || {
+        echo "ERROR: native TensorList transport was not enabled for the NVIDIA profile." >&2
+        exit 1
+      }
+    test "${ROS_DISTRO}" = lyrical
+    test "${GPU_ROS_NVIDIA_PROFILE}" = 1
+    source /opt/ros/lyrical/setup.bash
     source install/setup.bash
     ros2 pkg prefix gpu_ros_managed_core
     ros2 pkg prefix gpu_ros_managed_cuda
@@ -130,7 +128,9 @@ verify_release_caches() {
 
 build_workspace() {
   "${COMPOSE[@]}" exec -T dev bash -lc '
-    source /opt/ros/jazzy/setup.bash
+    test "${ROS_DISTRO}" = lyrical
+    test "${GPU_ROS_NVIDIA_PROFILE}" = 1
+    source /opt/ros/lyrical/setup.bash
     colcon build
   '
   verify_release_caches
@@ -139,12 +139,14 @@ build_workspace() {
 case "${1:-bootstrap}" in
   bootstrap)
     check_host
+    require_base_image_for_build
     "${COMPOSE[@]}" build dev
     "${COMPOSE[@]}" up -d dev
     verify_container
     ;;
   build)
     check_host
+    require_base_image_for_build
     "${COMPOSE[@]}" build dev
     ;;
   up)
@@ -161,7 +163,7 @@ case "${1:-bootstrap}" in
     ;;
   shell)
     "${COMPOSE[@]}" exec dev bash -lc '
-      source /opt/ros/jazzy/setup.bash
+      source /opt/ros/lyrical/setup.bash
       if [[ -f install/setup.bash ]]; then source install/setup.bash; fi
       exec bash
     '

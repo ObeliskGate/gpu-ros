@@ -39,6 +39,13 @@ allocation returns to the pool only after the producer and every reader have
 completed. A failed or uncertain operation is kept out of the pool rather than
 being reused unsafely.
 
+`DeviceBufferAttachment` provides an optional, immutable, backend-neutral
+interop attachment. Backend adoption factories bind it when constructing a
+buffer; `DeviceBuffer::attachment()` retrieves it without exposing allocation
+internals. Attachments survive pending producer and reader events, and remain
+retained with orphaned allocations when completion cannot be established.
+Buffers without an attachment do not allocate an attachment object.
+
 ## Packages
 
 | Package | Purpose | Requires ROS 2 |
@@ -77,9 +84,16 @@ Optional requirements depend on the packages being built:
 - The pinned NVIDIA runtime and TensorList interfaces for the optional
   compatibility package.
 
-ROS 2 Jazzy is the currently tested ROS distribution. CUDA, ROCm, and driver
-compatibility follows the toolchain used to build the application; this
-repository does not ship prebuilt binaries.
+The installed NVIDIA compatibility package exports its `CUDAToolkit`
+dependency, including `CUDA::cudart`. Consumers linking its exported CMake
+target do not need to discover CUDA separately before finding the package.
+
+ROS-facing packages target ROS 2 Lyrical and require C++20; the standalone
+core and CUDA/HIP backends retain C++17. NVIDIA ROS dependencies must match the
+selected official Isaac ROS 5.0 Docker image, not an independently chosen
+upstream commit. Target-image ROS/GPU validation and AMD Lyrical GPU validation
+remain pending; historical Jazzy results do not establish those combinations.
+This repository does not ship prebuilt binaries.
 
 ## Build the standalone library
 
@@ -130,7 +144,8 @@ the standalone CMake project and must not be discovered as another package.
 This HIP example includes the project-owned message and adapter:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+export GPU_ROS_NVIDIA_PROFILE=0
+source /opt/ros/lyrical/setup.bash
 packages=(
   gpu_ros_managed/gpu_ros_managed_core
   gpu_ros_managed/gpu_ros_managed_hip
@@ -138,8 +153,8 @@ packages=(
   gpu_ros_managed/gpu_ros_tensor_bundle_msgs
   gpu_ros_managed/gpu_ros_managed_tensor_bundle
 )
-rosdep install --from-paths "${packages[@]}" \
-  --ignore-src --rosdistro jazzy -r -y
+# Resolve dependencies against the selected image-derived ROS package versions;
+# do not let a generic rosdep install replace the pinned ROS stack.
 colcon build --symlink-install --base-paths "${packages[@]}" \
   --packages-select \
     gpu_ros_managed_core gpu_ros_managed_hip gpu_ros_managed_ros \

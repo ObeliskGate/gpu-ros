@@ -25,6 +25,7 @@
 #include "gpu_ros_managed_core/buffer.hpp"
 #include "gpu_ros_detection_common/hip_preprocess.hpp"
 #include "gpu_ros_detection_common/image_preprocess.hpp"
+#include "rosidl_buffer/buffer.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
 namespace gpu_ros::yolov8
@@ -170,11 +171,20 @@ void YoloV8ManagedHipImageEncoderNode::InputCallback(
       ++pool_exhaustion_drops_;
       throw std::runtime_error("YOLOv8 Managed raw-image pool exhausted");
     }
-    raw->writer.retain_owner(std::static_pointer_cast<const void>(message));
+    std::shared_ptr<std::vector<uint8_t>> host_image;
+    const uint8_t * image_data = nullptr;
+    if (message->data.get_backend_type() == "cpu") {
+      image_data = message->data.data();
+      raw->writer.retain_owner(std::static_pointer_cast<const void>(message));
+    } else {
+      host_image = std::make_shared<std::vector<uint8_t>>(message->data.to_vector());
+      image_data = host_image->data();
+      raw->writer.retain_owner(std::static_pointer_cast<const void>(host_image));
+    }
     raw_work_submitted = true;
-    CheckHip(hipMemcpy2DAsync(raw->writer.data(), plan.input_step, message->data.data(),
-               message->step, copy_width, plan.input_height, hipMemcpyHostToDevice, stream_->get()),
-      "YOLOv8 Managed H2D image copy");
+    CheckHip(hipMemcpy2DAsync(raw->writer.data(), plan.input_step, image_data, message->step,
+               copy_width, plan.input_height, hipMemcpyHostToDevice, stream_->get()),
+      "YOLOv8 Managed encoder hipMemcpy2DAsync");
     output_work_submitted = true;
     detection_common::LaunchHipPreprocess(
       raw->writer.data(), reinterpret_cast<float *>(output->writer.data()), plan, stream_->get());

@@ -16,12 +16,12 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config C benchmark: ONNX Runtime (CUDA EP) + NITROS transport.
+"""Config C benchmark: ONNX Runtime CUDA + native TensorList transport.
 
-Isolates the inference-backend cost under NITROS transport: upstream NITROS
-RtDetrPreprocessor/Decoder, with only the inference node swapped from TensorRT
-to OnnxInferenceNode(transport=nitros). Shares framework + preprocessing with
-the other configs (see rtdetr_common).
+Isolates the inference-backend cost under native transport: upstream RT-DETR
+pre/post-processing, with only the inference node swapped from TensorRT to
+OnnxInferenceNode(transport=tensor_list). Shares framework + preprocessing
+with the other configs (see rtdetr_common).
 """
 
 import os
@@ -59,7 +59,12 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                     TestGpuRosRtDetrConfigC.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
                 ),
                 'execution_provider': 'cuda',
-                'transport': 'nitros',
+                'transport': 'tensor_list',
+                'managed_output_contracts': [
+                    'labels=int64[1,100]',
+                    'boxes=float32[1,100,4]',
+                    'scores=float32[1,100]',
+                ],
             }
         ],
         remappings=[('tensor_input', 'tensor_pub'), ('tensor_output', 'tensor_sub')],
@@ -98,10 +103,10 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigC(ROS2BenchmarkTest):
-    """Config C: ONNX Runtime + NITROS transport."""
+    """Config C: ONNX Runtime CUDA + native TensorList transport."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS RT-DETR (NVIDIA reference C: ORT + NITROS)',
+        benchmark_name='GPU ROS RT-DETR (NVIDIA reference C: ORT + TensorList)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

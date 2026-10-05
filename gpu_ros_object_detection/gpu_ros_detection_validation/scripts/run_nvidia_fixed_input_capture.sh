@@ -69,7 +69,7 @@ case "${LANE}" in
   rtdetr-c)
     MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
     LAUNCH_PACKAGE="gpu_ros_nvidia_reference"
-    LAUNCH_FILE="rtdetr_ort_nitros.launch.py"
+    LAUNCH_FILE="rtdetr_ort_tensor_list.launch.py"
     EXTRA_LAUNCH_ARGS+=(execution_provider:=cuda)
     LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
@@ -103,7 +103,7 @@ case "${LANE}" in
     LAUNCH_PACKAGE="gpu_ros_nvidia_reference"
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
-    EXTRA_LAUNCH_ARGS+=(transport:=nitros execution_provider:=cuda)
+    EXTRA_LAUNCH_ARGS+=(transport:=tensor_list execution_provider:=cuda)
     LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
       /detections_output
@@ -239,7 +239,7 @@ if [[ -n ${ORT_PROFILE_PREFIX} ]]; then
   fi
 fi
 
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then
   set +u
   # The selected ROS distribution supplies this setup file outside the repository.
@@ -380,7 +380,7 @@ check_component_exit() {
     return 1
   fi
 
-  # Jazzy launch's ExecuteLocal emits these exact process lifecycle records.
+  # ROS 2 launch's ExecuteLocal emits these process lifecycle records.
   # ComposableNodeContainer uses component_container_mt as its executable;
   # launch_ros labels this process with the executable basename by default.
   if result="$(
@@ -435,7 +435,7 @@ check_component_exit() {
       }
       END {
         if (malformed) {
-          print "component exit is unconfirmed: a component_container_mt lifecycle record does not match the Jazzy format."
+          print "component exit is unconfirmed: a component_container_mt lifecycle record does not match the expected ROS 2 launch format."
           exit 1
         }
         if (start_count == 0) {
@@ -461,7 +461,8 @@ check_component_exit() {
         }
         if (end_kind == "death") {
           if (end_exit_code == 0) {
-            print "component exit is contradictory: Jazzy death record reports exit code 0."
+            print "component container " start_logger " (PID " start_pid \
+              ") has a ROS 2 launch death record with exit code 0."
             exit 1
           }
           print "component container " start_logger " (PID " start_pid \

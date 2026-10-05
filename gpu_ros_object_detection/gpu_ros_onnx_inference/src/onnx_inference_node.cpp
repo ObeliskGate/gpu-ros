@@ -111,8 +111,8 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   }
   ort_profile_frames_ = static_cast<size_t>(ort_profile_frames);
 
-  if (transport == "nitros" && execution_provider != ExecutionProvider::kCuda) {
-    throw std::invalid_argument("transport=nitros requires execution_provider=cuda");
+  if (transport == "tensor_list" && execution_provider != ExecutionProvider::kCuda) {
+    throw std::invalid_argument("transport=tensor_list requires execution_provider=cuda");
   }
   if (!managed_io_contract.empty() && managed_io_contract != "hip_managed_strict") {
     throw std::invalid_argument("managed_io_contract must be empty or hip_managed_strict");
@@ -240,7 +240,8 @@ void OnnxInferenceNode::OnTensors(gpu_ros_managed::ManagedTensorBundleView input
   try {
     TensorBundleOutput output;
     output.header = inputs.header();
-    output.tensors = core_->RunInference(std::move(inputs), io_->output_placement());
+    output.tensors = core_->RunInference(
+      std::move(inputs), io_->output_placement(), nullptr, io_->device_output_allocator());
     ++inference_count_;
     if (!output_probe_runtime_logged_) {
       const std::string output_probe = core_->OutputBindingProbeReport();

@@ -15,11 +15,13 @@
 """
 RT-DETR config B: TensorRT + standard ROS2-compatible migrated pipeline.
 
-The shared six-node NVIDIA/NITROS preprocessing and upstream TensorRT node are
-retained, while the RT-DETR-specific preprocessor and decoder use the project
-standard TensorBundle interface. Because TensorRTNode only speaks NITROS,
-explicit TensorBundle/NITROS compatibility boundaries surround it. This is a
-complete pipeline comparison with config A, not a transport-only ablation.
+The shared six-node native TensorList preprocessing and upstream TensorRT node
+are retained, while the RT-DETR-specific preprocessor and decoder use the
+project standard TensorBundle interface. Because TensorRTNode consumes
+TensorList, explicit TensorBundle/TensorList compatibility boundaries surround
+it. This is a complete pipeline comparison with config A, not a transport-only
+ablation.
+
 """
 
 import launch
@@ -154,9 +156,9 @@ def generate_launch_description():
         remappings=[('encoded_tensor', 'tensor_bundle_input')],
     )
 
-    # std -> NITROS bridge: the TensorRT node only speaks NITROS, and a std
-    # publisher cannot feed a NITROS subscriber directly. Converts the
-    # preprocessor's std output to NITROS on 'bridged_tensor'.
+    # std -> TensorList bridge: TensorRTNode consumes TensorList, and a std
+    # publisher cannot feed its TensorList subscriber directly. Converts the
+    # preprocessor's std output to TensorList on 'bridged_tensor'.
     bridge_node = ComposableNode(
         name='tensor_bundle_bridge',
         package='gpu_ros_onnx_inference',
@@ -174,7 +176,7 @@ def generate_launch_description():
         ],
     )
 
-    # Upstream TensorRT NITROS inference node. Reads NITROS from the bridge.
+    # Upstream TensorRT native TensorList inference node reads the bridge.
     tensor_rt_node = ComposableNode(
         name='tensor_rt',
         package='isaac_ros_tensor_rt',
@@ -196,10 +198,10 @@ def generate_launch_description():
         ],
     )
 
-    # TensorRT publishes NVIDIA's TensorList/NITROS wire type. Keep the
-    # conversion explicit at the NVIDIA boundary; gpu_ros_rtdetr itself only
-    # consumes the project-owned TensorBundle message. The NVIDIA profile must
-    # build gpu_ros_nvidia_tensor_bundle_compat alongside this launch.
+    # TensorRT publishes NVIDIA's TensorList wire type. Keep conversion explicit
+    # at the NVIDIA boundary; gpu_ros_rtdetr consumes the project TensorBundle.
+    # The NVIDIA profile must build gpu_ros_nvidia_tensor_bundle_compat
+    # alongside this launch.
     tensor_bundle_adapter_node = ComposableNode(
         name='nvidia_tensor_list_to_tensor_bundle',
         package='gpu_ros_nvidia_tensor_bundle_compat',

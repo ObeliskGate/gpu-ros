@@ -20,52 +20,15 @@
 
 #include "gpu_ros_rtdetr/rtdetr_decoder_node.hpp"
 
-#include <cstdint>
-#include <cstring>
 #include <functional>
-#include <limits>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 #include "gpu_ros_rtdetr/rtdetr_decoder.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
 namespace gpu_ros::rtdetr
 {
-namespace
-{
-template <typename T>
-std::vector<T> TensorToVector(const gpu_ros_tensor_bundle_msgs::msg::TensorBundle & message,
-  const std::string & name, uint8_t expected_dtype, const std::vector<int64_t> & expected_shape)
-{
-  for (const auto & tensor : message.tensors) {
-    if (tensor.name == name) {
-      size_t expected_elements = 1U;
-      for (const auto dimension : expected_shape) {
-        if (dimension <= 0 || expected_elements > std::numeric_limits<size_t>::max() / dimension) {
-          throw std::invalid_argument("RT-DETR tensor contract size overflow");
-        }
-        expected_elements *= dimension;
-      }
-      if (expected_elements > std::numeric_limits<size_t>::max() / sizeof(T)) {
-        throw std::invalid_argument("RT-DETR tensor byte size overflow");
-      }
-      const size_t expected_bytes = expected_elements * sizeof(T);
-      if (tensor.data_type != expected_dtype || tensor.shape != expected_shape ||
-          tensor.data.size() != expected_bytes)
-      {
-        throw std::invalid_argument("RT-DETR tensor '" + name + "' has the wrong contract");
-      }
-      std::vector<T> values(tensor.data.size() / sizeof(T));
-      std::memcpy(values.data(), tensor.data.data(), tensor.data.size());
-      return values;
-    }
-  }
-  throw std::invalid_argument("RT-DETR tensor '" + name + "' not found");
-}
-} // namespace
-
 RtDetrDecoderNode::RtDetrDecoderNode(const rclcpp::NodeOptions options)
     : rclcpp::Node("rtdetr_decoder_node", options),
       labels_tensor_name_{declare_parameter<std::string>("labels_tensor_name", "labels")},
@@ -81,19 +44,12 @@ RtDetrDecoderNode::RtDetrDecoderNode(const rclcpp::NodeOptions options)
 void RtDetrDecoderNode::InputCallback(const TensorBundle::SharedPtr msg)
 {
   try {
-    const auto labels = TensorToVector<int64_t>(
-      *msg, labels_tensor_name_, gpu_ros_tensor_bundle_msgs::msg::Tensor::INT64, {1, 300});
-    const auto boxes = TensorToVector<float>(
-      *msg, boxes_tensor_name_, gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32, {1, 300, 4});
-    const auto scores = TensorToVector<float>(
-      *msg, scores_tensor_name_, gpu_ros_tensor_bundle_msgs::msg::Tensor::FLOAT32, {1, 300});
     RtDetrDecoderConfig config;
     config.labels_tensor_name = labels_tensor_name_;
     config.boxes_tensor_name = boxes_tensor_name_;
     config.scores_tensor_name = scores_tensor_name_;
     config.confidence_threshold = confidence_threshold_;
-    pub_->publish(DecodeRtDetrValues(msg->header, labels.data(), labels.size(), boxes.data(),
-      boxes.size(), scores.data(), scores.size(), config));
+    pub_->publish(DecodeRtDetrTensorBundle(*msg, config));
   } catch (const std::exception & error) {
     RCLCPP_ERROR(get_logger(), "Failed to decode RT-DETR TensorBundle: %s", error.what());
   }

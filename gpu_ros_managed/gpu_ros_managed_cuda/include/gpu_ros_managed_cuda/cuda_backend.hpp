@@ -32,10 +32,11 @@ CudaStream make_stream(int device_id);
 CudaStream wrap_borrowed_stream(
   cudaStream_t stream, int device_id, std::shared_ptr<void> owner = {});
 std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int device_id);
-std::shared_ptr<DeviceBuffer> adopt_external(
-  void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner);
-std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
-  void * pointer, size_t bytes, int device_id, std::shared_ptr<void> owner);
+std::shared_ptr<DeviceBuffer> adopt_external(void * pointer, size_t bytes, int device_id,
+  std::shared_ptr<void> owner, std::shared_ptr<const DeviceBufferAttachment> attachment = {});
+std::shared_ptr<DeviceBuffer> adopt_synchronized_external(void * pointer, size_t bytes,
+  int device_id, std::shared_ptr<void> owner,
+  std::shared_ptr<const DeviceBufferAttachment> attachment = {});
 FixedDeviceMemoryPool make_fixed_device_pool(size_t block_size, size_t block_count, int device_id);
 bool wait_for_pending_releases(std::chrono::milliseconds timeout);
 } // namespace gpu_ros_managed::cuda

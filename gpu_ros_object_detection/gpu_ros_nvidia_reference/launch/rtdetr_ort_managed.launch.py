@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""RT-DETR: official NITROS pre/post-processing with Managed ORT transport."""
+"""RT-DETR: official TensorList pre/post-processing with Managed ORT transport."""
 
 import launch
 from launch.actions import DeclareLaunchArgument
@@ -132,6 +132,11 @@ def generate_launch_description():
                 'ort_profile_frames': ort_profile_frames,
                 'binding_report_path': binding_report_path,
                 'transport': 'managed',
+                'managed_output_contracts': [
+                    'labels=int64[1,100]',
+                    'boxes=float32[1,100,4]',
+                    'scores=float32[1,100]',
+                ],
             }
         ],
         remappings=[

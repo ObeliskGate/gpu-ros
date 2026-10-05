@@ -13,11 +13,11 @@
 # limitations under the License.
 
 """
-RT-DETR config C: ONNX Runtime + NITROS transport.
+RT-DETR config C: ONNX Runtime + native TensorList transport.
 
-Upstream NITROS preprocess chain + upstream NITROS RtDetrPreprocessor/Decoder,
+Upstream TensorList preprocessing chain + upstream RT-DETR preprocessor/decoder,
 with only the inference node swapped from TensorRT to OnnxInferenceNode
-(transport=nitros). Isolates the inference-backend cost under NITROS transport.
+(transport=tensor_list). Isolates the inference-backend cost under native transport.
 """
 
 import launch
@@ -135,7 +135,7 @@ def generate_launch_description():
         remappings=[('tensor', 'planar_tensor')],
     )
 
-    # Upstream NITROS preprocessor (vendor plugin, no _std).
+    # Upstream TensorList preprocessor (vendor plugin, no _std).
     rtdetr_preprocessor_node = ComposableNode(
         name='rtdetr_preprocessor',
         package='isaac_ros_rtdetr',
@@ -151,7 +151,7 @@ def generate_launch_description():
         remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
-    # Our ORT node in NITROS transport mode replaces the TensorRT node.
+    # Our ORT node in native TensorList transport mode replaces the TensorRT node.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
@@ -165,7 +165,12 @@ def generate_launch_description():
                 'ort_profile_prefix': ort_profile_prefix,
                 'ort_profile_frames': ort_profile_frames,
                 'binding_report_path': binding_report_path,
-                'transport': 'nitros',
+                'transport': 'tensor_list',
+                'managed_output_contracts': [
+                    'labels=int64[1,100]',
+                    'boxes=float32[1,100,4]',
+                    'scores=float32[1,100]',
+                ],
             }
         ],
         remappings=[
@@ -174,7 +179,7 @@ def generate_launch_description():
         ],
     )
 
-    # Upstream NITROS decoder (vendor plugin, no _std).
+    # Upstream TensorList decoder (vendor plugin, no _std).
     rtdetr_decoder_node = ComposableNode(
         name='rtdetr_decoder',
         package='isaac_ros_rtdetr',

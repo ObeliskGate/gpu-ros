@@ -30,6 +30,16 @@ HIP probing, and lifecycle checks. [Acceptance rules](../../skills/gpu-ros-exper
 separate detection observations, input/model validity, lifecycle, copy evidence,
 and performance.
 
+NVIDIA's migration target is the user-supplied official Isaac ROS 5.0 image
+with its paired ROS 2 Lyrical packages. Set `GPU_ROS_NVIDIA_PROFILE=1` before
+package discovery; AMD and CPU use `0`. Native transport is named
+`tensor_list`, not `nitros`. Native adapter acceptance runs
+`test_tensor_list_buffer_adapter` in the compat package build directory;
+ORT binding acceptance runs `test_onnx_inference_core` in the ONNX package
+build directory. Both are required, with missing tests treated as errors.
+These target-runtime checks remain blocked until the authoritative image,
+matching dependencies, and GPU runtime are available.
+
 Keep bags, traces, profiles, logs, and reports outside Git. A wrapper exit of
 zero does not establish clean component shutdown. Offline bag comparisons use
 schema `phase2b_detection_report_only_v2`: `REPORT_ONLY` means a report was

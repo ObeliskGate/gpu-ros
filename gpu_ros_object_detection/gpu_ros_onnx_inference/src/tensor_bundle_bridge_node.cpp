@@ -12,12 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Transport bridge: forwards a TensorBundle from a std-ROS2 (or NITROS) input to
-// a NITROS output, without inference. Needed to feed NITROS-only vendor nodes
-// (e.g. TensorRTNode) from a std-ROS2 publisher, since std pub -> NITROS sub is
-// not bridged automatically (only the reverse direction is).
-
-#include <cuda_runtime_api.h>
+// Explicit standard-host to native TensorList bridge. The upload is an expected H2D boundary.
 
 #include <algorithm>
 #include <chrono>
@@ -32,58 +27,15 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
-#include "gpu_ros_managed_cuda/cuda_backend.hpp"
+#include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 #include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list.hpp"
-
 namespace gpu_ros::onnx_inference
 {
 
-namespace
-{
-namespace nitros = nvidia::isaac_ros::nitros;
-
-void CheckCuda(cudaError_t result, const char * operation)
-{
-  if (result == cudaSuccess) {
-    return;
-  }
-  std::ostringstream message;
-  message << operation << ": " << cudaGetErrorName(result) << " (" << cudaGetErrorString(result)
-          << ")";
-  throw std::runtime_error(message.str());
-}
-
-struct AsyncStreamState
-{
-  explicit AsyncStreamState(int device_id) : device_id(device_id)
-  {
-    CheckCuda(cudaSetDevice(device_id), "bridge cudaSetDevice");
-    CheckCuda(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking),
-      "bridge cudaStreamCreateWithFlags");
-  }
-
-  ~AsyncStreamState()
-  {
-    if (stream == nullptr) {
-      return;
-    }
-    static_cast<void>(cudaSetDevice(device_id));
-    static_cast<void>(cudaStreamSynchronize(stream));
-    static_cast<void>(cudaStreamDestroy(stream));
-    stream = nullptr;
-  }
-
-  int device_id;
-  cudaStream_t stream{nullptr};
-};
-} // namespace
-
-// Subscribes via the configured input transport and republishes over NITROS.
+// Subscribes via the configured input transport and republishes native TensorList.
 class TensorBundleBridgeNode : public rclcpp::Node
 {
 public:
@@ -97,14 +49,10 @@ public:
     if (gpu_device_id_ < 0) {
       throw std::invalid_argument("gpu_device_id must be non-negative");
     }
-    staging_stream_ = std::make_shared<AsyncStreamState>(gpu_device_id_);
+    pub_ = std::make_unique<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport>(
+      this, gpu_device_id_);
 
-    pub_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(
-      this, "tensor_output", nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name);
-
-    // The bridge owns its NITROS output publisher. The transport IO is input
-    // only; creating its normal tensor_output publisher would collide with
-    // the remapped NITROS output topic.
+    // The input IO must not create a second output publisher.
     input_io_ = CreateTensorBundleIO(this, input_transport, false);
     input_io_->Subscribe(
       [this](gpu_ros_managed::ManagedTensorBundleView tensors) { Forward(std::move(tensors)); });
@@ -114,7 +62,6 @@ public:
   {
     input_io_.reset();
     pub_.reset();
-    staging_stream_.reset();
   }
 
 private:
@@ -138,53 +85,7 @@ private:
       start = std::chrono::steady_clock::now();
     }
 
-    std::vector<gpu_ros_managed::ManagedTensor> tensors;
-    tensors.reserve(input.tensors().size());
-    struct PendingAllocation
-    {
-      void * pointer;
-      size_t bytes;
-      std::shared_ptr<void> owner;
-    };
-    std::vector<PendingAllocation> pending;
-    pending.reserve(input.tensors().size());
-    const auto stream_state = staging_stream_;
-    CheckCuda(cudaSetDevice(gpu_device_id_), "bridge cudaSetDevice");
-    for (const auto & tensor : input.tensors()) {
-      const auto * host = std::get_if<gpu_ros_managed::HostBuffer>(&tensor.storage());
-      if (host == nullptr) {
-        throw std::invalid_argument("TensorBundleBridge only supports standard host-memory input");
-      }
-
-      void * pointer = nullptr;
-      CheckCuda(cudaMallocAsync(&pointer, tensor.byte_size(), stream_state->stream),
-        "bridge cudaMallocAsync");
-      auto owner = std::shared_ptr<void>(pointer, [stream_state](void * value) {
-        if (value == nullptr) {
-          return;
-        }
-        if (cudaSetDevice(stream_state->device_id) != cudaSuccess) {
-          return;
-        }
-        static_cast<void>(cudaFreeAsync(value, stream_state->stream));
-      });
-      CheckCuda(cudaMemcpyAsync(pointer, host->data(), tensor.byte_size(), cudaMemcpyHostToDevice,
-                  stream_state->stream),
-        "bridge cudaMemcpyAsync H2D");
-      pending.push_back(PendingAllocation{pointer, tensor.byte_size(), std::move(owner)});
-    }
-    CheckCuda(cudaStreamSynchronize(stream_state->stream), "bridge cudaStreamSynchronize");
-    for (size_t index = 0; index < input.tensors().size(); ++index) {
-      const auto & tensor = input.tensors().at(index);
-      auto device = gpu_ros_managed::cuda::adopt_synchronized_external(pending.at(index).pointer,
-        pending.at(index).bytes, gpu_device_id_, std::move(pending.at(index).owner));
-      tensors.emplace_back(
-        tensor.name(), tensor.data_type(), tensor.shape(), std::move(device), tensor.strides());
-    }
-    auto bundle =
-      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(input.header(), std::move(tensors));
-    pub_->publish(BuildNitrosTensorBundle(
-      gpu_ros_managed::ManagedTensorBundleView(std::move(bundle)), gpu_device_id_));
+    pub_->Publish(input.get());
 
     if (enable_timing_) {
       const auto end = std::chrono::steady_clock::now();
@@ -218,10 +119,9 @@ private:
   int gpu_device_id_{0};
   bool enable_timing_{false};
   int timing_log_every_{500};
-  std::shared_ptr<AsyncStreamState> staging_stream_;
   std::vector<double> timings_ms_;
   std::unique_ptr<ITensorBundleIO> input_io_;
-  std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> pub_;
+  std::unique_ptr<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport> pub_;
 };
 
 } // namespace gpu_ros::onnx_inference

@@ -22,6 +22,7 @@
 #include "opencv2/core.hpp"
 #include "opencv2/imgproc.hpp"
 #include "sensor_msgs/image_encodings.hpp"
+#include "rosidl_buffer/buffer.hpp"
 
 namespace gpu_ros::detection_common
 {
@@ -87,7 +88,7 @@ void ValidateImageStorage(const sensor_msgs::msg::Image & image, size_t bytes_pe
   }
 }
 
-cv::Mat ToRgb(const sensor_msgs::msg::Image & image, ImageEncoding encoding)
+cv::Mat ToRgb(const sensor_msgs::msg::Image & image, ImageEncoding encoding, const uint8_t * data)
 {
   const int height = static_cast<int>(image.height);
   const int width = static_cast<int>(image.width);
@@ -96,29 +97,25 @@ cv::Mat ToRgb(const sensor_msgs::msg::Image & image, ImageEncoding encoding)
   switch (encoding) {
     case ImageEncoding::kRgb8:
       ValidateImageStorage(image, 3U);
-      return cv::Mat(height, width, CV_8UC3, const_cast<uint8_t *>(image.data.data()), image.step);
+      return cv::Mat(height, width, CV_8UC3, const_cast<uint8_t *>(data), image.step);
     case ImageEncoding::kBgr8:
       ValidateImageStorage(image, 3U);
-      source =
-        cv::Mat(height, width, CV_8UC3, const_cast<uint8_t *>(image.data.data()), image.step);
+      source = cv::Mat(height, width, CV_8UC3, const_cast<uint8_t *>(data), image.step);
       cv::cvtColor(source, rgb, cv::COLOR_BGR2RGB);
       break;
     case ImageEncoding::kRgba8:
       ValidateImageStorage(image, 4U);
-      source =
-        cv::Mat(height, width, CV_8UC4, const_cast<uint8_t *>(image.data.data()), image.step);
+      source = cv::Mat(height, width, CV_8UC4, const_cast<uint8_t *>(data), image.step);
       cv::cvtColor(source, rgb, cv::COLOR_RGBA2RGB);
       break;
     case ImageEncoding::kBgra8:
       ValidateImageStorage(image, 4U);
-      source =
-        cv::Mat(height, width, CV_8UC4, const_cast<uint8_t *>(image.data.data()), image.step);
+      source = cv::Mat(height, width, CV_8UC4, const_cast<uint8_t *>(data), image.step);
       cv::cvtColor(source, rgb, cv::COLOR_BGRA2RGB);
       break;
     case ImageEncoding::kMono8:
       ValidateImageStorage(image, 1U);
-      source =
-        cv::Mat(height, width, CV_8UC1, const_cast<uint8_t *>(image.data.data()), image.step);
+      source = cv::Mat(height, width, CV_8UC1, const_cast<uint8_t *>(data), image.step);
       cv::cvtColor(source, rgb, cv::COLOR_GRAY2RGB);
       break;
   }
@@ -187,7 +184,16 @@ std::vector<float> ExecuteCpuPreprocess(
   {
     throw std::invalid_argument("image no longer matches its ImagePreprocessPlan");
   }
-  const cv::Mat rgb = ToRgb(image, plan.encoding);
+  // Keep non-CPU materialization alive while OpenCV reads the image through its views.
+  std::vector<uint8_t> host_image;
+  const uint8_t * image_data = nullptr;
+  if (image.data.get_backend_type() == "cpu") {
+    image_data = image.data.data();
+  } else {
+    host_image = image.data.to_vector();
+    image_data = host_image.data();
+  }
+  const cv::Mat rgb = ToRgb(image, plan.encoding, image_data);
   cv::Mat resized;
   cv::resize(
     rgb, resized, cv::Size(plan.resized_width, plan.resized_height), 0.0, 0.0, cv::INTER_LINEAR);

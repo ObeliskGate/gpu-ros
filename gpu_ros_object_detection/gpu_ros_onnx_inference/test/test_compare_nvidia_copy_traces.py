@@ -39,33 +39,81 @@ def memcpy(name, size, source, destination):
     }
 
 
-def binding_report():
-    """Create the minimum valid first-frame binding evidence."""
+def binding_report(transport='tensor_list', direct_output=True):
+    """Create a fixed RT-DETR first-frame binding report."""
     return {
         'first_frame': True,
+        'transport': transport,
         'inputs': [
             {
                 'name': 'images',
                 'bytes': 4915200,
                 'storage': 'cuda_device',
-                'lifetime_path': 'lease through ORT Run',
-            }
+                'input_pointer': '0x1000',
+                'ort_pointer': '0x1000',
+                'pointer_identity': True,
+                'lifetime_path': 'native TensorList input lease through ORT Run',
+            },
+            {
+                'name': 'orig_target_sizes',
+                'bytes': 16,
+                'storage': 'cpu_buffer',
+                'input_pointer': '0x2000',
+                'ort_pointer': '0x3000',
+                'pointer_identity': False,
+                'lifetime_path': 'CPU input promoted into CUDA Buffer',
+            },
         ],
         'outputs': [
             {
-                'name': 'scores',
-                'bytes': 1200,
-                'storage': 'cuda_device',
-                'lifetime_path': 'ORT-owned output adoption',
+                'name': name,
+                'bytes': size,
+                'storage': 'cuda_device' if direct_output else 'cpu_buffer',
+                'output_pointer': '0x4000' if direct_output else '0x5000',
+                'ort_pointer': '0x4000' if direct_output else '0x4001',
+                'pointer_identity': direct_output,
+                'lifetime_path': (
+                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                    if direct_output
+                    else 'standard TensorBundle output materialization'
+                ),
             }
+            for name, size in (('labels', 800), ('boxes', 1600), ('scores', 400))
         ],
     }
 
 
-def test_binding_sizes_are_used_as_exact_payload_sizes():
-    """Binding bytes, including small control tensors, are not a threshold."""
+def test_binding_sizes_include_small_control_and_output_tensors():
+    """Binding bytes include orig_target_sizes and all formal RT-DETR outputs."""
     report = binding_report()
-    assert TRACE_COMPARE._binding_payload_sizes(report) == {4915200, 1200}
+    assert TRACE_COMPARE._binding_payload_sizes(report) == {
+        16,
+        400,
+        800,
+        1600,
+        4915200,
+    }
+
+
+def test_pointer_address_accepts_only_positive_numeric_addresses():
+    """Integer, decimal, and hexadecimal address forms normalize exactly."""
+    assert TRACE_COMPARE.pointer_address(4096) == 4096
+    assert TRACE_COMPARE.pointer_address('0x1000') == 4096
+    assert TRACE_COMPARE.pointer_address('4096') == 4096
+    assert TRACE_COMPARE.pointer_address('0X1000') == 4096
+
+    for invalid in (
+        True,
+        None,
+        0,
+        '0',
+        -1,
+        '-0x1',
+        'unknown',
+        1.5,
+        {'address': '0x1000'},
+    ):
+        assert TRACE_COMPARE.pointer_address(invalid) is None
 
 
 def test_positive_h2d_and_d2h_delta_is_reported_per_frame():
@@ -82,7 +130,10 @@ def test_positive_h2d_and_d2h_delta_is_reported_per_frame():
         {4915200, 1200},
         10,
         10,
-        binding_reports={'reference': binding_report(), 'candidate': binding_report()},
+        binding_reports={
+            'reference': binding_report(),
+            'candidate': binding_report('std', direct_output=False),
+        },
     )
 
     deltas = {row['direction']: row for row in result['memory_total_deltas']}
@@ -101,10 +152,74 @@ def test_copy_named_kernel_is_not_a_memory_copy_record():
         set(),
         10,
         10,
-        binding_reports={'reference': binding_report(), 'candidate': binding_report()},
+        binding_reports={
+            'reference': binding_report(),
+            'candidate': binding_report('std', direct_output=False),
+        },
     )
 
     assert result['memory_totals']['config_d'] == {}
     assert result['host_device_copy_evidence']['candidate_more_h2d_or_d2h'] is False
     assert result['kernel_only_differences'][0]['name'] == 'copy_like_provider_kernel'
     assert result['unresolved_payload_copy_risk'][0]['name'] == 'copy_like_provider_kernel'
+
+
+def test_nonidentical_native_output_pointer_is_inconclusive():
+    """A native C output without direct ORT identity cannot close the audit."""
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': binding_report('tensor_list', direct_output=False),
+            'candidate': binding_report('std', direct_output=False),
+        },
+    )
+
+    assert result['schema_version'] == 1
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['binding_report_complete'] is False
+
+
+def test_native_output_integer_and_hex_pointers_remain_equivalent_in_c_vs_d():
+    """A positive integer pointer matches the same hexadecimal address."""
+    reference = binding_report()
+    reference['outputs'][0]['output_pointer'] = 16384
+    reference['outputs'][0]['ort_pointer'] = '0x4000'
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': reference,
+            'candidate': binding_report('std', direct_output=False),
+        },
+    )
+
+    assert result['status'] == 'PASS'
+    assert result['binding_report_complete'] is True
+
+
+def test_equal_negative_native_output_pointers_are_inconclusive_in_c_vs_d():
+    """A negative address cannot prove the Config C direct-output identity."""
+    reference = binding_report()
+    reference['outputs'][0]['output_pointer'] = -16384
+    reference['outputs'][0]['ort_pointer'] = -16384
+    result = TRACE_COMPARE.compare(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        {4915200, 16, 800, 1600, 400},
+        10,
+        10,
+        binding_reports={
+            'reference': reference,
+            'candidate': binding_report('std', direct_output=False),
+        },
+    )
+
+    assert result['status'] == 'INCONCLUSIVE'
+    assert result['binding_report_complete'] is False

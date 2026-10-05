@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "rclcpp/type_adapter.hpp"
+#include "rosidl_buffer/buffer.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
@@ -49,12 +50,21 @@ struct rclcpp::TypeAdapter<gpu_ros_managed::ManagedTensorBundle,
   static void convert_to_custom(const ros_message_type & source, custom_type & destination)
   {
     std::vector<gpu_ros_managed::ManagedTensor> tensors;
-    tensors.reserve(source.tensors.size());
     for (const auto & tensor : source.tensors) {
-      std::vector<int64_t> shape(tensor.shape.begin(), tensor.shape.end());
-      tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_copy(tensor.name,
-        static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type), std::move(shape),
-        tensor.data.data(), tensor.data.size()));
+      std::vector<int64_t> shape =
+        tensor.shape.get_backend_type() == "cpu"
+          ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
+          : tensor.shape.to_vector();
+      const auto dtype = static_cast<gpu_ros_managed::TensorDataType>(tensor.data_type);
+      if (tensor.data.get_backend_type() == "cpu") {
+        tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_copy(
+          tensor.name, dtype, std::move(shape), tensor.data.data(), tensor.data.size()));
+      } else {
+        auto host_bytes = std::make_shared<std::vector<uint8_t>>(tensor.data.to_vector());
+        gpu_ros_managed::HostBuffer storage(
+          std::static_pointer_cast<const void>(host_bytes), host_bytes->data(), host_bytes->size());
+        tensors.emplace_back(tensor.name, dtype, std::move(shape), std::move(storage));
+      }
     }
     destination = custom_type(source.header, std::move(tensors));
   }

@@ -34,6 +34,7 @@ struct BufferState
   uint8_t * data{nullptr};
   size_t size{0};
   std::shared_ptr<void> allocation_owner;
+  std::shared_ptr<const DeviceBufferAttachment> attachment;
   std::shared_ptr<BackendOps> ops;
   std::mutex mutex;
   BufferPhase phase{BufferPhase::kFresh};
@@ -123,6 +124,7 @@ BufferState::~BufferState()
   }
   events.insert(events.end(), reader_events.begin(), reader_events.end());
   auto owner = std::move(allocation_owner);
+  auto attachment = std::move(this->attachment);
   auto stream_owner = std::move(writer_stream_owner);
   auto producer_owners =
     std::make_shared<std::vector<std::shared_ptr<const void>>>(std::move(this->producer_owners));
@@ -130,7 +132,7 @@ BufferState::~BufferState()
   const auto allocation_device = device;
   const bool must_orphan = release_must_orphan;
   phase = BufferPhase::kReleasing;
-  if (!owner && !stream_owner && producer_owners->empty() && events.empty()) {
+  if (!owner && !attachment && !stream_owner && producer_owners->empty() && events.empty()) {
     return;
   }
 
@@ -146,17 +148,25 @@ BufferState::~BufferState()
         owner.reset();
         producer_owners->clear();
         stream_owner.reset();
+        attachment.reset();
         return;
       } catch (...) {
         // Fall through to the safe orphan path below.
       }
     }
     std::lock_guard<std::mutex> lock(orphan_mutex());
-    orphan_storage().push_back(std::move(owner));
+    if (owner) {
+      orphan_storage().push_back(std::move(owner));
+    }
     for (auto & source_owner : *producer_owners) {
       orphan_storage().push_back(std::move(source_owner));
     }
-    orphan_storage().push_back(std::move(stream_owner));
+    if (stream_owner) {
+      orphan_storage().push_back(std::move(stream_owner));
+    }
+    if (attachment) {
+      orphan_storage().push_back(std::move(attachment));
+    }
     return;
   }
 
@@ -164,8 +174,8 @@ BufferState::~BufferState()
   std::unique_lock<std::mutex> tracker_lock(value.mutex);
   ++count_for(value, allocation_device.backend);
   try {
-    std::thread([events, owner, stream_owner, producer_owners, backend_ops, allocation_device,
-                  must_orphan]() mutable {
+    std::thread([events, owner, attachment, stream_owner, producer_owners, backend_ops,
+                  allocation_device, must_orphan]() mutable {
       // Do not release a capture until the parent has dropped its copies.
       // Otherwise its reset under tracker_lock could invoke an arbitrary
       // owner deleter while the release-tracker mutex is held.
@@ -206,6 +216,7 @@ BufferState::~BufferState()
         owner.reset();
         producer_owners->clear();
         stream_owner.reset();
+        attachment.reset();
       } else {
         std::lock_guard<std::mutex> lock(orphan_mutex());
         orphan_storage().push_back(std::move(owner));
@@ -213,10 +224,14 @@ BufferState::~BufferState()
           orphan_storage().push_back(std::move(source_owner));
         }
         orphan_storage().push_back(std::move(stream_owner));
+        if (attachment) {
+          orphan_storage().push_back(std::move(attachment));
+        }
       }
       producer_owners.reset();
       owner.reset();
       stream_owner.reset();
+      attachment.reset();
       auto & release_tracker = tracker();
       {
         std::lock_guard<std::mutex> lock(release_tracker.mutex);
@@ -236,13 +251,16 @@ BufferState::~BufferState()
         // The allocation remains orphaned below.
       }
     }
-    if (owner || stream_owner || !producer_owners->empty()) {
+    if (owner || attachment || stream_owner || !producer_owners->empty()) {
       std::lock_guard<std::mutex> lock(orphan_mutex());
       if (owner) {
         orphan_storage().push_back(std::move(owner));
       }
       if (stream_owner) {
         orphan_storage().push_back(std::move(stream_owner));
+      }
+      if (attachment) {
+        orphan_storage().push_back(std::move(attachment));
       }
       for (auto & source_owner : *producer_owners) {
         orphan_storage().push_back(std::move(source_owner));
@@ -259,6 +277,7 @@ BufferState::~BufferState()
   owner.reset();
   stream_owner.reset();
   producer_owners.reset();
+  attachment.reset();
   tracker_lock.unlock();
 }
 
@@ -598,6 +617,10 @@ bool DeviceBuffer::failed() const noexcept
   std::lock_guard<std::mutex> lock(state_->mutex);
   return state_->phase == detail::BufferPhase::kFailed;
 }
+std::shared_ptr<const DeviceBufferAttachment> DeviceBuffer::attachment() const noexcept
+{
+  return state_->attachment;
+}
 WriteHandle DeviceBuffer::get_write_handle(const DeviceStream & stream)
 {
   const auto & native = detail::StreamAccess::get(stream);
@@ -678,7 +701,8 @@ DeviceStream detail::DeviceBufferFactory::make_stream(DeviceId device, detail::N
 namespace
 {
 std::shared_ptr<DeviceBuffer> make_buffer(DeviceId device, void * data, size_t size,
-  std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops, detail::BufferPhase phase)
+  std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops, detail::BufferPhase phase,
+  std::shared_ptr<const DeviceBufferAttachment> attachment)
 {
   if (!ops || ops->kind() != device.backend) {
     throw std::invalid_argument("Allocation backend does not match DeviceId");
@@ -694,6 +718,7 @@ std::shared_ptr<DeviceBuffer> make_buffer(DeviceId device, void * data, size_t s
   state->data = static_cast<uint8_t *>(data);
   state->size = size;
   state->allocation_owner = std::move(owner);
+  state->attachment = std::move(attachment);
   state->ops = std::move(ops);
   state->phase = phase;
   state->readiness = phase == detail::BufferPhase::kReady ? BufferReadiness::kSynchronouslyReady
@@ -703,15 +728,17 @@ std::shared_ptr<DeviceBuffer> make_buffer(DeviceId device, void * data, size_t s
 } // namespace
 
 std::shared_ptr<DeviceBuffer> detail::DeviceBufferFactory::make_fresh(DeviceId device, void * data,
-  size_t size, std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops)
+  size_t size, std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops,
+  std::shared_ptr<const DeviceBufferAttachment> attachment)
 {
-  return make_buffer(
-    device, data, size, std::move(owner), std::move(ops), detail::BufferPhase::kFresh);
+  return make_buffer(device, data, size, std::move(owner), std::move(ops),
+    detail::BufferPhase::kFresh, std::move(attachment));
 }
 std::shared_ptr<DeviceBuffer> detail::DeviceBufferFactory::make_ready(DeviceId device, void * data,
-  size_t size, std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops)
+  size_t size, std::shared_ptr<void> owner, std::shared_ptr<detail::BackendOps> ops,
+  std::shared_ptr<const DeviceBufferAttachment> attachment)
 {
-  return make_buffer(
-    device, data, size, std::move(owner), std::move(ops), detail::BufferPhase::kReady);
+  return make_buffer(device, data, size, std::move(owner), std::move(ops),
+    detail::BufferPhase::kReady, std::move(attachment));
 }
 } // namespace gpu_ros_managed

@@ -84,7 +84,7 @@ if [[ ${MODEL} == yolov8 && ! -s ${ASSETS_ROOT}/models/yolov8/yolov8s.onnx ]]; t
   exit 1
 fi
 
-ROS_SETUP="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+ROS_SETUP="/opt/ros/${ROS_DISTRO:-lyrical}/setup.bash"
 if [[ -f ${ROS_SETUP} ]]; then
   set +u
   # shellcheck disable=SC1090

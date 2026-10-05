@@ -22,15 +22,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
+
+#include "rosidl_buffer/buffer.hpp"
 
 namespace gpu_ros::yolov8
 {
@@ -185,15 +189,25 @@ vision_msgs::msg::Detection2DArray DecodeYoloV8TensorBundle(
   const TensorBundle & message, const YoloV8DecoderConfig & config)
 {
   const auto & tensor = FindTensor(message, config.tensor_name);
-  if (tensor.data_type != kTensorBundleFloat32 || tensor.shape.size() != 3U ||
+  const std::vector<int64_t> shape =
+    tensor.shape.get_backend_type() == "cpu"
+      ? std::vector<int64_t>(tensor.shape.begin(), tensor.shape.end())
+      : tensor.shape.to_vector();
+  if (tensor.data_type != kTensorBundleFloat32 || shape.size() != 3U ||
       tensor.data.size() % sizeof(float) != 0U)
   {
     throw std::runtime_error("YOLOv8 TensorBundle output has the wrong dtype, rank, or byte size");
   }
-  std::vector<int64_t> shape;
-  shape.assign(tensor.shape.begin(), tensor.shape.end());
   std::vector<float> values(tensor.data.size() / sizeof(float));
-  std::memcpy(values.data(), tensor.data.data(), tensor.data.size());
+  std::vector<uint8_t> host_data;
+  const uint8_t * data = nullptr;
+  if (tensor.data.get_backend_type() == "cpu") {
+    data = tensor.data.data();
+  } else {
+    host_data = tensor.data.to_vector();
+    data = host_data.data();
+  }
+  std::memcpy(values.data(), data, tensor.data.size());
   return DecodeYoloV8Values(message.header, values.data(), values.size(), shape, config);
 }
 

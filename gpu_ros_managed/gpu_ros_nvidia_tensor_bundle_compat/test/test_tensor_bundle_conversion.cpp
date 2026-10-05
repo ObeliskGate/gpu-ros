@@ -63,3 +63,30 @@ TEST(TensorBundleConversion, RejectsNonContiguousOldTensor)
 
   EXPECT_THROW(compat::ToTensorBundle(old), std::invalid_argument);
 }
+
+TEST(TensorBundleConversion, RejectsRankDtypeSizeAndOverflow)
+{
+  compat::NvidiaTensorList message;
+  auto & tensor = message.tensors.emplace_back();
+  tensor.name = "invalid";
+  tensor.data_type = 9;
+  tensor.shape.rank = 2;
+  tensor.shape.dims = {1, 2};
+  tensor.data.resize(8);
+  tensor.shape.rank = 1;
+  EXPECT_THROW(compat::ToTensorBundle(message), std::invalid_argument);
+  tensor.shape.rank = 2;
+  tensor.shape.dims = {1, 0};
+  EXPECT_THROW(compat::ToTensorBundle(message), std::invalid_argument);
+  tensor.shape.dims = {1, 2};
+  tensor.data_type = 255;
+  EXPECT_THROW(compat::ToTensorBundle(message), std::invalid_argument);
+  tensor.data_type = 9;
+  tensor.data.resize(7);
+  EXPECT_THROW(compat::ToTensorBundle(message), std::invalid_argument);
+  compat::TensorBundle bundle;
+  auto & huge = bundle.tensors.emplace_back();
+  huge.data_type = 9;
+  huge.shape = {9223372036854775807LL, 4};
+  EXPECT_THROW(compat::ToNvidiaTensorList(bundle), std::overflow_error);
+}

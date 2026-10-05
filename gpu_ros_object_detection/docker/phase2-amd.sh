@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 trap 'echo "ERROR: phase2 AMD environment failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+ROS_DISTRO="${ROS_DISTRO:-lyrical}"
+if [[ "${ROS_DISTRO}" != lyrical ]]; then
+  echo "ERROR: AMD runtime requires ROS_DISTRO=lyrical; found ${ROS_DISTRO}." >&2
+  exit 1
+fi
+if [[ "${GPU_ROS_NVIDIA_PROFILE:-0}" != 0 ]]; then
+  echo "ERROR: AMD runtime requires GPU_ROS_NVIDIA_PROFILE=0." >&2
+  exit 1
+fi
+export ROS_DISTRO GPU_ROS_NVIDIA_PROFILE=0
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/gpu_ros_object_detection/docker/docker-compose.phase2a-amd.yaml"
@@ -384,7 +394,13 @@ compose() {
   docker compose -f "${COMPOSE_FILE}" "$@"
 }
 
+require_ros_image_authority() {
+  [[ "${ROS2_BENCHMARK_COMMIT:-}" =~ ^[0-9a-f]{40}$ ]] || die "ROS2_BENCHMARK_COMMIT must be the exact image-paired source SHA before building."
+  bash "${ROOT_DIR}/gpu_ros_object_detection/docker/install_isaac_ros_apt_packages.sh" --check-inputs
+}
+
 build_docker() {
+  require_ros_image_authority
   resolve_gpu_targets
   compose build amd
   set_fingerprint

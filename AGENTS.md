@@ -3,12 +3,14 @@
 ## Project overview
 
 GPU ROS is one ROS 2 monorepo with two library collections:
-`gpu_ros_managed/` and `gpu_ros_object_detection/`. The compatibility targets
-are ROS 2 Jazzy, Ubuntu 24.04, ROCm 7.1.1 and the selected AMD device target,
+`gpu_ros_managed/` and `gpu_ros_object_detection/`. The migration targets
+are ROS 2 Lyrical, Ubuntu 24.04, ROCm 7.1.1 and the selected AMD device target,
 with the external ORT/MIGraphX build locked in
-`gpu_ros_object_detection/config/onnxruntime.lock`; NVIDIA reference work uses
-the pinned Isaac ROS 4.5-compatible runtime. Other combinations are not implied
-by these targets.
+`gpu_ros_object_detection/config/onnxruntime.lock`. NVIDIA reference work targets
+an official Isaac ROS 5.0 Docker image: its immutable identity and paired ROS
+package versions, not independent upstream commits, define the ROS stack.
+Target-image NVIDIA and AMD Lyrical GPU acceptance remain pending; historical
+Jazzy/Isaac 4.5 results do not validate these new combinations.
 
 Read the checked-out [experiment skill](skills/gpu-ros-experiments/SKILL.md)
 and its references before runtime work. These files are the method authority;

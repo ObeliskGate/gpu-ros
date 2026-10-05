@@ -5,7 +5,7 @@ find_package(rclcpp REQUIRED)
 add_library(gpu_ros_managed_ros INTERFACE)
 add_library(gpu_ros_managed::ros ALIAS gpu_ros_managed_ros)
 set_target_properties(gpu_ros_managed_ros PROPERTIES EXPORT_NAME ros)
-target_compile_features(gpu_ros_managed_ros INTERFACE cxx_std_17)
+target_compile_features(gpu_ros_managed_ros INTERFACE cxx_std_20)
 target_include_directories(gpu_ros_managed_ros INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

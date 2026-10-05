@@ -126,9 +126,8 @@ TEST(OnnxInferenceCoreTest, ParseEpUnknownThrows)
 TEST(OnnxInferenceCoreTest, CudaIoBindingOutputOwnerKeepsDeviceBufferAlive)
 {
   int device_count = 0;
-  if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
-    GTEST_SKIP() << "No CUDA device is available.";
-  }
+  ASSERT_EQ(cudaGetDeviceCount(&device_count), cudaSuccess);
+  ASSERT_GT(device_count, 0) << "CUDA binding acceptance requires a real device";
 
   OnnxInferenceCore::Config cfg;
   cfg.model_file_path = TEST_CUDA_IO_BINDING_MODEL_PATH;

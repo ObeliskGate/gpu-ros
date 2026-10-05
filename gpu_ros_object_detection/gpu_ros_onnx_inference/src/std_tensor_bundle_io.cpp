@@ -45,7 +45,7 @@ public:
   {
     callback_ = std::move(callback);
     sub_ = node_->create_subscription<TensorBundleMsg>(
-      "tensor_input", 10, [this](const TensorBundleMsg::SharedPtr msg) { OnMsg(msg); });
+      "tensor_input", 10, [this](TensorBundleMsg::ConstSharedPtr msg) { OnMsg(std::move(msg)); });
   }
 
   OutputPlacement output_placement() const noexcept override { return OutputPlacement::kHost; }
@@ -75,15 +75,24 @@ public:
   }
 
 private:
-  void OnMsg(const TensorBundleMsg::SharedPtr msg)
+  void OnMsg(TensorBundleMsg::ConstSharedPtr msg)
   {
     std::vector<gpu_ros_managed::ManagedTensor> inputs;
     inputs.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
-      std::vector<int64_t> shape(t.shape.begin(), t.shape.end());
+      auto shape = t.shape.to_vector();
+      std::shared_ptr<const void> owner = msg;
+      const uint8_t * data;
+      if (t.data.get_backend_type() == "cpu") {
+        data = t.data.data();
+      } else {
+        auto materialized = std::make_shared<std::vector<uint8_t>>(t.data.to_vector());
+        data = materialized->data();
+        owner = std::move(materialized);
+      }
       inputs.push_back(gpu_ros_managed::ManagedTensor::from_host_external(t.name,
         static_cast<gpu_ros_managed::TensorDataType>(t.data_type), std::move(shape),
-        std::static_pointer_cast<const void>(msg), t.data.data(), t.data.size()));
+        std::move(owner), data, t.data.size()));
     }
     auto list =
       std::make_shared<gpu_ros_managed::ManagedTensorBundle>(msg->header, std::move(inputs));

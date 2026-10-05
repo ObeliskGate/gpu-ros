@@ -250,6 +250,10 @@ struct OwnedMemory
   std::shared_ptr<void> owner;
 };
 
+struct TestAttachment final : grm::DeviceBufferAttachment
+{
+};
+
 OwnedMemory make_owned_memory(std::atomic<int> & releases, size_t bytes = 64)
 {
   void * pointer = std::malloc(bytes);
@@ -800,17 +804,22 @@ void test_cleanup_failure_destroys_each_event_once_and_orphans()
   auto consumer_a = make_stream(device, 2, ops);
   auto consumer_b = make_stream(device, 3, ops);
   auto memory = make_owned_memory(owner_releases);
-  auto buffer =
-    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
+  auto attachment = std::make_shared<TestAttachment>();
+  std::weak_ptr<const grm::DeviceBufferAttachment> attachment_weak = attachment;
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 64, memory.owner, ops, attachment);
+  assert(buffer->attachment().get() == attachment.get());
   buffer->get_write_handle(producer).finalize();
   buffer->get_read_handle(consumer_a).finish();
   buffer->get_read_handle(consumer_b).finish();
   ops->fail_synchronize(2);
   producer = grm::DeviceStream{};
+  attachment.reset();
   buffer.reset();
   memory.owner.reset();
   wait_for_cleanup();
   assert(owner_releases == 0);
+  assert(!attachment_weak.expired());
   assert(!stream_weak.expired());
   assert(stream_releases == 0);
   assert(ops->synchronizes == 3);
@@ -860,10 +869,16 @@ void test_pending_cleanup_drain()
   std::atomic<int> owner_releases{0};
   const grm::DeviceId device{grm::BackendKind::kCuda, 0};
   auto producer = make_stream(device, 1, ops);
+  auto consumer = make_stream(device, 2, ops);
   auto memory = make_owned_memory(owner_releases);
-  auto buffer =
-    grm::detail::DeviceBufferFactory::make_fresh(device, memory.pointer, 64, memory.owner, ops);
+  auto attachment = std::make_shared<TestAttachment>();
+  std::weak_ptr<const grm::DeviceBufferAttachment> attachment_weak = attachment;
+  auto buffer = grm::detail::DeviceBufferFactory::make_fresh(
+    device, memory.pointer, 64, memory.owner, ops, attachment);
+  assert(buffer->attachment().get() == attachment.get());
   buffer->get_write_handle(producer).finalize();
+  buffer->get_read_handle(consumer).finish();
+  attachment.reset();
   buffer.reset();
   memory.owner.reset();
 
@@ -871,9 +886,11 @@ void test_pending_cleanup_drain()
   assert(grm::detail::pending_release_count(grm::BackendKind::kCuda) == 1);
   assert(!grm::detail::wait_for_pending_releases(grm::BackendKind::kCuda, 1ms));
   assert(owner_releases == 0);
+  assert(!attachment_weak.expired());
   ops->unblock_synchronize();
   wait_for_cleanup();
   assert(owner_releases == 1);
+  assert(attachment_weak.expired());
 }
 
 int run_pool_wrapper_bad_alloc_child()

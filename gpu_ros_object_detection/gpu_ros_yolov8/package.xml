@@ -15,6 +15,7 @@
   <depend>std_msgs</depend>
   <depend>vision_msgs</depend>
   <depend>gpu_ros_tensor_bundle_msgs</depend>
+  <depend>rosidl_buffer</depend>
   <depend>libopencv-dev</depend>
   <depend>gpu_ros_detection_common</depend>
   <depend>gpu_ros_managed_core</depend>

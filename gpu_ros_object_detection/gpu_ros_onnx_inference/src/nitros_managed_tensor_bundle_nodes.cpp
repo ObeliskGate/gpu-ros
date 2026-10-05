@@ -26,15 +26,13 @@
 
 #include "gpu_ros_managed_ros/managed_pub_sub.hpp"
 #include "gpu_ros_managed_tensor_bundle/type_adapter.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_publisher.hpp"
-#include "isaac_ros_managed_nitros/managed_nitros_subscriber.hpp"
+#include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
 #include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
 
 namespace gpu_ros::onnx_inference
 {
 namespace
 {
-namespace nitros = nvidia::isaac_ros::nitros;
 
 class TimingReporter
 {
@@ -66,9 +64,8 @@ public:
       std::accumulate(sorted.begin(), sorted.end(), 0.0) / static_cast<double>(sorted.size());
     const size_t p95_index = std::min(
       sorted.size() - 1, static_cast<size_t>(0.95 * static_cast<double>(sorted.size() - 1)));
-    RCLCPP_INFO(node_->get_logger(),
-      "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms; payload copies=0", boundary_.c_str(),
-      sorted.size(), mean, sorted[p95_index]);
+    RCLCPP_INFO(node_->get_logger(), "%s boundary over %zu frames: mean=%.3f ms p95=%.3f ms",
+      boundary_.c_str(), sorted.size(), mean, sorted[p95_index]);
     samples_ms_.clear();
   }
 
@@ -87,40 +84,38 @@ public:
   explicit NitrosToManagedTensorBundleNode(
     const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
       : rclcpp::Node("nitros_to_managed_tensor_bundle_node", options),
-        gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)), adapter_(gpu_device_id_),
-        timing_(this, "nitros_to_managed")
+        gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
+        adapter_(this, gpu_device_id_, "tensor_output", false), timing_(this, "nitros_to_managed")
   {
     publisher_ =
       std::make_unique<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
         this, "tensor_output", rclcpp::QoS(10));
-    subscription_ = std::make_shared<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>>(
-      this, "tensor_input", NitrosTensorBundleFormat(),
-      [this](const nitros::NitrosTensorListView & view) { OnTensorBundle(view); },
-      nitros::NitrosDiagnosticsConfig{}, rclcpp::QoS(10));
+    adapter_.Subscribe(
+      [this](gpu_ros_managed::ManagedTensorBundleView view) { OnTensorBundle(std::move(view)); });
   }
+  ~NitrosToManagedTensorBundleNode() override { adapter_.Unsubscribe(); }
 
 private:
-  void OnTensorBundle(const nitros::NitrosTensorListView & view)
+  void OnTensorBundle(gpu_ros_managed::ManagedTensorBundleView view)
   {
     try {
       const auto start = std::chrono::steady_clock::now();
-      publisher_->publish(adapter_.Convert(view));
+      publisher_->publish(view.get());
       timing_.Record(start);
     } catch (const std::exception & error) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
-        "NITROS-to-Managed conversion dropped frame: %s", error.what());
+        "TensorList-to-Managed conversion dropped frame: %s", error.what());
     } catch (...) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
-        "NITROS-to-Managed conversion dropped frame: unknown exception");
+        "TensorList-to-Managed conversion dropped frame: unknown exception");
     }
   }
 
   int gpu_device_id_;
-  NitrosToManagedTensorBundleAdapter adapter_;
+  gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport adapter_;
   TimingReporter timing_;
   std::unique_ptr<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>
     publisher_;
-  std::shared_ptr<nitros::ManagedNitrosSubscriber<nitros::NitrosTensorListView>> subscription_;
 };
 
 class ManagedToNitrosTensorBundleNode : public rclcpp::Node
@@ -132,9 +127,8 @@ public:
         gpu_device_id_(declare_parameter<int>("gpu_device_id", 0)),
         timing_(this, "managed_to_nitros")
   {
-    publisher_ = std::make_shared<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>>(this,
-      "tensor_output", NitrosTensorBundleFormat(), nitros::NitrosDiagnosticsConfig{},
-      rclcpp::QoS(10));
+    publisher_ = std::make_unique<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport>(
+      this, gpu_device_id_);
     subscription_ = std::make_unique<
       gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>(
       this, "tensor_input",
@@ -147,20 +141,20 @@ private:
   {
     try {
       const auto start = std::chrono::steady_clock::now();
-      publisher_->publish(BuildNitrosTensorBundle(std::move(input), gpu_device_id_));
+      publisher_->Publish(input.get());
       timing_.Record(start);
     } catch (const std::exception & error) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
-        "Managed-to-NITROS conversion dropped frame: %s", error.what());
+        "Managed-to-TensorList conversion dropped frame: %s", error.what());
     } catch (...) {
       RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 5000,
-        "Managed-to-NITROS conversion dropped frame: unknown exception");
+        "Managed-to-TensorList conversion dropped frame: unknown exception");
     }
   }
 
   int gpu_device_id_;
   TimingReporter timing_;
-  std::shared_ptr<nitros::ManagedNitrosPublisher<nitros::NitrosTensorList>> publisher_;
+  std::unique_ptr<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport> publisher_;
   std::unique_ptr<gpu_ros_managed::ManagedSubscriber<gpu_ros_managed::ManagedTensorBundleView>>
     subscription_;
 };

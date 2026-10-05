@@ -397,6 +397,9 @@ def _create_nvidia_capture_fixture(
     model_path = assets_root / 'models' / 'synthetica_detr_v1.0.0_onnx' / 'sdetr_grasp.onnx'
     model_path.parent.mkdir(parents=True)
     model_path.write_bytes(b'fixture model\n')
+    yolov8_model_path = assets_root / 'models' / 'yolov8' / 'yolov8s.onnx'
+    yolov8_model_path.parent.mkdir(parents=True)
+    yolov8_model_path.write_bytes(b'fixture YOLOv8 model\n')
     input_bag = assets_root / 'datasets' / 'r2bdataset2024_v1' / 'r2b_robotarm'
     input_bag.mkdir(parents=True)
     (input_bag / 'metadata.yaml').write_text('fixture bag metadata\n')

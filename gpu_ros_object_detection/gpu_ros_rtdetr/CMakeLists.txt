@@ -9,7 +9,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake_auto REQUIRED)
@@ -65,6 +65,8 @@ if(BUILD_TESTING)
   ament_add_gtest(test_rtdetr_decoder test/test_rtdetr_decoder.cpp)
   if(TARGET test_rtdetr_decoder)
     target_link_libraries(test_rtdetr_decoder rtdetr_decoder_core)
+    ament_target_dependencies(test_rtdetr_decoder
+      gpu_ros_tensor_bundle_msgs rosidl_buffer)
   endif()
 
   find_package(ament_cmake_pytest REQUIRED)

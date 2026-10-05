@@ -29,8 +29,8 @@ assets, then run cheap checks before a requested benchmark.
 
 | Runbook | Runtime/backend | Formal lanes |
 | --- | --- | --- |
-| [Phase 1 NVIDIA](phase1-nvidia.md) | NVIDIA, Isaac ROS 4.5-compatible image | RT-DETR A/B/C/D; YOLOv8 A/B/C/D |
-| [Phase 2B NVIDIA](phase2b-nvidia.md) | NVIDIA CUDA + Isaac ROS 4.5 | RT-DETR and YOLOv8 Config C versus managed transport |
+| [Phase 1 NVIDIA](phase1-nvidia.md) | NVIDIA, official Isaac ROS 5.0/Lyrical image | RT-DETR A/B/C/D; YOLOv8 A/B/C/D |
+| [Phase 2B NVIDIA](phase2b-nvidia.md) | NVIDIA CUDA + Isaac ROS 5.0 native TensorList | RT-DETR and YOLOv8 Config C versus managed transport |
 | [Phase 2A AMD](phase2a-amd.md) | AMD ROCm + MIGraphX, standard ROS 2 | RT-DETRv2 and YOLOv8 standard paths |
 | [Phase 2B Managed](phase2b-managed.md) | AMD ROCm + managed HIP | RT-DETRv2 and YOLOv8 direct, staged-control, and matrix lanes |
 | [RT-DETRv2 validation](rtdetrv2-validation.md) | External export environment plus provider runtime | export reproducibility, CPU parity, provider parity, same-bag observation, optional COCO |
@@ -54,19 +54,43 @@ for both `GPU_ROS_REPO_ROOT` and `OVG_WORKSPACE_ROOT`. The NVIDIA runtime keeps
 checkout at `/workspaces/isaac_ros-dev/src/gpu-ros`. Do not create a second
 transport checkout or source bind.
 
-### NVIDIA external sources
+### Image-authoritative ROS versions and optional NVIDIA sources
 
-The manifest is tracked at `${REPO_ROOT}/gpu_ros_object_detection/external/nvidia-isaac-ros.repos`.
-Bootstrap its pinned checkouts outside the repository and under the NVIDIA
-outer workspace's `src/nvidia_external` when running that lane:
+`ISAAC_ROS_BASE_IMAGE` must identify the supplied official Isaac ROS 5.0 image
+by tag and `@sha256:` digest. There is no substitute default. NVIDIA builds
+use the image's installed packages; `docker compose config`, `exec`, and
+`up --no-build` do not require build-only version inputs.
+
+CPU and AMD builds additionally require `ROS_LYRICAL_APT_PACKAGE_SPECS`, a
+single-line, space-separated complete general ROS package inventory in
+`ros-lyrical-package=exact-version` form, derived from that same image/CDN
+baseline. AMD builds also require its matching 40-character lowercase
+`ROS2_BENCHMARK_COMMIT`. Missing inputs block builds rather than install an
+unverified latest ROS stack. These identities are not yet supplied or verified.
+Install Ubuntu prerequisites before the locked ROS transaction. Following the
+[official buildfarm setup](https://nvidia-isaac-ros.github.io/v/release-5.0/getting_started/isaac_ros_buildfarm_cdn.html),
+the shared installer configures the NVIDIA ROS source and the standard ROS 2
+development-tool source via `ros2-apt-source` 1.2.0. The latter supplies
+`python3-colcon-common-extensions`, not the Noble Lyrical runtime. Colcon and the
+exact ROS packages share the simulated and real install transaction, so dependency
+closure and final ROS inventory checks also cover dependencies pulled in by
+colcon. Lyrical package candidates must still come from the NVIDIA source.
+
+The standard vcstool manifest is tracked at
+`${REPO_ROOT}/gpu_ros_object_detection/external/nvidia-isaac-ros.repos`.
+Its empty repository mapping deliberately carries no speculative source pins.
+Use image-installed binary packages first. Only when an overlay is necessary,
+populate exact image-paired source revisions and bootstrap outside the repository:
 
 ```bash
+export ISAAC_ROS_BASE_IMAGE="${VERIFIED_ISAAC_ROS_5_IMAGE_WITH_DIGEST:?required}"
 "${REPO_ROOT}/gpu_ros_object_detection/tools/bootstrap-nvidia-external.sh" \
   --source-root /absolute/path/to/nvidia-external
 ```
 
-The bootstrap is required only when the pinned external sources are not already
-available. A fresh clone of this repository does not need `--recursive`.
+An empty mapping fails bootstrap explicitly. Do not import the old 4.5
+checkouts into a 5.0 build or describe the pending mapping as a verified lock.
+A fresh clone of this repository does not need `--recursive`.
 
 ### Assets
 
@@ -117,7 +141,8 @@ uv run --no-project --isolated --python 3.12 \
 ROCPROF_RUN_FULL_TRACE_REGRESSION=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
 PYTHONDONTWRITEBYTECODE=1 uv run --no-project --isolated --python 3.12 \
   --with pytest==9.0.3 python -m pytest -q -p no:cacheprovider \
-  gpu_ros_object_detection/tools/test_edit_isaac_ros_tensor_list_interfaces_package.py \
+  gpu_ros_object_detection/tools/test_lyrical_package_lock.py \
+  gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_onnxruntime_configure.py \
   gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_summarize_ort_profile.py \
   gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nsys_cuda_traces.py \
   gpu_ros_object_detection/gpu_ros_onnx_inference/test/test_compare_nvidia_copy_traces.py \
@@ -145,10 +170,12 @@ colcon test-result --all --verbose
 ```
 
 The `cpu-tests.yml` workflow installs the standalone core before building and
-running its external consumer against the installed CMake export. Its Jazzy job
-builds the eight explicitly selected CPU-safe ROS packages without HIP, runs all
-tests registered by those packages, then runs the detection bag comparator's
-pytest directly. This gate does not run model, GPU, or benchmark workloads.
+running its external consumer against the installed CMake export. Its Lyrical job
+requires image-derived ROS package versions before building the eight explicitly
+selected CPU-safe ROS packages without HIP. It then runs registered package
+tests and the detection bag comparator's pytest directly. Missing version
+provenance blocks that ROS job rather than selecting latest packages.
+This gate does not run model, GPU, or benchmark workloads.
 
 These checks cover managed lifecycle/orphan behavior, device selection, staging
 limits, compatibility boundaries, YOLO class-aware NMS/float boxes, result

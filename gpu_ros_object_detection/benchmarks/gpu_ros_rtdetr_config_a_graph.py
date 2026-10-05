@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config A benchmark: TensorRT + NITROS (baseline of the 2x2 matrix).
+"""Config A benchmark: TensorRT + native TensorList (baseline of the 2x2 matrix).
 
 Equivalent to upstream isaac_ros_rtdetr_graph.py. TensorRT builds an FP16 engine
 from the same FP32 ONNX source used by the ORT configs so all four matrix
@@ -112,10 +112,10 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigA(ROS2BenchmarkTest):
-    """Config A: TensorRT + NITROS (baseline)."""
+    """Config A: TensorRT + native TensorList (baseline)."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS RT-DETR (NVIDIA reference A: TRT + NITROS)',
+        benchmark_name='GPU ROS RT-DETR (NVIDIA reference A: TRT + TensorList)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

@@ -4,7 +4,7 @@
 
 Phase 2A is the standard ROS 2 TensorBundle path on AMD with ONNX Runtime
 MIGraphX. It covers RT-DETRv2 R50 and user-provided YOLOv8. It does not build
-the NVIDIA compatibility package and does not enable NITROS/CUDA.
+the NVIDIA compatibility package or enable native CUDA TensorList transport.
 
 The RT-DETR default is the formal `rtdetrv2_r50` profile. Its exact ONNX SHA
 and model/checkpoint license evidence are in `gpu_ros_object_detection/config/model-profiles.json`.
@@ -68,8 +68,9 @@ the formal `rtdetrv2_r50` ONNX. A missing formal asset blocks that lane; it does
 not authorize regeneration or substitution. An independently prepared YOLOv8
 lane may proceed.
 
-The AMD build profile keeps `BUILD_NITROS_TRANSPORT=OFF` and
-`ORT_ENABLE_CUDA=OFF`; MIGraphX is explicitly enabled by the canonical profile.
+The AMD build profile keeps `BUILD_NATIVE_TENSOR_LIST_TRANSPORT=OFF` and
+`ORT_ENABLE_CUDA=OFF`; set `GPU_ROS_NVIDIA_PROFILE=0` before colcon discovery.
+MIGraphX is explicitly enabled by the canonical profile.
 
 ## Assets
 

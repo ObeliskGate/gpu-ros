@@ -41,6 +41,34 @@ struct OutputTensor
   std::variant<std::vector<uint8_t>, std::shared_ptr<gpu_ros_managed::DeviceBuffer>> storage;
 };
 
+struct DeviceOutputSpec
+{
+  std::string name;
+  ONNXTensorElementDataType dtype;
+  std::vector<int64_t> shape;
+};
+
+class DeviceOutputBatch
+{
+public:
+  virtual ~DeviceOutputBatch() = default;
+  virtual const std::vector<std::shared_ptr<gpu_ros_managed::DeviceBuffer>> & buffers() const = 0;
+  virtual void * pointer(size_t index) const = 0;
+  virtual void RetainOwner(std::shared_ptr<const void> owner) = 0;
+  virtual void CompleteAfterSync() = 0;
+  virtual void CancelBeforeSubmit() noexcept = 0;
+  virtual void FailAfterSubmit() noexcept = 0;
+  virtual void CopyFrom(const std::vector<OutputTensor> & tensors) = 0;
+};
+
+class DeviceOutputAllocator
+{
+public:
+  virtual ~DeviceOutputAllocator() = default;
+  virtual std::unique_ptr<DeviceOutputBatch> Allocate(
+    const std_msgs::msg::Header & header, const std::vector<DeviceOutputSpec> & specs) = 0;
+};
+
 struct TensorBundleOutput
 {
   std_msgs::msg::Header header;

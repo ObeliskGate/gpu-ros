@@ -105,19 +105,19 @@ std::shared_ptr<DeviceBuffer> allocate(size_t bytes, int id)
   auto owner = ops()->allocate_device(id, bytes);
   void * pointer = owner.get();
   return detail::DeviceBufferFactory::make_fresh(
-    {BackendKind::kHip, id}, pointer, bytes, std::move(owner), ops());
+    {BackendKind::kHip, id}, pointer, bytes, std::move(owner), ops(), {});
 }
 std::shared_ptr<DeviceBuffer> adopt_external(
   void * p, size_t n, int id, std::shared_ptr<void> owner)
 {
   return detail::DeviceBufferFactory::make_fresh(
-    {BackendKind::kHip, id}, p, n, std::move(owner), ops());
+    {BackendKind::kHip, id}, p, n, std::move(owner), ops(), {});
 }
 std::shared_ptr<DeviceBuffer> adopt_synchronized_external(
   void * p, size_t n, int id, std::shared_ptr<void> owner)
 {
   return detail::DeviceBufferFactory::make_ready(
-    {BackendKind::kHip, id}, p, n, std::move(owner), ops());
+    {BackendKind::kHip, id}, p, n, std::move(owner), ops(), {});
 }
 FixedDeviceMemoryPool make_fixed_device_pool(size_t n, size_t count, int id)
 {

@@ -21,8 +21,8 @@ namespace gpu_ros::onnx_inference
 {
 
 std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node, bool publish_output);
-#ifdef BUILD_NITROS_TRANSPORT
-std::unique_ptr<ITensorBundleIO> CreateNitrosTensorBundleIO(
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+std::unique_ptr<ITensorBundleIO> CreateNativeTensorBundleIO(
   rclcpp::Node * node, bool publish_output);
 #endif
 std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
@@ -34,12 +34,12 @@ std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   if (transport == "std") {
     return CreateStdTensorBundleIO(node, publish_output);
   }
-  if (transport == "nitros") {
-#ifdef BUILD_NITROS_TRANSPORT
-    return CreateNitrosTensorBundleIO(node, publish_output);
+  if (transport == "tensor_list") {
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+    return CreateNativeTensorBundleIO(node, publish_output);
 #else
     throw std::runtime_error(
-      "transport=nitros requested but built without BUILD_NITROS_TRANSPORT.");
+      "transport=tensor_list requested but built without BUILD_NATIVE_TENSOR_LIST_TRANSPORT.");
 #endif
   }
   if (transport == "managed") {
