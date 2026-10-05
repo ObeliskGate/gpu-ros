@@ -63,7 +63,11 @@ It does not retain the Isaac ROS 4.5 TensorList wire schema.
 ROS-facing targets require Lyrical/C++20.
 Use the selected official Isaac ROS 5.0 Docker image's paired ROS versions and
 set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery (`0` for CPU/AMD).
-Target-image integration and GPU acceptance remain pending.
+The target-image build, tests, original-model functional captures, and transport
+copy checks passed. SDK component-library teardown has a diagnosed SIGSEGV and
+is explicitly accepted as a non-blocking experiment exception, not clean
+lifecycle evidence. AMD Lyrical GPU acceptance remains pending. See the
+[current campaign and independent SDK task](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
 
 The NVIDIA dependency recipe installs the image-paired 5.0 test utilities as
 well as the runtime components; tests must not borrow an older Isaac overlay.

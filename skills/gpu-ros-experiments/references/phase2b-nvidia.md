@@ -42,10 +42,12 @@ Set `REPO_ROOT` and `VERIFY_ROOT` to the verified checkout and external run
 state. Prefer image-installed binary dependencies. Only a required,
 image-matched source overlay belongs under `src/nvidia_external`; add its
 read-only bind explicitly to the run-specific override.
-Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon package discovery. Target-image
-ROS/GPU acceptance remains pending until this method is exercised on the
-identified image. Use the supplied existing environment entrypoint; do not
-start another container when that would bypass its deployment contract.
+Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon package discovery. Exercise this
+method on the identified target image and retain independent failure statuses;
+the [current campaign](../../../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05)
+records its accepted SDK shutdown exception separately. Use the supplied existing
+environment entrypoint; do not start another container when that would bypass its
+deployment contract.
 When Compose is the selected entrypoint, create an external `NV_OVERRIDE` with:
 
 - the literal verified existing image ID for service `dev`;

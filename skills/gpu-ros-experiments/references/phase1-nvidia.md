@@ -71,10 +71,11 @@ identifiers in this document. Runtime image, driver, and provider versions are
 scientific provenance and belong in the public result record when captured;
 they are not deployment secrets.
 
-Target-image runtime acceptance remains pending until the selected image is
-exercised. A historical 4.5/Jazzy result retains its original identity and does
-not validate the new stack. Missing image identity blocks runtime verification,
-not source-only checks. Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery.
+Runtime acceptance must cite an exercised, identified target image and preserve
+independent failure statuses; see the [current campaign](../../../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
+A historical 4.5/Jazzy result retains its original identity and does not validate
+the new stack. Missing image identity blocks runtime verification, not
+source-only checks. Set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery.
 
 ## Fresh runtime layout
 

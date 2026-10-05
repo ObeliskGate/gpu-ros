@@ -92,8 +92,11 @@ target do not need to discover CUDA separately before finding the package.
 ROS-facing packages target ROS 2 Lyrical and require C++20; the standalone
 core and CUDA/HIP backends retain C++17. NVIDIA ROS dependencies must match the
 selected official Isaac ROS 5.0 Docker image, not an independently chosen
-upstream commit. Target-image ROS/GPU validation and AMD Lyrical GPU validation
-remain pending; historical Jazzy results do not establish those combinations.
+upstream commit. The target-image build, native CUDA Buffer adapter tests, and
+installed CMake consumer passed; the functional/copy campaign records a separate
+SDK shutdown exception in the [result index](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
+AMD Lyrical GPU validation remains pending; historical Jazzy results do not
+establish that combination.
 This repository does not ship prebuilt binaries.
 
 ## Build the standalone library

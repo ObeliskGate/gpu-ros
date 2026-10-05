@@ -9,8 +9,11 @@ with the external ORT/MIGraphX build locked in
 `gpu_ros_object_detection/config/onnxruntime.lock`. NVIDIA reference work targets
 an official Isaac ROS 5.0 Docker image: its immutable identity and paired ROS
 package versions, not independent upstream commits, define the ROS stack.
-Target-image NVIDIA and AMD Lyrical GPU acceptance remain pending; historical
-Jazzy/Isaac 4.5 results do not validate these new combinations.
+The current NVIDIA campaign has passed build, test, functional, and copy checks
+with an explicitly accepted, diagnosed SDK shutdown exception; preserve its
+failed lifecycle status and track the repair separately in `docs/results/README.md`.
+AMD Lyrical GPU acceptance remains pending. Historical Jazzy/Isaac 4.5 results
+do not validate these new combinations.
 
 Read the checked-out [experiment skill](skills/gpu-ros-experiments/SKILL.md)
 and its references before runtime work. These files are the method authority;

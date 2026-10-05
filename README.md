@@ -101,7 +101,11 @@ Its immutable image identity and paired package versions are the ROS dependency
 authority, including the CUDA Buffer backend. Upstream research commits are
 not substitute installation pins. Reuse image packages; source overlays are
 only for missing dependencies whose revisions can be traced to that image.
-The target image has not yet been validated by this migration.
+The target image has passed a fresh 12-package build, package tests, installed
+consumer checks, and two-model functional/copy experiments. A diagnosed SDK
+component-library shutdown fault is a recorded, explicitly accepted experiment
+exception, not a clean-teardown result. See the
+[current campaign and independent SDK task](docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
 Its outer workspace remains `/workspaces/isaac_ros-dev`; this repository is
 mounted at `src/gpu-ros`, with any required external checkouts under
 `src/nvidia_external`. Set `GPU_ROS_NVIDIA_PROFILE=1` before NVIDIA colcon
