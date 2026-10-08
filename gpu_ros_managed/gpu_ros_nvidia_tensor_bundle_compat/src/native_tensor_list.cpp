@@ -422,12 +422,19 @@ OutputBatch TensorListTransport::Allocate(const std_msgs::msg::Header & header,
   message->names.reserve(specs.size());
   message->tensors.reserve(specs.size());
   for (const auto & spec : specs) {
+    if (spec.name.empty()) {
+      throw std::invalid_argument("native output tensor name is empty");
+    }
+    for (const auto & name : message->names) {
+      if (name == spec.name) {
+        throw std::invalid_argument("native output tensor names must be unique");
+      }
+    }
     auto & tensor = message->tensors.emplace_back();
     state->bytes.push_back(metadata::SetTensorMetadata(tensor,
       spec.dtype_code, spec.dtype_bits, spec.dtype_lanes, spec.shape));
     message->names.push_back(spec.name);
   }
-  metadata::ValidateNames(*message);
   state->writers.reserve(specs.size());
   state->pointers.reserve(specs.size());
   auto stream = std::make_shared<Stream>(state->device);
