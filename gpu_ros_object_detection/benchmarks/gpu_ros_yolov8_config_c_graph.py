@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config C benchmark: ONNX Runtime CUDA + native TensorList + YOLOv8 decoder."""
+"""Config C benchmark: ONNX Runtime CUDA + rosidl Buffer TensorList + YOLOv8 decoder."""
 
 import os
 import sys
@@ -37,14 +37,15 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='OnnxInference',
         namespace=ns,
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         parameters=[
             {
                 'model_file_path': os.path.join(
                     TestGpuRosYoloV8ConfigC.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
                 ),
                 'execution_provider': 'cuda',
-                'transport': 'tensor_list',
+                'transport': 'rosidl_buffer',
+                'message_format': 'tensor_list',
                 'output_contracts': ['output0=float32[1,84,8400]'],
             }
         ],
@@ -91,10 +92,10 @@ def generate_test_description():
 
 
 class TestGpuRosYoloV8ConfigC(ROS2BenchmarkTest):
-    """Config C: ONNX Runtime CUDA + native TensorList + upstream YOLOv8 decoder."""
+    """Config C: ONNX Runtime CUDA + rosidl Buffer TensorList + upstream YOLOv8 decoder."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS YOLOv8 (NVIDIA reference C: ORT + TensorList)',
+        benchmark_name='GPU ROS YOLOv8 (NVIDIA reference C: ORT + rosidl Buffer)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

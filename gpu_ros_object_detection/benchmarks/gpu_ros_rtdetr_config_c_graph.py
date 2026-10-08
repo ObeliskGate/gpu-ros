@@ -16,12 +16,12 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-"""Config C benchmark: ONNX Runtime CUDA + native TensorList transport.
+"""Config C benchmark: ONNX Runtime CUDA + rosidl Buffer TensorList transport.
 
-Isolates the inference-backend cost under native transport: upstream RT-DETR
-pre/post-processing, with only the inference node swapped from TensorRT to
-NativeOnnxInferenceNode(transport=tensor_list). Shares framework + preprocessing
-with the other configs (see rtdetr_common).
+Isolates the inference-backend cost under rosidl Buffer transport: upstream
+RT-DETR pre/post-processing, with only the inference node swapped to
+OnnxInferenceNode(transport=rosidl_buffer, message_format=tensor_list). Shares
+framework + preprocessing with the other configs (see rtdetr_common).
 """
 
 import os
@@ -52,14 +52,15 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='OnnxInference',
         namespace=ns,
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         parameters=[
             {
                 'model_file_path': os.path.join(
                     TestGpuRosRtDetrConfigC.get_assets_root_path(), 'models', common.MODEL_FILE_NAME
                 ),
                 'execution_provider': 'cuda',
-                'transport': 'tensor_list',
+                'transport': 'rosidl_buffer',
+                'message_format': 'tensor_list',
                 'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
@@ -103,10 +104,10 @@ def generate_test_description():
 
 
 class TestGpuRosRtDetrConfigC(ROS2BenchmarkTest):
-    """Config C: ONNX Runtime CUDA + native TensorList transport."""
+    """Config C: ONNX Runtime CUDA + rosidl Buffer TensorList transport."""
 
     config = ROS2BenchmarkConfig(
-        benchmark_name='GPU ROS RT-DETR (NVIDIA reference C: ORT + TensorList)',
+        benchmark_name='GPU ROS RT-DETR (NVIDIA reference C: ORT + rosidl Buffer)',
         input_data_path=common.ROSBAG_PATH,
         publisher_upper_frequency=1000.0,
         publisher_lower_frequency=10.0,

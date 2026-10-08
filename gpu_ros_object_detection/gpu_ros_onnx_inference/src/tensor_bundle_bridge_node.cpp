@@ -27,9 +27,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
 
-#include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
-#include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
-#include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
+#include "gpu_ros_nvidia_tensor_bundle_compat/native_tensor_list.hpp"
+#include "gpu_ros_onnx_inference/tensor_contract.hpp"
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 
 namespace gpu_ros::onnx_inference
@@ -49,13 +48,13 @@ public:
     if (gpu_device_id_ < 0) {
       throw std::invalid_argument("gpu_device_id must be non-negative");
     }
-    pub_ = std::make_unique<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport>(
+    pub_ = std::make_unique<gpu_ros::nvidia_tensor_bundle_compat::native::TensorListTransport>(
       this, gpu_device_id_);
 
     // The input IO must not create a second output publisher.
     input_io_ = CreateTensorBundleIO(this, input_transport, false);
     input_io_->Subscribe(
-      [this](gpu_ros_managed::ManagedTensorBundleView tensors) { Forward(std::move(tensors)); });
+      [this](TensorBindingBatch tensors) { Forward(std::move(tensors)); });
   }
 
   ~TensorBundleBridgeNode() override
@@ -65,7 +64,7 @@ public:
   }
 
 private:
-  void Forward(gpu_ros_managed::ManagedTensorBundleView input)
+  void Forward(TensorBindingBatch input)
   {
     try {
       ForwardOrThrow(std::move(input));
@@ -78,14 +77,31 @@ private:
     }
   }
 
-  void ForwardOrThrow(gpu_ros_managed::ManagedTensorBundleView input)
+  void ForwardOrThrow(TensorBindingBatch input)
   {
     std::chrono::steady_clock::time_point start;
     if (enable_timing_) {
       start = std::chrono::steady_clock::now();
     }
 
-    pub_->Publish(input.get());
+    namespace wire = gpu_ros::nvidia_tensor_bundle_compat::native;
+    auto owner = std::make_shared<TensorBindingBatch>(std::move(input));
+    std::vector<wire::TensorSpec> specs;
+    std::vector<wire::CopySource> sources;
+    for (const auto & tensor : owner->bindings) {
+      const auto type = tensor.value.GetTensorTypeAndShapeInfo();
+      const auto dtype = type.GetElementType();
+      if (dtype != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT && dtype != ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        throw std::invalid_argument("bridge requires float32 or int64");
+      }
+      specs.push_back({tensor.name, static_cast<uint8_t>(dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ? 2 : 0),
+        static_cast<uint8_t>(dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ? 32 : 64), 1, type.GetShape()});
+      sources.push_back({tensor.data, tensor.byte_count,
+        tensor.value.GetTensorMemoryInfo().GetDeviceType() == OrtMemoryInfoDeviceType_GPU});
+    }
+    auto batch = pub_->Allocate(owner->header, specs);
+    batch.CopyFrom(sources, owner);
+    pub_->Publish(batch.message());
 
     if (enable_timing_) {
       const auto end = std::chrono::steady_clock::now();
@@ -121,7 +137,7 @@ private:
   int timing_log_every_{500};
   std::vector<double> timings_ms_;
   std::unique_ptr<ITensorBundleIO> input_io_;
-  std::unique_ptr<gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport> pub_;
+  std::unique_ptr<gpu_ros::nvidia_tensor_bundle_compat::native::TensorListTransport> pub_;
 };
 
 } // namespace gpu_ros::onnx_inference

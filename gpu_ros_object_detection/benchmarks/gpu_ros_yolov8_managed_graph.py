@@ -44,7 +44,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 ),
                 'execution_provider': 'cuda',
                 'transport': 'managed',
-                'managed_output_contracts': ['output0=float32[1,84,8400]'],
+                'output_contracts': ['output0=float32[1,84,8400]'],
             }
         ],
         remappings=[

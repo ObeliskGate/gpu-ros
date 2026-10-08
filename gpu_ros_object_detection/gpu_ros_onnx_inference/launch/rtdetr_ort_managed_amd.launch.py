@@ -95,18 +95,18 @@ def generate_launch_description():
                 'ort_profile_prefix': ort_profile_prefix,
                 'binding_report_path': binding_report_path,
                 'transport': 'managed',
-                'managed_io_contract': 'hip_managed_strict',
-                'managed_input_contracts': [
+                'io_contract': 'device_strict',
+                'input_contracts': [
                     'images=float32[1,3,640,640]',
                     'orig_target_sizes=int64[1,2]',
                 ],
-                'managed_output_contracts': [
+                'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
                     'scores=float32[1,300]',
                 ],
-                'managed_pool_capacity': 16,
-                'managed_pool_wait_timeout_ms': 100,
+                'output_pool_capacity': 16,
+                'output_pool_wait_timeout_ms': 100,
             }
         ],
         remappings=[

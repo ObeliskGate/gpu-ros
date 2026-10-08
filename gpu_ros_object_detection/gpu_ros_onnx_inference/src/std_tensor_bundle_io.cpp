@@ -22,6 +22,7 @@
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 #include "gpu_ros_onnx_inference/tensor_dtype.hpp"
 #include "gpu_ros_tensor_bundle_msgs/msg/tensor_bundle.hpp"
+#include "gpu_ros_onnx_inference/tensor_contract.hpp"
 
 namespace gpu_ros::onnx_inference
 {
@@ -43,9 +44,11 @@ public:
 
   void Subscribe(Callback callback) override
   {
-    callback_ = std::move(callback);
     sub_ = node_->create_subscription<TensorBundleMsg>(
-      "tensor_input", 10, [this](TensorBundleMsg::ConstSharedPtr msg) { OnMsg(std::move(msg)); });
+      "tensor_input", 10, [callback = std::move(callback), logger = node_->get_logger()](TensorBundleMsg::ConstSharedPtr msg) {
+        try { OnMsg(std::move(msg), callback); }
+        catch (const std::exception & error) { RCLCPP_ERROR(logger, "Dropping standard tensor input: %s", error.what()); }
+      });
   }
 
   OutputPlacement output_placement() const noexcept override { return OutputPlacement::kHost; }
@@ -75,10 +78,10 @@ public:
   }
 
 private:
-  void OnMsg(TensorBundleMsg::ConstSharedPtr msg)
+  static void OnMsg(TensorBundleMsg::ConstSharedPtr msg, const Callback & callback)
   {
-    std::vector<gpu_ros_managed::ManagedTensor> inputs;
-    inputs.reserve(msg->tensors.size());
+    TensorBindingBatch inputs{msg->header, msg, {}};
+    inputs.bindings.reserve(msg->tensors.size());
     for (const auto & t : msg->tensors) {
       auto shape = t.shape;
       std::shared_ptr<const void> owner = msg;
@@ -90,17 +93,19 @@ private:
         data = materialized->data();
         owner = std::move(materialized);
       }
-      inputs.push_back(gpu_ros_managed::ManagedTensor::from_host_external(t.name,
-        static_cast<gpu_ros_managed::TensorDataType>(t.data_type), std::move(shape),
-        std::move(owner), data, t.data.size()));
+      const auto dtype = BundleToOnnxDtype(t.data_type);
+      const auto bytes = TensorByteSize(dtype, shape, t.name);
+      if (bytes != t.data.size()) { throw std::invalid_argument("standard tensor byte mismatch"); }
+      auto memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+      inputs.bindings.push_back({t.name, std::move(owner), data, bytes, "host",
+        "standard message or host materialization through inference",
+        Ort::Value::CreateTensor(memory, const_cast<uint8_t *>(data), bytes,
+          shape.data(), shape.size(), dtype)});
     }
-    auto list =
-      std::make_shared<gpu_ros_managed::ManagedTensorBundle>(msg->header, std::move(inputs));
-    callback_(gpu_ros_managed::ManagedTensorBundleView(std::move(list)));
+    callback(std::move(inputs));
   }
 
   rclcpp::Node * node_;
-  Callback callback_;
   rclcpp::Subscription<TensorBundleMsg>::SharedPtr sub_;
   rclcpp::Publisher<TensorBundleMsg>::SharedPtr pub_;
 };

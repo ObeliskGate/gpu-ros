@@ -16,7 +16,7 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <rtdetr-c|rtdetr-d|rtdetr-managed|yolov8-c|yolov8-d|yolov8-managed> <output-name>"
+  echo "Usage: $0 <rtdetr-rosidl-buffer|rtdetr-d|rtdetr-managed|yolov8-rosidl-buffer|yolov8-d|yolov8-managed> <output-name>"
   echo
   echo "Record one fixed-input NVIDIA detection bag in a single terminal."
   echo "The output name must not already exist."
@@ -66,7 +66,7 @@ LAUNCH_INPUT_ARGS=()
 REQUIRES_CAMERA_INFO=1
 
 case "${LANE}" in
-  rtdetr-c)
+  rtdetr-rosidl-buffer)
     MODEL_PATH="${ASSETS_ROOT}/models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx"
     LAUNCH_PACKAGE="gpu_ros_nvidia_reference"
     LAUNCH_FILE="rtdetr_ort_tensor_list.launch.py"
@@ -98,12 +98,12 @@ case "${LANE}" in
       /rtdetr_managed_container/detections_output
     )
     ;;
-  yolov8-c)
+  yolov8-rosidl-buffer)
     MODEL_PATH="${ASSETS_ROOT}/models/yolov8/yolov8s.onnx"
     LAUNCH_PACKAGE="gpu_ros_nvidia_reference"
     LAUNCH_FILE="yolov8_ort_transport.launch.py"
     CONFIDENCE_THRESHOLD="0.25"
-    EXTRA_LAUNCH_ARGS+=(transport:=tensor_list execution_provider:=cuda)
+    EXTRA_LAUNCH_ARGS+=(transport:=rosidl_buffer execution_provider:=cuda)
     LAUNCH_INPUT_ARGS+=(input_image_width:=1280 input_image_height:=720)
     DETECTION_CANDIDATES=(
       /detections_output

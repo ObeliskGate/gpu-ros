@@ -108,7 +108,7 @@ def _binding_errors(
     expected_transport: Optional[str] = None,
     require_direct_output_pointer_identity: bool = False,
 ) -> list[str]:
-    """Return missing or inconsistent first-frame pointer/lifetime evidence."""
+    """Return missing or inconsistent first-frame pointer/storage evidence."""
     if report is None:
         return [f'{label}: binding report was not supplied']
     errors = []
@@ -135,34 +135,46 @@ def _binding_errors(
                 pointer_key,
                 'ort_pointer',
                 'pointer_identity',
-                'lifetime_path',
             ):
                 if key not in record:
                     errors.append(f'{label}: {side}[{index}] missing {key}')
-            if not record.get('lifetime_path'):
-                errors.append(f'{label}: {side}[{index}] lifetime path empty')
-            if not isinstance(record.get('pointer_identity'), bool):
+            tensor_pointer = pointer_address(record.get(pointer_key))
+            ort_pointer = pointer_address(record.get('ort_pointer'))
+            if tensor_pointer is None:
+                errors.append(
+                    f'{label}: {side}[{index}] {pointer_key} is not a positive address'
+                )
+            if ort_pointer is None:
+                errors.append(
+                    f'{label}: {side}[{index}] ort_pointer is not a positive address'
+                )
+            pointer_identity = record.get('pointer_identity')
+            if not isinstance(pointer_identity, bool):
                 errors.append(f'{label}: {side}[{index}] pointer_identity is not boolean')
+            elif (
+                tensor_pointer is not None
+                and ort_pointer is not None
+                and pointer_identity != (tensor_pointer == ort_pointer)
+            ):
+                errors.append(
+                    f'{label}: {side}[{index}] pointer_identity does not match addresses'
+                )
             if require_direct_output_pointer_identity and side == 'outputs':
-                if record.get('pointer_identity') is not True:
+                if pointer_identity is not True:
                     errors.append(
-                        f'{label}: outputs[{index}] native output pointer identity is not true'
+                        f'{label}: outputs[{index}] direct output pointer identity is not true'
                     )
                 if record.get('storage') != 'cuda_device':
                     errors.append(
-                        f'{label}: outputs[{index}] native output storage is not cuda_device'
+                        f'{label}: outputs[{index}] direct output storage is not cuda_device'
                     )
-                output_pointer = pointer_address(record.get('output_pointer'))
-                ort_pointer = pointer_address(record.get('ort_pointer'))
-                if output_pointer is None or ort_pointer is None or output_pointer != ort_pointer:
-                    errors.append(
-                        f'{label}: outputs[{index}] native output and ORT pointers differ'
-                    )
-                if record.get('lifetime_path') != (
-                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                if (
+                    tensor_pointer is None
+                    or ort_pointer is None
+                    or tensor_pointer != ort_pointer
                 ):
                     errors.append(
-                        f'{label}: outputs[{index}] native output lifetime path is unexpected'
+                        f'{label}: outputs[{index}] direct output and ORT pointers differ'
                     )
     return errors
 
@@ -329,7 +341,7 @@ def compare(
     binding_errors = _binding_errors(
         reference_binding,
         reference_label,
-        'tensor_list',
+        'rosidl_buffer',
         require_direct_output_pointer_identity=True,
     ) + _binding_errors(candidate_binding, candidate_label, 'std')
     deltas = _memory_total_deltas(

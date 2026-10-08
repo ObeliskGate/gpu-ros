@@ -119,18 +119,18 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 "execution_provider": "migraphx",
                 "gpu_device_id": 0,
                 "transport": "managed",
-                "managed_io_contract": "hip_managed_strict",
-                "managed_input_contracts": [
+                "io_contract": "device_strict",
+                "input_contracts": [
                     "images=float32[1,3,640,640]",
                     "orig_target_sizes=int64[1,2]",
                 ],
-                "managed_output_contracts": [
+                "output_contracts": [
                     "labels=int64[1,300]",
                     "boxes=float32[1,300,4]",
                     "scores=float32[1,300]",
                 ],
-                "managed_pool_capacity": 16,
-                "managed_pool_wait_timeout_ms": 100,
+                "output_pool_capacity": 16,
+                "output_pool_wait_timeout_ms": 100,
             }
         ],
         remappings=[
@@ -209,7 +209,7 @@ class TestGpuRosRtDetrPhase2bAmdStagedControl(managed_graph.TestGpuRosRtDetrPhas
             "staging": (
                 "Managed->std->Managed before ORT; Managed->std->standard decoder after ORT"
             ),
-            "managed_io_contract": "hip_managed_strict",
+            "io_contract": "device_strict",
             "build_type": "Release",
             "result_directory": RESULTS_DIR,
         },

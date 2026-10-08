@@ -680,6 +680,20 @@ def test_capture_runner_rejects_an_unknown_lane_before_starting_ros():
     assert 'unsupported lane' in result.stderr
     assert 'unknown' in result.stderr
 
+@pytest.mark.parametrize('legacy_lane', ('rtdetr-c', 'yolov8-c'))
+def test_capture_runner_rejects_legacy_native_lane_tokens(legacy_lane):
+    result = subprocess.run(
+        [str(SCRIPT_PATH), legacy_lane, 'capture_name'],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert 'unsupported lane' in result.stderr
+    assert legacy_lane in result.stderr
+
+
+
 
 def test_amd_capture_runner_rejects_an_invalid_name_before_starting_ros():
     result = subprocess.run(

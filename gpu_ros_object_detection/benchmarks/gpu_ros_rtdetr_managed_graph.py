@@ -45,7 +45,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 ),
                 'execution_provider': 'cuda',
                 'transport': 'managed',
-                'managed_output_contracts': [
+                'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
                     'scores=float32[1,300]',

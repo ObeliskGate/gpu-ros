@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Proof-of-life for native TensorList and managed CUDA RT-DETR inference.
+Proof-of-life for rosidl Buffer TensorList and Managed CUDA RT-DETR inference.
 
 Uses the existing NVIDIA Synthetica model and official Isaac ROS 5 components.
 This functional smoke does not replace fixed-input accuracy or lifecycle capture.
@@ -46,7 +46,7 @@ INIT_WAIT_SEC = 10
 
 @pytest.mark.rostest
 def generate_rtdetr_pol_description(test_class, transport):
-    """Generate the shared C or Managed RT-DETR proof-of-life graph."""
+    """Generate the shared rosidl Buffer or Managed RT-DETR proof-of-life graph."""
     if not os.path.isfile(MODEL_ONNX_PATH):
         raise FileNotFoundError(f'Real RT-DETR POL model missing: {MODEL_ONNX_PATH}')
 
@@ -131,17 +131,22 @@ def generate_rtdetr_pol_description(test_class, transport):
         remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
-    # The native node shares the official preprocessor/decoder boundaries.
+    # The shared Buffer node uses the official preprocessor/decoder boundaries.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         namespace=ns,
         parameters=[
             {
                 'model_file_path': MODEL_ONNX_PATH,
                 'execution_provider': 'cuda',
                 'transport': transport,
+                **(
+                    {'message_format': 'tensor_list'}
+                    if transport == 'rosidl_buffer'
+                    else {}
+                ),
                 'output_contracts': OUTPUT_CONTRACTS,
             }
         ],
@@ -177,7 +182,7 @@ def generate_rtdetr_pol_description(test_class, transport):
                     'model_file_path': MODEL_ONNX_PATH,
                     'execution_provider': 'cuda',
                     'transport': 'managed',
-                    'managed_output_contracts': OUTPUT_CONTRACTS,
+                    'output_contracts': OUTPUT_CONTRACTS,
                 }
             ],
             remappings=[
@@ -217,12 +222,12 @@ def generate_rtdetr_pol_description(test_class, transport):
 
 
 def generate_test_description():
-    """Generate Config C's direct native TensorList proof-of-life graph."""
-    return generate_rtdetr_pol_description(GpuRosOnnxRtDetrPOLTest, 'tensor_list')
+    """Generate Config C's rosidl Buffer TensorList proof-of-life graph."""
+    return generate_rtdetr_pol_description(GpuRosOnnxRtDetrPOLTest, 'rosidl_buffer')
 
 
 class GpuRosOnnxRtDetrPOLTest(IsaacROSBaseTest):
-    """Validate detections inside the native RT-DETR graph."""
+    """Validate detections inside the rosidl Buffer RT-DETR graph."""
 
     filepath = pathlib.Path(os.path.dirname(__file__))
     INIT_WAIT_SEC = 10

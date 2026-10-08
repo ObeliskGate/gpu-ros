@@ -61,13 +61,13 @@ ORT_PROFILE_FRAMES="${AUDIT_ORT_PROFILE_FRAMES:-50}"
 
 if [[ ${MODEL} == yolov8 ]]; then
   PAYLOAD_SIZES=(4915200 2822400)
-  REFERENCE_LANE="yolov8-c"
+  REFERENCE_LANE="yolov8-rosidl-buffer"
   CANDIDATE_LANE="yolov8-d"
 else
   # Formal RT-DETR payloads: images=4915200, orig_target_sizes=16,
   # labels=2400, boxes=4800, and scores=1200 bytes for NVIDIA Synthetica.
   PAYLOAD_SIZES=(4915200 16 2400 4800 1200)
-  REFERENCE_LANE="rtdetr-c"
+  REFERENCE_LANE="rtdetr-rosidl-buffer"
   CANDIDATE_LANE="rtdetr-d"
 fi
 
@@ -104,7 +104,8 @@ for command_name in awk ctest find grep nsys ros2 tee; do
     exit 1
   fi
 done
-for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference; do
+for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference \
+  gpu_ros_rosidl_buffer; do
   if [[ ! -d ${WORKSPACE_ROOT}/build/${package} ]]; then
     echo "ERROR: build ${package} before running the audit." >&2
     exit 1
@@ -114,11 +115,14 @@ done
 mkdir -p "${ORT_ROOT}" "${NSYS_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
   "${REPORT_ROOT}" "${LOG_ROOT}"
 
-echo "Running pointer-identity, lifetime and CUDA I/O Binding tests..."
+echo "Running TensorList, rosidl Buffer and ONNX I/O Binding tests..."
 for ctest_case in \
   gpu_ros_nvidia_tensor_bundle_compat:test_tensor_list_native \
   gpu_ros_nvidia_tensor_bundle_compat:test_tensor_list_buffer_adapter \
-  gpu_ros_onnx_inference:test_native_onnx_executor \
+  gpu_ros_nvidia_tensor_bundle_compat:test_tensor_bundle_conversion \
+  gpu_ros_rosidl_buffer:test_rosidl_buffer_cpu \
+  gpu_ros_rosidl_buffer:test_rosidl_buffer_cuda \
+  gpu_ros_onnx_inference:test_onnx_rosidl_buffer \
   gpu_ros_onnx_inference:test_onnx_inference_core; do
   package="${ctest_case%%:*}"
   test_name="${ctest_case#*:}"

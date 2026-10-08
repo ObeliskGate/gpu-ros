@@ -118,6 +118,7 @@ jobs:
             gpu_ros_managed/gpu_ros_managed_hip
             gpu_ros_managed/gpu_ros_managed_ros
             gpu_ros_managed/gpu_ros_tensor_bundle_msgs
+            gpu_ros_managed/gpu_ros_rosidl_buffer
             gpu_ros_managed/gpu_ros_managed_tensor_bundle
             gpu_ros_object_detection/gpu_ros_detection_common
             gpu_ros_object_detection/gpu_ros_rtdetr
@@ -126,6 +127,7 @@ jobs:
           colcon build --base-paths "${packages[@]}" --cmake-args \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_hip=TRUE \
+            -DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=OFF \
             -DBUILD_NATIVE_TENSOR_LIST_TRANSPORT=OFF \
             -DBUILD_MIGRAPHX_POL_TEST=OFF \
             -DBUILD_NVIDIA_YOLOV8_POL_TEST=OFF \

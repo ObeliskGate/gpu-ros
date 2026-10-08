@@ -24,6 +24,9 @@ BENCHMARKS_ROOT = ROOT / "gpu_ros_object_detection" / "benchmarks"
 MANAGED_TRANSPORT_MANIFEST = (
     ROOT / "gpu_ros_managed" / "gpu_ros_managed_tensor_bundle" / "package.xml"
 )
+BUFFER_ACCESS_MANIFEST = (
+    ROOT / "gpu_ros_managed" / "gpu_ros_rosidl_buffer" / "package.xml"
+)
 COMPAT_PACKAGE = "gpu_ros_nvidia_tensor_bundle_compat"
 REFERENCE_PACKAGE = "gpu_ros_nvidia_reference"
 LEGACY_PACKAGES = {
@@ -153,6 +156,13 @@ def assert_local_transport_manifest() -> None:
     assert not (ROOT / "gpu_ros_managed" / "gpu_ros_managed_tensor_list").exists(), (
         "old managed TensorList package directory remains"
     )
+    assert BUFFER_ACCESS_MANIFEST.is_file(), (
+        f"required rosidl Buffer access manifest is missing: {BUFFER_ACCESS_MANIFEST}"
+    )
+    assert package_name(BUFFER_ACCESS_MANIFEST) == BUFFER_ACCESS_MANIFEST.parent.name, (
+        "rosidl Buffer access manifest/package directory mismatch: "
+        f"{BUFFER_ACCESS_MANIFEST}"
+    )
 
 
 def assert_legacy_namespaces_absent() -> None:
@@ -197,6 +207,27 @@ def assert_amd_profile_excludes_compat() -> None:
         assert REFERENCE_PACKAGE not in content, f"AMD profile resolves reference package: {path}"
 
 
+def assert_rosidl_buffer_profiles() -> None:
+    profiles = {
+        ROOT / "gpu_ros_object_detection/docker/colcon-defaults-phase2b-nvidia.yaml": (
+            "src/gpu-ros/gpu_ros_managed/gpu_ros_rosidl_buffer",
+            "-DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=ON",
+        ),
+        ROOT / "gpu_ros_object_detection/docker/colcon-defaults-phase2a-amd.yaml": (
+            "gpu_ros_managed/gpu_ros_rosidl_buffer",
+            "-DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=OFF",
+        ),
+        ROOT / ".github/workflows/cpu-tests.yml": (
+            "gpu_ros_managed/gpu_ros_rosidl_buffer",
+            "-DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=OFF",
+        ),
+    }
+    for path, (package_path, cuda_option) in profiles.items():
+        content = path.read_text(encoding="utf-8")
+        assert package_path in content, f"Buffer access package missing from profile: {path}"
+        assert cuda_option in content, f"Buffer CUDA selection missing from profile: {path}"
+
+
 def assert_no_old_project_directories() -> None:
     for project_root in PROJECT_ROOTS:
         for legacy in LEGACY_PACKAGES:
@@ -212,6 +243,7 @@ def main() -> int:
     assert_legacy_namespaces_absent()
     assert_nvidia_namespace_allowlist()
     assert_amd_profile_excludes_compat()
+    assert_rosidl_buffer_profiles()
     assert_no_old_project_directories()
     print("open-source namespace and dependency boundary checks: PASS")
     return 0

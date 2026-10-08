@@ -39,7 +39,7 @@ def memcpy(name, size, source, destination):
     }
 
 
-def binding_report(transport='tensor_list', direct_output=True):
+def binding_report(transport='rosidl_buffer', direct_output=True):
     """Create a fixed RT-DETR first-frame binding report."""
     return {
         'first_frame': True,
@@ -52,7 +52,7 @@ def binding_report(transport='tensor_list', direct_output=True):
                 'input_pointer': '0x1000',
                 'ort_pointer': '0x1000',
                 'pointer_identity': True,
-                'lifetime_path': 'native TensorList input lease through ORT Run',
+                'lifetime_path': 'rosidl Buffer read lease retained through ORT Run',
             },
             {
                 'name': 'orig_target_sizes',
@@ -73,7 +73,7 @@ def binding_report(transport='tensor_list', direct_output=True):
                 'ort_pointer': '0x4000' if direct_output else '0x4001',
                 'pointer_identity': direct_output,
                 'lifetime_path': (
-                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                    'output storage synchronized before publication'
                     if direct_output
                     else 'standard TensorBundle output materialization'
                 ),
@@ -164,8 +164,36 @@ def test_copy_named_kernel_is_not_a_memory_copy_record():
     assert result['unresolved_payload_copy_risk'][0]['name'] == 'copy_like_provider_kernel'
 
 
-def test_nonidentical_native_output_pointer_is_inconclusive():
-    """A native C output without direct ORT identity cannot close the audit."""
+def test_invalid_input_and_output_pointer_evidence_is_inconclusive():
+    invalid_cases = (
+        ('inputs', 'images', 'input_pointer', 'unknown'),
+        ('inputs', 'images', 'ort_pointer', 0),
+        ('inputs', 'images', 'pointer_identity', False),
+        ('inputs', 'orig_target_sizes', 'pointer_identity', True),
+        ('outputs', 'labels', 'output_pointer', 0),
+        ('outputs', 'boxes', 'ort_pointer', 'unknown'),
+    )
+    for side, tensor_name, key, invalid_value in invalid_cases:
+        reference = binding_report()
+        record = next(item for item in reference[side] if item['name'] == tensor_name)
+        record[key] = invalid_value
+        result = TRACE_COMPARE.compare(
+            [kernel('inference_kernel')],
+            [kernel('inference_kernel')],
+            {4915200, 16, 800, 1600, 400},
+            10,
+            10,
+            binding_reports={
+                'reference': reference,
+                'candidate': binding_report('std', direct_output=False),
+            },
+        )
+        assert result['status'] == 'INCONCLUSIVE'
+        assert result['binding_report_complete'] is False
+
+
+def test_nonidentical_rosidl_buffer_output_pointer_is_inconclusive():
+    """A rosidl Buffer output without direct ORT identity cannot close the audit."""
     result = TRACE_COMPARE.compare(
         [kernel('inference_kernel')],
         [kernel('inference_kernel')],
@@ -173,7 +201,7 @@ def test_nonidentical_native_output_pointer_is_inconclusive():
         10,
         10,
         binding_reports={
-            'reference': binding_report('tensor_list', direct_output=False),
+            'reference': binding_report('rosidl_buffer', direct_output=False),
             'candidate': binding_report('std', direct_output=False),
         },
     )
@@ -183,7 +211,7 @@ def test_nonidentical_native_output_pointer_is_inconclusive():
     assert result['binding_report_complete'] is False
 
 
-def test_native_output_integer_and_hex_pointers_remain_equivalent_in_c_vs_d():
+def test_rosidl_buffer_output_integer_and_hex_pointers_remain_equivalent_in_c_vs_d():
     """A positive integer pointer matches the same hexadecimal address."""
     reference = binding_report()
     reference['outputs'][0]['output_pointer'] = 16384
@@ -204,8 +232,8 @@ def test_native_output_integer_and_hex_pointers_remain_equivalent_in_c_vs_d():
     assert result['binding_report_complete'] is True
 
 
-def test_equal_negative_native_output_pointers_are_inconclusive_in_c_vs_d():
-    """A negative address cannot prove the Config C direct-output identity."""
+def test_equal_negative_rosidl_buffer_output_pointers_are_inconclusive_in_c_vs_d():
+    """A negative address cannot prove the Buffer output identity."""
     reference = binding_report()
     reference['outputs'][0]['output_pointer'] = -16384
     reference['outputs'][0]['ort_pointer'] = -16384

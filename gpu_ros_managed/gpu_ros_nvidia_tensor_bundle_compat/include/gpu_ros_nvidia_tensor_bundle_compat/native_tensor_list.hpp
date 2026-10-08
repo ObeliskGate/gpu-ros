@@ -11,6 +11,7 @@
 #include <vector>
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/header.hpp"
+#include "rosidl_buffer/buffer.hpp"
 
 namespace gpu_ros::nvidia_tensor_bundle_compat::native
 {
@@ -21,6 +22,21 @@ struct TensorSpec
   uint8_t dtype_bits;
   uint16_t dtype_lanes;
   std::vector<int64_t> shape;
+};
+// Borrowed wire metadata; the owner is the original ROS message. No device
+// handle is acquired here, so a consumer obtains exactly one backend lease.
+struct BufferTensor
+{
+  TensorSpec spec;
+  const rosidl::Buffer<uint8_t> * buffer;
+  size_t byte_offset;
+  std::vector<int64_t> strides;
+};
+struct BufferTensorList
+{
+  std_msgs::msg::Header header;
+  std::shared_ptr<const void> owner;
+  std::vector<BufferTensor> tensors;
 };
 struct CopySource
 {
@@ -85,6 +101,8 @@ public:
   TensorListTransport(const TensorListTransport &) = delete;
   TensorListTransport & operator=(const TensorListTransport &) = delete;
   void Subscribe(Callback, const std::string & input_topic = "tensor_input");
+  void SubscribeBuffers(std::function<void(BufferTensorList)>,
+    const std::string & input_topic = "tensor_input");
   void Unsubscribe();
   OutputBatch Allocate(const std_msgs::msg::Header &, const std::vector<TensorSpec> &);
   void Publish(const TensorList &);

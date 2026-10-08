@@ -23,27 +23,30 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/header.hpp"
 
-#include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
 #include "gpu_ros_onnx_inference/tensor_types.hpp"
 
 namespace gpu_ros::onnx_inference
 {
 
-// Transport-agnostic tensor IO. ManagedTensorBundleView owns its message and all
-// backing allocations for the complete callback and inference lease lifetime.
+// The callback owns every ORT view and its transport read lease.
 class ITensorBundleIO
 {
 public:
-  using Callback = std::function<void(gpu_ros_managed::ManagedTensorBundleView)>;
+  using Callback = std::function<void(TensorBindingBatch)>;
 
   virtual ~ITensorBundleIO() = default;
   virtual void Subscribe(Callback callback) = 0;
   virtual OutputPlacement output_placement() const noexcept = 0;
   virtual DeviceOutputAllocator * device_output_allocator() noexcept { return nullptr; }
+  virtual bool shutdown(std::chrono::milliseconds timeout) noexcept
+  {
+    auto * allocator = device_output_allocator();
+    return !allocator || allocator->shutdown(timeout);
+  }
   virtual void Publish(TensorBundleOutput && output) = 0;
 };
 
-// Factory: transport is "std" or "managed".
+// Factory: std, managed, or rosidl_buffer.
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   rclcpp::Node * node, const std::string & transport, bool publish_output = true);
 

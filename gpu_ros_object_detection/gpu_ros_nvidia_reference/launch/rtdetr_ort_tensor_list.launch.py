@@ -13,11 +13,12 @@
 # limitations under the License.
 
 """
-RT-DETR config C: ONNX Runtime + native TensorList transport.
+RT-DETR config C: ONNX Runtime + rosidl Buffer TensorList transport.
 
 Upstream TensorList preprocessing chain + upstream RT-DETR preprocessor/decoder,
-with only the inference node swapped from TensorRT to NativeOnnxInferenceNode
-(transport=tensor_list). Isolates the inference-backend cost under native transport.
+with only the inference node swapped to the shared OnnxInferenceNode
+(transport=rosidl_buffer, message_format=tensor_list). Isolates the
+inference-backend cost under the TensorList transport.
 """
 
 import launch
@@ -151,11 +152,11 @@ def generate_launch_description():
         remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
-    # Our ORT node in native TensorList transport mode replaces the TensorRT node.
+    # Our shared ORT node in rosidl Buffer TensorList mode replaces TensorRT.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
         parameters=[
             {
                 'model_file_path': model_file_path,
@@ -165,7 +166,8 @@ def generate_launch_description():
                 'ort_profile_prefix': ort_profile_prefix,
                 'ort_profile_frames': ort_profile_frames,
                 'binding_report_path': binding_report_path,
-                'transport': 'tensor_list',
+                'transport': 'rosidl_buffer',
+                'message_format': 'tensor_list',
                 'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',

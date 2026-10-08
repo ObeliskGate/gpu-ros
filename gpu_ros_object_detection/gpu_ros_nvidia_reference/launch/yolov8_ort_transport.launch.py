@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Fixed-input YOLOv8 graph for ORT CUDA native TensorList/Managed comparisons."""
+"""Fixed-input YOLOv8 graph for ORT CUDA rosidl Buffer/Managed comparisons."""
 
 import launch
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -29,8 +29,8 @@ MODEL_NUM_CHANNELS = 3
 def launch_setup(context):
     """Create the graph after resolving the selected transport."""
     transport = LaunchConfiguration('transport').perform(context)
-    if transport not in ('tensor_list', 'managed'):
-        raise RuntimeError("transport must be either 'tensor_list' or 'managed'")
+    if transport not in ('rosidl_buffer', 'managed'):
+        raise RuntimeError("transport must be either 'rosidl_buffer' or 'managed'")
 
     model_file_path = LaunchConfiguration('model_file_path')
     execution_provider = LaunchConfiguration('execution_provider')
@@ -130,12 +130,12 @@ def launch_setup(context):
         remappings=[('tensor', 'planar_tensor')],
     )
 
-    if transport == 'tensor_list':
+    if transport == 'rosidl_buffer':
         inference_nodes = [
             ComposableNode(
                 name='onnx_inference',
                 package='gpu_ros_onnx_inference',
-                plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
+                plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
                 parameters=[
                     {
                         'model_file_path': model_file_path,
@@ -143,7 +143,8 @@ def launch_setup(context):
                         'ort_profile_prefix': ort_profile_prefix,
                         'ort_profile_frames': ort_profile_frames,
                         'binding_report_path': binding_report_path,
-                        'transport': 'tensor_list',
+                        'transport': 'rosidl_buffer',
+                        'message_format': 'tensor_list',
                         'output_contracts': ['output0=float32[1,84,8400]'],
                     }
                 ],
@@ -176,7 +177,7 @@ def launch_setup(context):
                         'ort_profile_frames': ort_profile_frames,
                         'binding_report_path': binding_report_path,
                         'transport': 'managed',
-                        'managed_output_contracts': ['output0=float32[1,84,8400]'],
+                        'output_contracts': ['output0=float32[1,84,8400]'],
                     }
                 ],
                 remappings=[
@@ -232,7 +233,7 @@ def launch_setup(context):
 def generate_launch_description():
     """Generate the fixed-input YOLOv8 launch description."""
     arguments = [
-        DeclareLaunchArgument('transport', default_value='tensor_list'),
+        DeclareLaunchArgument('transport', default_value='rosidl_buffer'),
         DeclareLaunchArgument('model_file_path', default_value=''),
         DeclareLaunchArgument('execution_provider', default_value='cuda'),
         DeclareLaunchArgument('ort_profile_prefix', default_value=''),

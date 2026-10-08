@@ -110,11 +110,11 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 "execution_provider": "migraphx",
                 "gpu_device_id": 0,
                 "transport": "managed",
-                "managed_io_contract": "hip_managed_strict",
-                "managed_input_contracts": ["images=float32[1,3,640,640]"],
-                "managed_output_contracts": ["output0=float32[1,84,8400]"],
-                "managed_pool_capacity": 16,
-                "managed_pool_wait_timeout_ms": 100,
+                "io_contract": "device_strict",
+                "input_contracts": ["images=float32[1,3,640,640]"],
+                "output_contracts": ["output0=float32[1,84,8400]"],
+                "output_pool_capacity": 16,
+                "output_pool_wait_timeout_ms": 100,
             }
         ],
         remappings=[

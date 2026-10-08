@@ -24,7 +24,7 @@ SPEC.loader.exec_module(TRACE_COMPARE)
 
 
 def binding_report(transport, direct_output=True):
-    """Create a first-frame report with the native allocation evidence."""
+    """Create a first-frame report with rosidl Buffer allocation evidence."""
     return {
         'first_frame': True,
         'transport': transport,
@@ -36,7 +36,7 @@ def binding_report(transport, direct_output=True):
                 'input_pointer': '0x1000',
                 'ort_pointer': '0x1000',
                 'pointer_identity': True,
-                'lifetime_path': 'native TensorList input lease through ORT Run',
+                'lifetime_path': 'rosidl Buffer read lease retained through ORT Run',
             },
             {
                 'name': 'orig_target_sizes',
@@ -57,9 +57,9 @@ def binding_report(transport, direct_output=True):
                 'ort_pointer': '0x4000' if direct_output else '0x4001',
                 'pointer_identity': direct_output,
                 'lifetime_path': (
-                    'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
+                    'output storage synchronized before publication'
                     if direct_output
-                    else 'generic dynamic output explicitly copied D2D into native CUDA Buffer'
+                    else 'dynamic output copied into rosidl Buffer storage'
                 ),
             }
             for name, size in (('labels', 800), ('boxes', 1600), ('scores', 400))
@@ -185,8 +185,8 @@ def test_pointer_lifetime_confirmed_boundary_copy_fails():
     assert result['status'] == 'FAIL'
 
 
-def test_native_tensor_list_and_managed_bindings_require_direct_output_evidence():
-    """Native and Managed reports must retain their transport and pointer contracts."""
+def test_rosidl_buffer_and_managed_bindings_require_direct_output_evidence():
+    """Buffer and Managed reports must retain their transport and pointer contracts."""
     result = TRACE_COMPARE.compare(
         [kernel('inference_kernel')],
         [kernel('inference_kernel')],
@@ -194,7 +194,7 @@ def test_native_tensor_list_and_managed_bindings_require_direct_output_evidence(
         10,
         10,
         binding_reports={
-            'reference': binding_report('tensor_list'),
+            'reference': binding_report('rosidl_buffer'),
             'managed': binding_report('managed'),
         },
     )
@@ -214,7 +214,7 @@ def test_incomplete_profiler_evidence_prevents_a_valid_binding_report_from_passi
         10,
         profiler_complete=False,
         binding_reports={
-            'reference': binding_report('tensor_list'),
+            'reference': binding_report('rosidl_buffer'),
             'managed': binding_report('managed'),
         },
     )
@@ -235,7 +235,7 @@ def test_explicit_opaque_kernel_risk_prevents_a_valid_binding_report_from_passin
         10,
         kernel_payload_risk_names={'opaque_epilogue_kernel'},
         binding_reports={
-            'reference': binding_report('tensor_list'),
+            'reference': binding_report('rosidl_buffer'),
             'managed': binding_report('managed'),
         },
     )
@@ -246,9 +246,58 @@ def test_explicit_opaque_kernel_risk_prevents_a_valid_binding_report_from_passin
     ]
 
 
-def test_equal_malformed_or_negative_native_output_pointers_are_inconclusive():
+def test_consistent_false_output_identity_is_valid_without_direct_contract():
+    """Dynamic output identity may be false when its positive addresses differ."""
+    payload_sizes = {4915200, 16, 800, 1600, 400}
+    result = TRACE_COMPARE.build_pair_report(
+        [kernel('inference_kernel')],
+        [kernel('inference_kernel')],
+        payload_sizes,
+        reference_frames=10,
+        managed_frames=10,
+        platform='nsys',
+        binding_reports={
+            'reference': binding_report('rosidl_buffer', direct_output=False),
+            'managed': binding_report('managed', direct_output=False),
+        },
+        expected_binding_transports={'reference': 'rosidl_buffer', 'managed': 'managed'},
+        required_binding_payload_sizes=payload_sizes,
+        require_direct_output_pointer_identity=False,
+    )
+
+    assert result['criteria']['pointer_lifetime_evidence_complete'] is True
+
+
+def test_invalid_binding_pointer_addresses_and_alias_flags_are_inconclusive():
+    invalid_cases = (
+        ('reference', 'inputs', 0, 'input_pointer', 0),
+        ('reference', 'inputs', 0, 'ort_pointer', 'unknown'),
+        ('reference', 'inputs', 0, 'pointer_identity', False),
+        ('managed', 'inputs', 1, 'pointer_identity', True),
+        ('managed', 'outputs', 0, 'output_pointer', 0),
+        ('managed', 'outputs', 0, 'ort_pointer', 'unknown'),
+    )
+    for lane, side, index, key, invalid_value in invalid_cases:
+        reports = {
+            'reference': binding_report('rosidl_buffer'),
+            'managed': binding_report('managed'),
+        }
+        reports[lane][side][index][key] = invalid_value
+        result = TRACE_COMPARE.compare(
+            [kernel('inference_kernel')],
+            [kernel('inference_kernel')],
+            {4915200, 16, 800, 1600, 400},
+            10,
+            10,
+            binding_reports=reports,
+        )
+        assert result['status'] == 'INCONCLUSIVE'
+        assert result['criteria']['pointer_lifetime_evidence_complete'] is False
+
+
+def test_equal_malformed_or_negative_rosidl_buffer_output_pointers_are_inconclusive():
     """Matching opaque or negative pointers cannot establish output identity."""
-    reference = binding_report('tensor_list')
+    reference = binding_report('rosidl_buffer')
     managed = binding_report('managed')
     reference['outputs'][0]['output_pointer'] = 'unknown'
     reference['outputs'][0]['ort_pointer'] = 'unknown'
@@ -268,9 +317,9 @@ def test_equal_malformed_or_negative_native_output_pointers_are_inconclusive():
     assert result['criteria']['pointer_lifetime_evidence_complete'] is False
 
 
-def test_native_binding_reports_must_cover_each_model_payload_size():
+def test_rosidl_buffer_binding_reports_must_cover_each_model_payload_size():
     """A report missing the 16-byte input cannot close the payload audit."""
-    reference = binding_report('tensor_list')
+    reference = binding_report('rosidl_buffer')
     reference['inputs'] = [record for record in reference['inputs'] if record['bytes'] != 16]
     result = TRACE_COMPARE.compare(
         [kernel('inference_kernel')],
@@ -288,7 +337,7 @@ def test_native_binding_reports_must_cover_each_model_payload_size():
 
 
 def test_generic_dynamic_output_fallback_does_not_claim_pointer_identity():
-    """A valid generic output fallback remains inconclusive for native proof."""
+    """A valid generic output fallback remains inconclusive for Buffer proof."""
     result = TRACE_COMPARE.compare(
         [kernel('inference_kernel')],
         [kernel('inference_kernel')],
@@ -296,7 +345,7 @@ def test_generic_dynamic_output_fallback_does_not_claim_pointer_identity():
         10,
         10,
         binding_reports={
-            'reference': binding_report('tensor_list', direct_output=False),
+            'reference': binding_report('rosidl_buffer', direct_output=False),
             'managed': binding_report('managed', direct_output=False),
         },
     )
@@ -305,8 +354,8 @@ def test_generic_dynamic_output_fallback_does_not_claim_pointer_identity():
     assert result['criteria']['pointer_lifetime_evidence_complete'] is False
 
 
-def test_native_binding_transport_mismatch_is_inconclusive():
-    """A stale transport token cannot produce a passing native transport report."""
+def test_rosidl_buffer_binding_transport_mismatch_is_inconclusive():
+    """A stale transport token cannot produce a passing Buffer transport report."""
     result = TRACE_COMPARE.compare(
         [kernel('inference_kernel')],
         [kernel('inference_kernel')],

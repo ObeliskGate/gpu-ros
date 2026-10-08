@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>gpu_ros_rosidl_buffer</name>
+  <version>0.1.0</version>
+  <description>Backend-neutral read leases for CPU and official CUDA rosidl Buffer storage.</description>
+  <maintainer email="unnamets@gmail.com">Boshen Chen</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rosidl_buffer</depend>
+  <depend condition="$GPU_ROS_NVIDIA_PROFILE == 1">cuda_buffer</depend>
+  <exec_depend condition="$GPU_ROS_NVIDIA_PROFILE == 1">cuda_buffer_backend</exec_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

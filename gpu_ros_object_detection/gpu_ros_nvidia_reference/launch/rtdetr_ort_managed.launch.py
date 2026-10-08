@@ -132,7 +132,7 @@ def generate_launch_description():
                 'ort_profile_frames': ort_profile_frames,
                 'binding_report_path': binding_report_path,
                 'transport': 'managed',
-                'managed_output_contracts': [
+                'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
                     'scores=float32[1,300]',

@@ -2,6 +2,7 @@ build:
   base-paths:
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_core
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_cuda
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_rosidl_buffer
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_ros
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_tensor_bundle
     - src/gpu-ros/gpu_ros_managed/gpu_ros_tensor_bundle_msgs
@@ -15,6 +16,7 @@ build:
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
+    - -DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=ON
     - -DORT_ENABLE_CUDA=ON
     - -DORT_ENABLE_ROCM=OFF
     - -DORT_ENABLE_MIGRAPHX=OFF
@@ -27,6 +29,7 @@ test:
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_cuda
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_ros
     - src/gpu-ros/gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - src/gpu-ros/gpu_ros_managed/gpu_ros_rosidl_buffer
     - src/gpu-ros/gpu_ros_managed/gpu_ros_tensor_bundle_msgs
     - src/gpu-ros/gpu_ros_object_detection/gpu_ros_detection_common
     - src/gpu-ros/gpu_ros_object_detection/gpu_ros_onnx_inference
@@ -42,4 +45,5 @@ test:
     - gpu_ros_managed_tensor_bundle
     - gpu_ros_tensor_bundle_msgs
     - gpu_ros_onnx_inference
+    - gpu_ros_rosidl_buffer
     - gpu_ros_nvidia_tensor_bundle_compat

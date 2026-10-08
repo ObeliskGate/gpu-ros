@@ -370,6 +370,16 @@ void TensorListTransport::Unsubscribe()
 }
 void TensorListTransport::Subscribe(Callback callback, const std::string & input_topic)
 {
+  const int device = impl_->device;
+  const auto poisoned = impl_->poisoned;
+  SubscribeBuffers([callback = std::move(callback), device, poisoned](BufferTensorList input) {
+    auto message = std::static_pointer_cast<const detail::Message>(input.owner);
+    callback(detail::ImportImpl(std::move(message), device, nullptr, {}, poisoned));
+  }, input_topic);
+}
+void TensorListTransport::SubscribeBuffers(
+  std::function<void(BufferTensorList)> callback, const std::string & input_topic)
+{
   Unsubscribe();
   {
     std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -399,7 +409,16 @@ void TensorListTransport::Subscribe(Callback callback, const std::string & input
         }
       } guard{state};
       try {
-        callback(detail::ImportImpl(std::move(message), state->device, nullptr, {}, state->poisoned));
+        metadata::ValidateNames(*message);
+        BufferTensorList input{message->header, message, {}};
+        input.tensors.reserve(message->tensors.size());
+        for (size_t i = 0; i < message->tensors.size(); ++i) {
+          const auto & tensor = message->tensors[i];
+          static_cast<void>(metadata::ValidateTensor(tensor));
+          input.tensors.push_back({{message->names[i], tensor.dtype_code, tensor.dtype_bits,
+            tensor.dtype_lanes, tensor.shape}, &tensor.data, tensor.byte_offset, tensor.strides});
+        }
+        callback(std::move(input));
       } catch (const std::exception & error) {
         RCLCPP_ERROR(logger, "%s native TensorList frame: %s",
           state->poisoned->load(std::memory_order_acquire) ? "Stopping after" : "Dropping", error.what());

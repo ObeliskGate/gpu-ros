@@ -35,6 +35,8 @@ public:
   ~OnnxInferenceNode() override;
 
 private:
+  friend class OnnxBindingTestPeer;
+  ITensorBundleIO::Callback MakeCallback() const;
   struct CallbackState
   {
     std::mutex mutex;
@@ -44,7 +46,7 @@ private:
     bool shutting_down{false};
   };
 
-  void OnTensors(gpu_ros_managed::ManagedTensorBundleView inputs);
+  void OnTensors(TensorBindingBatch inputs);
   void FinalizeOrtProfile(const char * reason) noexcept;
 
   std::unique_ptr<OnnxInferenceCore> core_;

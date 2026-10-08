@@ -6,6 +6,7 @@ build:
     - gpu_ros_managed/gpu_ros_managed_hip
     - gpu_ros_managed/gpu_ros_managed_ros
     - gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - gpu_ros_managed/gpu_ros_rosidl_buffer
     - gpu_ros_managed/gpu_ros_tensor_bundle_msgs
     - gpu_ros_object_detection/gpu_ros_detection_common
     - gpu_ros_object_detection/gpu_ros_onnx_inference
@@ -15,6 +16,7 @@ build:
   cmake-args:
     - --no-warn-unused-cli
     - -DCMAKE_BUILD_TYPE=Release
+    - -DGPU_ROS_ROSIDL_BUFFER_BUILD_CUDA=OFF
     - -DBUILD_NATIVE_TENSOR_LIST_TRANSPORT=OFF
     - -DORT_ENABLE_CUDA=OFF
     - -DORT_ENABLE_ROCM=OFF
@@ -39,6 +41,7 @@ test:
     - gpu_ros_managed/gpu_ros_managed_hip
     - gpu_ros_managed/gpu_ros_managed_ros
     - gpu_ros_managed/gpu_ros_managed_tensor_bundle
+    - gpu_ros_managed/gpu_ros_rosidl_buffer
     - gpu_ros_managed/gpu_ros_tensor_bundle_msgs
     - gpu_ros_object_detection/gpu_ros_detection_common
     - gpu_ros_object_detection/gpu_ros_onnx_inference
@@ -50,6 +53,7 @@ test:
     - gpu_ros_managed_hip
     - gpu_ros_managed_ros
     - gpu_ros_managed_tensor_bundle
+    - gpu_ros_rosidl_buffer
     - gpu_ros_tensor_bundle_msgs
     - gpu_ros_detection_common
     - gpu_ros_onnx_inference

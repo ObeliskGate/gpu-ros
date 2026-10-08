@@ -612,7 +612,7 @@ def build_pair_report(
     binding_reports: Optional[Mapping[str, Mapping[str, Any]]] = None,
     expected_binding_transports: Optional[Mapping[str, str]] = None,
     required_binding_payload_sizes: Optional[Iterable[int]] = None,
-    require_native_output_pointer_identity: bool = False,
+    require_direct_output_pointer_identity: bool = False,
 ) -> Dict[str, Any]:
     """Build the shared PASS/FAIL/INCONCLUSIVE transport audit report."""
     if (reference_frames is None) != (managed_frames is None):
@@ -659,39 +659,50 @@ def build_pair_report(
                     'storage',
                     'ort_pointer',
                     'pointer_identity',
-                    'lifetime_path',
+                    'input_pointer' if side == 'inputs' else 'output_pointer',
                 ):
                     if key not in record:
                         binding_report_errors.append(f'{lane}: {side}[{index}] missing {key}')
-                if not record.get('lifetime_path'):
-                    binding_report_errors.append(f'{lane}: {side}[{index}] lifetime path empty')
                 pointer_key = 'input_pointer' if side == 'inputs' else 'output_pointer'
-                if expected_transport is not None and pointer_key not in record:
-                    binding_report_errors.append(f'{lane}: {side}[{index}] missing {pointer_key}')
-                if require_native_output_pointer_identity and side == 'outputs':
-                    if record.get('pointer_identity') is not True:
+                tensor_pointer = pointer_address(record.get(pointer_key))
+                ort_pointer = pointer_address(record.get('ort_pointer'))
+                if tensor_pointer is None:
+                    binding_report_errors.append(
+                        f'{lane}: {side}[{index}] {pointer_key} is not a positive address'
+                    )
+                if ort_pointer is None:
+                    binding_report_errors.append(
+                        f'{lane}: {side}[{index}] ort_pointer is not a positive address'
+                    )
+                pointer_identity = record.get('pointer_identity')
+                if not isinstance(pointer_identity, bool):
+                    binding_report_errors.append(
+                        f'{lane}: {side}[{index}] pointer_identity is not boolean'
+                    )
+                elif (
+                    tensor_pointer is not None
+                    and ort_pointer is not None
+                    and pointer_identity != (tensor_pointer == ort_pointer)
+                ):
+                    binding_report_errors.append(
+                        f'{lane}: {side}[{index}] pointer_identity does not match addresses'
+                    )
+                if require_direct_output_pointer_identity and side == 'outputs':
+                    if pointer_identity is not True:
                         binding_report_errors.append(
-                            f'{lane}: outputs[{index}] native output pointer identity is not true'
+                            f'{lane}: outputs[{index}] direct output pointer identity is not true'
                         )
                     if record.get('storage') != 'cuda_device':
                         binding_report_errors.append(
-                            f'{lane}: outputs[{index}] native output storage is not cuda_device'
+                            f'{lane}: outputs[{index}] direct output storage is not cuda_device'
                         )
-                    output_pointer = pointer_address(record.get('output_pointer'))
-                    ort_pointer = pointer_address(record.get('ort_pointer'))
                     if (
-                        output_pointer is None
+                        tensor_pointer is None
                         or ort_pointer is None
-                        or output_pointer != ort_pointer
+                        or tensor_pointer != ort_pointer
                     ):
                         binding_report_errors.append(
-                            f'{lane}: outputs[{index}] native output and ORT pointers differ'
-                        )
-                    if record.get('lifetime_path') != (
-                        'native CUDA Buffer writer finalized after IoBinding::SynchronizeOutputs'
-                    ):
-                        binding_report_errors.append(
-                            f'{lane}: outputs[{index}] native output lifetime path is unexpected'
+                            f'{lane}: outputs[{index}] direct output and ORT pointers differ'
                         )
         if expected_payload_sizes is not None:
             reported_sizes = set()

@@ -61,13 +61,13 @@ ORT_PROFILE_FRAMES="${AUDIT_ORT_PROFILE_FRAMES:-50}"
 
 if [[ ${MODEL} == yolov8 ]]; then
   PAYLOAD_SIZES=(4915200 2822400)
-  REFERENCE_LANE="yolov8-c"
+  REFERENCE_LANE="yolov8-rosidl-buffer"
   MANAGED_LANE="yolov8-managed"
 else
   # Formal RT-DETR payloads: images=4915200, orig_target_sizes=16,
   # labels=2400, boxes=4800, and scores=1200 bytes for NVIDIA Synthetica.
   PAYLOAD_SIZES=(4915200 16 2400 4800 1200)
-  REFERENCE_LANE="rtdetr-c"
+  REFERENCE_LANE="rtdetr-rosidl-buffer"
   MANAGED_LANE="rtdetr-managed"
 fi
 
@@ -104,7 +104,8 @@ for command_name in awk ctest find grep nsys ros2 tee; do
     exit 1
   fi
 done
-for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference; do
+for package in gpu_ros_nvidia_tensor_bundle_compat gpu_ros_onnx_inference \
+  gpu_ros_rosidl_buffer; do
   if [[ ! -d ${WORKSPACE_ROOT}/build/${package} ]]; then
     echo "ERROR: build ${package} before running the audit." >&2
     exit 1
@@ -133,7 +134,7 @@ run_required_ctest() {
   fi
 }
 
-echo "Running pure native, Managed adapter and ONNX inference CTests..."
+echo "Running TensorList, Buffer, Managed adapter and ONNX inference CTests..."
 run_required_ctest \
   "${WORKSPACE_ROOT}/build/gpu_ros_nvidia_tensor_bundle_compat" \
   test_tensor_list_native \
@@ -143,13 +144,29 @@ run_required_ctest \
   test_tensor_list_buffer_adapter \
   "${LOG_ROOT}/ctest_tensor_list_buffer_adapter.log"
 run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_nvidia_tensor_bundle_compat" \
+  test_tensor_bundle_conversion \
+  "${LOG_ROOT}/ctest_tensor_bundle_conversion.log"
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_rosidl_buffer" \
+  test_rosidl_buffer_cpu \
+  "${LOG_ROOT}/ctest_rosidl_buffer_cpu.log"
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_rosidl_buffer" \
+  test_rosidl_buffer_cuda \
+  "${LOG_ROOT}/ctest_rosidl_buffer_cuda.log"
+run_required_ctest \
   "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
   test_onnx_inference_core \
   "${LOG_ROOT}/ctest_onnx_inference_core.log"
 run_required_ctest \
   "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
-  test_native_onnx_executor \
-  "${LOG_ROOT}/ctest_native_onnx_executor.log"
+  test_onnx_rosidl_buffer \
+  "${LOG_ROOT}/ctest_onnx_rosidl_buffer.log"
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
+  test_managed_output_binding \
+  "${LOG_ROOT}/ctest_managed_output_binding.log"
 
 run_capture() {
   local lane="$1"

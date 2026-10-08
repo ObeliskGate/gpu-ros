@@ -162,9 +162,9 @@ def compare(
         profiler_complete=profiler_complete,
         kernel_payload_risk_names=kernel_payload_risk_names,
         binding_reports=binding_reports,
-        expected_binding_transports={'reference': 'tensor_list', 'managed': 'managed'},
+        expected_binding_transports={'reference': 'rosidl_buffer', 'managed': 'managed'},
         required_binding_payload_sizes=payload_size_set,
-        require_native_output_pointer_identity=True,
+        require_direct_output_pointer_identity=True,
     )
     return result
 

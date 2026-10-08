@@ -27,7 +27,6 @@
 #include "gpu_ros_managed_ros/managed_pub_sub.hpp"
 #include "gpu_ros_managed_tensor_bundle/type_adapter.hpp"
 #include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
-#include "gpu_ros_onnx_inference/nitros_managed_tensor_bundle_adapter.hpp"
 
 namespace gpu_ros::onnx_inference
 {

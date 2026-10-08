@@ -23,6 +23,10 @@ namespace gpu_ros::onnx_inference
 std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node, bool publish_output);
 std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
   rclcpp::Node * node, bool publish_output);
+std::unique_ptr<ITensorBundleIO> CreateRosidlBufferTensorBundleIO(rclcpp::Node *, bool);
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+std::unique_ptr<ITensorBundleIO> CreateTensorListBufferIO(rclcpp::Node *, bool);
+#endif
 
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   rclcpp::Node * node, const std::string & transport, bool publish_output)
@@ -32,6 +36,17 @@ std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   }
   if (transport == "managed") {
     return CreateManagedTensorBundleIO(node, publish_output);
+  }
+  if (transport == "rosidl_buffer") {
+    const auto format = node->has_parameter("message_format") ?
+      node->get_parameter("message_format").as_string() : "tensor_bundle";
+    if (format == "tensor_bundle") {
+      return CreateRosidlBufferTensorBundleIO(node, publish_output);
+    }
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+    if (format == "tensor_list") { return CreateTensorListBufferIO(node, publish_output); }
+#endif
+    throw std::invalid_argument("unsupported Buffer message_format: " + format);
   }
   throw std::invalid_argument("Unknown transport: " + transport);
 }

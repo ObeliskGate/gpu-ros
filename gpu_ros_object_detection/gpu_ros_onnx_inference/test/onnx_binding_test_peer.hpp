@@ -12,22 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef GPU_ROS_ONNX_INFERENCE_TEST__NATIVE_ONNX_EXECUTOR_TEST_PEER_HPP_
-#define GPU_ROS_ONNX_INFERENCE_TEST__NATIVE_ONNX_EXECUTOR_TEST_PEER_HPP_
+#ifndef GPU_ROS_ONNX_INFERENCE_TEST__ONNX_BINDING_TEST_PEER_HPP_
+#define GPU_ROS_ONNX_INFERENCE_TEST__ONNX_BINDING_TEST_PEER_HPP_
 
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <vector>
 
-#include "native_onnx_executor.hpp"
-#include "gpu_ros_onnx_inference/native_onnx_inference_node.hpp"
+#include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
+#include "gpu_ros_onnx_inference/onnx_inference_node.hpp"
 
 namespace gpu_ros::onnx_inference
 {
 
 // Included only by the test executable and its compilation of the real sources.
-class NativeOnnxExecutorTestPeer
+class OnnxBindingTestPeer
 {
 public:
   enum class Point { kNone, kBeforeRun, kSubmissionBoundary, kSynchronized };
@@ -37,6 +37,7 @@ public:
     point = Point::kNone;
     unknown_completion = false;
     submission_work = {};
+    reservation_hook = {};
     input_owner.reset();
     output_owner.reset();
     session_owner.reset();
@@ -69,9 +70,14 @@ public:
     input_records = inputs;
     output_records = outputs;
   }
+  static void Reservation(size_t index, const TensorStorage & storage)
+  {
+    if (reservation_hook) { reservation_hook(index, storage); }
+  }
+  inline static thread_local std::function<void(size_t, const TensorStorage &)> reservation_hook;
 
-  static auto Callback(const NativeOnnxInferenceNode & node) { return node.MakeCallback(); }
-  static auto State(const NativeOnnxInferenceNode & node) { return node.callback_state_; }
+  static auto Callback(const OnnxInferenceNode & node) { return node.MakeCallback(); }
+  static auto State(const OnnxInferenceNode & node) { return node.callback_state_; }
   static void CallbackEntered()
   {
     if (callback_entered) {
@@ -96,11 +102,11 @@ private:
   {
     if (point == expected) {
       point = Point::kNone;
-      throw std::runtime_error("injected native executor failure");
+      throw std::runtime_error("injected binding failure");
     }
   }
 };
 
 } // namespace gpu_ros::onnx_inference
 
-#endif // GPU_ROS_ONNX_INFERENCE_TEST__NATIVE_ONNX_EXECUTOR_TEST_PEER_HPP_
+#endif // GPU_ROS_ONNX_INFERENCE_TEST__ONNX_BINDING_TEST_PEER_HPP_
