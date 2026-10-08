@@ -19,6 +19,11 @@ Read the checked-out [experiment skill](skills/gpu-ros-experiments/SKILL.md)
 and its references before runtime work. These files are the method authority;
 installing a skill is optional.
 
+## 文档与结果发布
+
+- 在我授权之前不允许把任何docs/中的东西或者类似的结果push到github
+- 源码提交、推送、部署或实验授权不包含文档与结果发布授权；结果摘要写在 README、skill 或其他路径中也受此限制。
+
 ## Collection ownership
 
 - `gpu_ros_managed/` contains seven packages: core, CUDA, HIP, ROS wrappers,
