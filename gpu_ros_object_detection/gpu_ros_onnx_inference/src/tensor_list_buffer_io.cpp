@@ -1,5 +1,17 @@
 // Copyright 2026 Boshen Chen
-// Licensed under the Apache License, Version 2.0.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 #include "gpu_ros_onnx_inference/rosidl_buffer_adapter.hpp"
 #include "gpu_ros_onnx_inference/tensor_contract.hpp"
@@ -56,6 +68,7 @@ public:
   WireIO(rclcpp::Node * node, bool publish) :
     device_(static_cast<int>(node->get_parameter("gpu_device_id").as_int())),
     transport_(node, device_, "tensor_output", publish),
+    cpu_access_(gpu_ros::rosidl_buffer::CreateCpuBufferAccess()),
     access_(gpu_ros::rosidl_buffer::CreateCudaBufferAccess(device_))
   {
     if (node->get_parameter("execution_provider").as_string() != "cuda") {
@@ -68,10 +81,14 @@ public:
     transport_.SubscribeBuffers([this, callback = std::move(callback)](wire::BufferTensorList input) {
       TensorBindingBatch batch{std::move(input.header), input.owner, {}};
       batch.bindings.reserve(input.tensors.size());
-      const auto memory = memory_info();
+      const auto device_memory = memory_info();
+      const auto host_memory = ProviderMemoryInfo(ExecutionProvider::kCpu, device_);
       for (const auto & tensor : input.tensors) {
+        const bool host = tensor.buffer->get_backend_type() == "cpu";
+        auto & access = host ? *cpu_access_ : *access_;
+        const auto & memory = host ? host_memory : device_memory;
         batch.bindings.push_back(BindBuffer(*tensor.buffer, tensor.spec.name, Dtype(tensor.spec),
-          tensor.spec.shape, tensor.byte_offset, tensor.strides, input.owner, *access_, memory));
+          tensor.spec.shape, tensor.byte_offset, tensor.strides, input.owner, access, memory));
       }
       callback(std::move(batch));
     });
@@ -107,6 +124,7 @@ public:
 private:
   int device_;
   wire::TensorListTransport transport_;
+  std::unique_ptr<gpu_ros::rosidl_buffer::IBufferAccess> cpu_access_;
   std::unique_ptr<gpu_ros::rosidl_buffer::IBufferAccess> access_;
 };
 } // namespace

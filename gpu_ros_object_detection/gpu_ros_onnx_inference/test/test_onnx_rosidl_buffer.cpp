@@ -17,6 +17,9 @@
 #include <cuda_runtime_api.h>
 #include "cuda_buffer/cuda_buffer_api.hpp"
 #endif
+#ifdef GPU_ROS_TEST_TENSOR_LIST
+#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
+#endif
 
 #include <atomic>
 #include <cmath>
@@ -304,6 +307,85 @@ TEST(BufferAdapterTest, ValidatesOffsetCapacityStridesAndOwner)
   value.owner.reset();
   EXPECT_TRUE(owner.expired());
 }
+#ifdef GPU_ROS_TEST_TENSOR_LIST
+TEST(TensorListBufferIOTest, MixedCpuAndCudaBuffersRetainTheirOriginalStorage)
+{
+  if (!rclcpp::ok()) { rclcpp::init(0, nullptr); }
+  rclcpp::NodeOptions options;
+  options.use_intra_process_comms(true);
+  auto node = std::make_shared<rclcpp::Node>("mixed_buffer_wire_test", options);
+  node->declare_parameter<std::string>("execution_provider", "cuda");
+  node->declare_parameter<int>("gpu_device_id", 0);
+  node->declare_parameter<std::string>("message_format", "tensor_list");
+  auto io = inference::CreateTensorBundleIO(node.get(), "rosidl_buffer", false);
+  std::promise<inference::TensorBindingBatch> received;
+  auto future = received.get_future();
+  io->Subscribe([&received](inference::TensorBindingBatch input) {
+    received.set_value(std::move(input));
+  });
+  using WireMessage = isaac_ros_tensor_msgs::msg::TensorList;
+  auto publisher = node->create_publisher<WireMessage>("tensor_input", rclcpp::QoS(10));
+  auto message = std::make_unique<WireMessage>();
+  const auto * original_message = message.get();
+  message->names = {"images", "orig_target_sizes"};
+  message->tensors.resize(2);
+  auto & image = message->tensors[0];
+  image.dtype_code = 2;
+  image.dtype_bits = 32;
+  image.dtype_lanes = 1;
+  image.shape = {1, 4};
+  image.strides = {4, 1};
+  image.byte_offset = 0;
+  const float pixels[]{2, 4, 6, 8};
+  image.data = cuda_buffer_backend::allocate_buffer(sizeof(pixels));
+  const void * original_device_pointer;
+  {
+    auto writer = cuda_buffer_backend::from_output_buffer(image.data, nullptr);
+    original_device_pointer = writer.get_ptr();
+    ASSERT_EQ(cudaMemcpy(writer.get_ptr(), pixels, sizeof(pixels), cudaMemcpyHostToDevice), cudaSuccess);
+  }
+  auto & sizes = message->tensors[1];
+  sizes.dtype_code = 0;
+  sizes.dtype_bits = 64;
+  sizes.dtype_lanes = 1;
+  sizes.shape = {1, 2};
+  sizes.strides = {2, 1};
+  sizes.byte_offset = 0;
+  const int64_t dimensions[]{720, 1280};
+  std::vector<uint8_t> bytes(sizeof(dimensions));
+  std::memcpy(bytes.data(), dimensions, sizeof(dimensions));
+  sizes.data = std::move(bytes);
+  const void * original_host_pointer = sizes.data.data();
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node);
+  publisher->publish(std::move(message));
+  ASSERT_EQ(executor.spin_until_future_complete(future, std::chrono::seconds(5)),
+    rclcpp::FutureReturnCode::SUCCESS);
+  auto input = future.get();
+  ASSERT_EQ(input.bindings.size(), 2U);
+  EXPECT_EQ(input.owner.get(), original_message);
+  EXPECT_EQ(input.bindings[0].data, original_device_pointer);
+  EXPECT_EQ(input.bindings[0].value.GetTensorMemoryInfo().GetDeviceType(),
+    OrtMemoryInfoDeviceType_GPU);
+  EXPECT_EQ(input.bindings[1].data, original_host_pointer);
+  EXPECT_EQ(input.bindings[1].value.GetTensorMemoryInfo().GetDeviceType(),
+    OrtMemoryInfoDeviceType_CPU);
+  executor.remove_node(node);
+  io.reset();
+  publisher.reset();
+  node.reset();
+  float actual_pixels[4];
+  ASSERT_EQ(cudaMemcpy(actual_pixels, input.bindings[0].data, sizeof(actual_pixels),
+    cudaMemcpyDeviceToHost), cudaSuccess);
+  EXPECT_EQ((std::vector<float>(actual_pixels, actual_pixels + 4)),
+    (std::vector<float>{2, 4, 6, 8}));
+  int64_t actual_dimensions[2];
+  std::memcpy(actual_dimensions, input.bindings[1].data, sizeof(actual_dimensions));
+  EXPECT_EQ((std::vector<int64_t>(actual_dimensions, actual_dimensions + 2)),
+    (std::vector<int64_t>{720, 1280}));
+  rclcpp::shutdown();
+}
+#endif
 TEST(BufferNodeTest, RejectsInvalidParametersBeforeSubscribing)
 {
   if (!rclcpp::ok()) { rclcpp::init(0, nullptr); }
