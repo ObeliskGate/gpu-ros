@@ -17,6 +17,7 @@
 #include <cstring>
 #include "gpu_ros_onnx_inference/managed_tensor_bundle_adapter.hpp"
 #include "gpu_ros_onnx_inference/rosidl_buffer_adapter.hpp"
+#include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
 #include "onnx_binding_test_peer.hpp"
 #ifdef GPU_ROS_TEST_CUDA
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
@@ -238,6 +239,62 @@ TEST_P(ManagedOutputTest, ContractMismatchIsRejected)
   cfg.output_contracts = {"missing=float32[1,4]"};
   EXPECT_THROW(inference::OnnxInferenceCore core(cfg), std::invalid_argument);
 }
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+TEST_P(ManagedOutputTest, NvidiaManagedIoPreservesFinalWireAllocationAttachment)
+{
+  if (GetParam() != inference::ExecutionProvider::kCuda) { return; }
+  if (!rclcpp::ok()) { rclcpp::init(0, nullptr); }
+  std::shared_ptr<ManagedTensorBundle> published;
+  std::shared_ptr<DeviceBuffer> original_buffer;
+  Observations observed;
+  std_msgs::msg::Header header;
+  header.stamp.sec = 17;
+  header.stamp.nanosec = 42;
+  header.frame_id = "managed_wire_owner";
+  {
+    auto node = std::make_shared<rclcpp::Node>("managed_wire_output_test");
+    node->declare_parameter<std::string>("execution_provider", "cuda");
+    node->declare_parameter<int>("gpu_device_id", 0);
+    auto io = inference::CreateTensorBundleIO(node.get(), "managed", false);
+    ASSERT_NE(io->device_output_allocator(), nullptr);
+    ObservedAllocator allocator(*io->device_output_allocator(), observed);
+    inference::OnnxInferenceCore core(Config());
+    auto input = Input();
+    input.header = header;
+    auto outputs = core.RunInference(std::move(input), inference::OutputPlacement::kDevice,
+      nullptr, &allocator);
+    ASSERT_EQ(outputs.size(), 1U);
+    const auto & storage = std::get<inference::TensorStorage>(outputs[0].storage);
+    original_buffer = std::static_pointer_cast<DeviceBuffer>(storage.envelope);
+    ASSERT_TRUE(original_buffer);
+    ASSERT_TRUE(original_buffer->attachment());
+    EXPECT_EQ(storage.data, observed.pointers.at(0));
+    ASSERT_EQ(Peer::output_records.size(), 1U);
+    EXPECT_TRUE(Peer::output_records[0].pointer_identity);
+    published = std::make_shared<ManagedTensorBundle>(
+      inference::ManagedOutputMessage({header, std::move(outputs)}));
+    ASSERT_EQ(published->tensors().size(), 1U);
+    EXPECT_EQ(std::get<std::shared_ptr<DeviceBuffer>>(published->tensors()[0].storage()),
+      original_buffer);
+    EXPECT_EQ(observed.completed, 1U);
+  }
+  // The exact attachment-bearing DeviceBuffer survives conversion and the
+  // allocator/node/session. Compat's existing reuse path receives this object,
+  // not a fresh plain allocation requiring an output-sized D2D copy.
+  EXPECT_EQ(published->header(), header);
+  EXPECT_EQ(published->tensors()[0].name(), "result");
+  EXPECT_EQ(published->tensors()[0].shape(), (std::vector<int64_t>{1, 4}));
+  EXPECT_EQ(published->tensors()[0].data_type(), TensorDataType::kFloat32);
+  EXPECT_EQ(original_buffer->get_blocking_ready_lease().data(), observed.pointers.at(0));
+  ASSERT_TRUE(original_buffer->attachment());
+  float actual[4];
+  original_buffer->copy_to_host_blocking(actual, sizeof(actual));
+  EXPECT_EQ((std::vector<float>(actual, actual + 4)), (std::vector<float>{3, 5, 7, 9}));
+  published.reset();
+  original_buffer.reset();
+  rclcpp::shutdown();
+}
+#endif
 #ifdef GPU_ROS_TEST_CUDA
 TEST_P(ManagedOutputTest, RealYoloDirectOutputRetainsFullPayload)
 {

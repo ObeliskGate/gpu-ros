@@ -26,6 +26,9 @@
 #ifdef GPU_ROS_MANAGED_HIP
 #include "gpu_ros_managed_hip/hip_backend.hpp"
 #endif
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+#include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
+#endif
 #ifdef GPU_ROS_ORT_MANAGED_TEST
 #include "onnx_binding_test_peer.hpp"
 #endif
@@ -251,6 +254,73 @@ private:
   OnnxInferenceCore::Config config_;
   std::vector<std::unique_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> pools_;
 };
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+// The explicit Managed NVIDIA graph ends at a TensorList bridge. Reserve its
+// final wire allocation up front so that the bridge can reuse the attachment
+// rather than copying a completed plain Managed allocation into another Buffer.
+class CudaWireManagedBatch final : public DeviceOutputBatch
+{
+public:
+  CudaWireManagedBatch(const std_msgs::msg::Header & header,
+    gpu_ros::nvidia_tensor_bundle_compat::NativeOutputBatch && batch)
+  : header_(header), batch_(std::move(batch)) {}
+  size_t size() const noexcept override { return batch_.buffers().size(); }
+  void * pointer(size_t index) const override { return batch_.pointer(index); }
+  TensorStorage storage(size_t index) const override
+  {
+    const auto & buffer = batch_.buffers().at(index);
+    return {buffer, buffer, batch_.pointer(index), buffer->size(), "cuda_device"};
+  }
+  void RetainOwner(std::shared_ptr<const void> owner) override
+  { batch_.RetainOwner(std::move(owner)); }
+  void CompleteAfterSync() override { batch_.CompleteAfterSync(); }
+  void CancelBeforeSubmit() noexcept override { batch_.CancelBeforeSubmit(); }
+  void FailAfterSubmit() noexcept override { batch_.FailAfterSubmit(); }
+  void CopyFrom(const std::vector<OutputTensor> & tensors) override
+  {
+    try {
+      batch_.CopyFrom(ManagedOutputMessage(TensorBundleOutput{header_, tensors}));
+    } catch (...) {
+      batch_.CancelBeforeSubmit();
+      throw;
+    }
+  }
+private:
+  std_msgs::msg::Header header_;
+  gpu_ros::nvidia_tensor_bundle_compat::NativeOutputBatch batch_;
+};
+class CudaWireManagedAllocator final : public DeviceOutputAllocator
+{
+public:
+  CudaWireManagedAllocator(rclcpp::Node * node, const OnnxInferenceCore::Config & cfg)
+  : fallback_(CreateManagedOutputAllocator(cfg)),
+    transport_(node, cfg.gpu_device_id, "tensor_output", false) {}
+  std::unique_ptr<DeviceOutputBatch> Allocate(const std_msgs::msg::Header & header,
+    const std::vector<DeviceOutputSpec> & specs) override
+  {
+    std::vector<gpu_ros::nvidia_tensor_bundle_compat::NativeTensorSpec> wire_specs;
+    wire_specs.reserve(specs.size());
+    for (const auto & spec : specs) {
+      wire_specs.push_back({spec.name,
+        static_cast<gpu_ros_managed::TensorDataType>(OnnxToBundleDtype(spec.dtype)), spec.shape});
+    }
+    auto batch = transport_.Allocate(header, wire_specs);
+    try { return std::make_unique<CudaWireManagedBatch>(header, std::move(batch)); }
+    catch (...) { batch.CancelBeforeSubmit(); throw; }
+  }
+  Ort::MemoryInfo memory_info() const override { return fallback_->memory_info(); }
+  bool adopts_dynamic_outputs() const noexcept override { return true; }
+  TensorStorage Adopt(TensorStorage storage) override
+  { return fallback_->Adopt(std::move(storage)); }
+  bool SynchronizeAfterFailure() noexcept override
+  { return fallback_->SynchronizeAfterFailure(); }
+  bool shutdown(std::chrono::milliseconds timeout) noexcept override
+  { return fallback_->shutdown(timeout); }
+private:
+  std::unique_ptr<DeviceOutputAllocator> fallback_;
+  gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport transport_;
+};
+#endif
 class ManagedIO final : public ITensorBundleIO
 {
 public:
@@ -267,7 +337,13 @@ public:
     if (node->has_parameter("output_pool_wait_timeout_ms")) {
       config_.output_pool_wait_timeout = std::chrono::milliseconds(node->get_parameter("output_pool_wait_timeout_ms").as_int());
     }
-    if (config_.ep == ExecutionProvider::kCuda || config_.ep == ExecutionProvider::kMigraphx) {
+#ifdef BUILD_NATIVE_TENSOR_LIST_TRANSPORT
+    if (config_.ep == ExecutionProvider::kCuda && config_.io_contract.empty()) {
+      allocator_ = std::make_unique<CudaWireManagedAllocator>(node, config_);
+    }
+#endif
+    if (!allocator_ &&
+      (config_.ep == ExecutionProvider::kCuda || config_.ep == ExecutionProvider::kMigraphx)) {
       allocator_ = CreateManagedOutputAllocator(config_);
     }
     if (publish) { publisher_ = std::make_unique<gpu_ros_managed::ManagedPublisher<gpu_ros_managed::ManagedTensorBundle>>(
