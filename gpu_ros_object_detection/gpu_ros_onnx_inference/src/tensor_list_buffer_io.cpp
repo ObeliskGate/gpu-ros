@@ -24,7 +24,7 @@ ONNXTensorElementDataType Dtype(const wire::TensorSpec & spec)
 class WireBatch final : public DeviceOutputBatch
 {
 public:
-  explicit WireBatch(wire::OutputBatch batch) : batch_(std::make_shared<wire::OutputBatch>(std::move(batch))) {}
+  explicit WireBatch(wire::OutputBatch && batch) : batch_(std::make_shared<wire::OutputBatch>(std::move(batch))) {}
   size_t size() const noexcept override { return batch_->tensors().size(); }
   void * pointer(size_t i) const override { return batch_->data(i); }
   TensorStorage storage(size_t i) const override

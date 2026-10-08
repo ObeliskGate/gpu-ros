@@ -13,7 +13,7 @@ target_compile_features(gpu_ros_rosidl_buffer PUBLIC cxx_std_17)
 target_include_directories(gpu_ros_rosidl_buffer PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-ament_target_dependencies(gpu_ros_rosidl_buffer PUBLIC rosidl_buffer)
+target_link_libraries(gpu_ros_rosidl_buffer PUBLIC rosidl_buffer::rosidl_buffer)
 
 set(buffer_targets gpu_ros_rosidl_buffer)
 if(GPU_ROS_ROSIDL_BUFFER_BUILD_CUDA)
@@ -24,8 +24,7 @@ if(GPU_ROS_ROSIDL_BUFFER_BUILD_CUDA)
   add_library(gpu_ros::rosidl_buffer_cuda ALIAS gpu_ros_rosidl_buffer_cuda)
   set_target_properties(gpu_ros_rosidl_buffer_cuda PROPERTIES EXPORT_NAME rosidl_buffer_cuda)
   target_link_libraries(gpu_ros_rosidl_buffer_cuda PUBLIC gpu_ros_rosidl_buffer
-    PRIVATE CUDA::cudart)
-  ament_target_dependencies(gpu_ros_rosidl_buffer_cuda PRIVATE cuda_buffer)
+    PRIVATE CUDA::cudart cuda_buffer::cuda_buffer)
   list(APPEND buffer_targets gpu_ros_rosidl_buffer_cuda)
   ament_export_dependencies(CUDAToolkit cuda_buffer)
 endif()
@@ -53,8 +52,7 @@ if(BUILD_TESTING)
     ament_add_gtest(test_rosidl_buffer_cuda test/test_rosidl_buffer_cuda.cpp)
     if(TARGET test_rosidl_buffer_cuda)
       target_link_libraries(test_rosidl_buffer_cuda
-        gpu_ros_rosidl_buffer_cuda CUDA::cudart Threads::Threads)
-      ament_target_dependencies(test_rosidl_buffer_cuda cuda_buffer)
+        gpu_ros_rosidl_buffer_cuda CUDA::cudart Threads::Threads cuda_buffer::cuda_buffer)
       set_tests_properties(test_rosidl_buffer_cuda PROPERTIES
         SKIP_REGULAR_EXPRESSION "Buffer CUDA acceptance requires a real CUDA device")
     endif()

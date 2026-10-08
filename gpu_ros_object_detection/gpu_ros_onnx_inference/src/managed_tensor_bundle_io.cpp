@@ -83,7 +83,12 @@ struct ManagedState
 class ManagedBatch final : public DeviceOutputBatch
 {
 public:
-  ManagedBatch() : state_(std::make_shared<ManagedState>()) {}
+  explicit ManagedBatch(size_t count) : state_(std::make_shared<ManagedState>())
+  {
+    // Reserve before acquiring writers: Add must not throw and terminalize an
+    // unsubmitted reservation while growing its owner container.
+    state_->reservations.reserve(count);
+  }
   ~ManagedBatch() override { if (!state_->terminal) { FailAfterSubmit(); } }
   void Add(std::unique_ptr<Reservation> reservation) { state_->reservations.push_back(std::move(reservation)); }
   size_t size() const noexcept override { return state_->reservations.size(); }
@@ -153,7 +158,7 @@ public:
       }
       pools_ = std::move(pools);
     }
-    auto batch = std::make_unique<ManagedBatch>();
+    auto batch = std::make_unique<ManagedBatch>(specs.size());
     const auto deadline = std::chrono::steady_clock::now() + config_.output_pool_wait_timeout;
     try {
       for (size_t i = 0; i < specs.size(); ++i) {
@@ -178,7 +183,9 @@ public:
 #endif
           (void)bytes;
           if (!buffer) { throw std::runtime_error("Managed backend unavailable"); }
-          reservation = std::make_unique<Reservation>(buffer, buffer->get_synchronized_write_handle());
+          // A new-expression allocates before evaluating constructor arguments;
+          // make_unique would acquire the writer before allocating its wrapper.
+          reservation.reset(new Reservation(buffer, buffer->get_synchronized_write_handle()));
         }
         batch->Add(std::move(reservation));
 #ifdef GPU_ROS_ORT_MANAGED_TEST
