@@ -19,6 +19,7 @@
   <depend>rosidl_buffer</depend>
   <depend>gpu_ros_rosidl_buffer</depend>
   <depend condition="$GPU_ROS_NVIDIA_PROFILE == 1">cuda_buffer</depend>
+  <depend condition="$GPU_ROS_NVIDIA_PROFILE == 1">rcutils</depend>
   <depend condition="$GPU_ROS_NVIDIA_PROFILE == 1">gpu_ros_nvidia_tensor_bundle_compat</depend>
   <build_depend>gpu_ros_managed_cuda</build_depend>
   <depend>gpu_ros_managed_hip</depend>

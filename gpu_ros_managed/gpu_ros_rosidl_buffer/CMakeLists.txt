@@ -20,11 +20,12 @@ if(GPU_ROS_ROSIDL_BUFFER_BUILD_CUDA)
   # An explicitly enabled backend must never silently fall back to CPU.
   find_package(CUDAToolkit REQUIRED)
   find_package(cuda_buffer REQUIRED)
+  find_package(rcutils REQUIRED)
   add_library(gpu_ros_rosidl_buffer_cuda SHARED src/cuda_buffer_access.cpp)
   add_library(gpu_ros::rosidl_buffer_cuda ALIAS gpu_ros_rosidl_buffer_cuda)
   set_target_properties(gpu_ros_rosidl_buffer_cuda PROPERTIES EXPORT_NAME rosidl_buffer_cuda)
   target_link_libraries(gpu_ros_rosidl_buffer_cuda PUBLIC gpu_ros_rosidl_buffer
-    PRIVATE CUDA::cudart cuda_buffer::cuda_buffer)
+    PRIVATE CUDA::cudart cuda_buffer::cuda_buffer rcutils::rcutils)
   list(APPEND buffer_targets gpu_ros_rosidl_buffer_cuda)
   ament_export_dependencies(CUDAToolkit cuda_buffer)
 endif()
@@ -52,7 +53,8 @@ if(BUILD_TESTING)
     ament_add_gtest(test_rosidl_buffer_cuda test/test_rosidl_buffer_cuda.cpp)
     if(TARGET test_rosidl_buffer_cuda)
       target_link_libraries(test_rosidl_buffer_cuda
-        gpu_ros_rosidl_buffer_cuda CUDA::cudart Threads::Threads cuda_buffer::cuda_buffer)
+        gpu_ros_rosidl_buffer_cuda CUDA::cudart Threads::Threads
+        cuda_buffer::cuda_buffer rcutils::rcutils)
       set_tests_properties(test_rosidl_buffer_cuda PROPERTIES
         SKIP_REGULAR_EXPRESSION "Buffer CUDA acceptance requires a real CUDA device")
     endif()
