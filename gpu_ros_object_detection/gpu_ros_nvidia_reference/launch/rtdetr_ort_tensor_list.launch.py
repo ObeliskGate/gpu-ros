@@ -16,7 +16,7 @@
 RT-DETR config C: ONNX Runtime + native TensorList transport.
 
 Upstream TensorList preprocessing chain + upstream RT-DETR preprocessor/decoder,
-with only the inference node swapped from TensorRT to OnnxInferenceNode
+with only the inference node swapped from TensorRT to NativeOnnxInferenceNode
 (transport=tensor_list). Isolates the inference-backend cost under native transport.
 """
 
@@ -155,7 +155,7 @@ def generate_launch_description():
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
         parameters=[
             {
                 'model_file_path': model_file_path,
@@ -166,7 +166,7 @@ def generate_launch_description():
                 'ort_profile_frames': ort_profile_frames,
                 'binding_report_path': binding_report_path,
                 'transport': 'tensor_list',
-                'managed_output_contracts': [
+                'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
                     'scores=float32[1,300]',

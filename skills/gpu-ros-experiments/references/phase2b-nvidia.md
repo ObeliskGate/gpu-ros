@@ -92,6 +92,12 @@ docker compose -f "${NV_COMPOSE}" -f "${NV_OVERRIDE}" exec -T dev \
     source install/setup.bash
     colcon test --event-handlers console_direct+
     colcon test-result --all --verbose
+    ctest --test-dir build/gpu_ros_nvidia_tensor_bundle_compat \
+      --tests-regex "^(test_tensor_list_native|test_tensor_list_buffer_adapter|test_tensor_bundle_conversion)$" \
+      --output-on-failure --no-tests=error
+    ctest --test-dir build/gpu_ros_onnx_inference \
+      --tests-regex "^(test_native_onnx_executor|test_onnx_inference_core)$" \
+      --output-on-failure --no-tests=error
     for package in gpu_ros_detection_common gpu_ros_rtdetr \
       gpu_ros_yolov8 gpu_ros_detection_validation; do
       ctest --test-dir "build/${package}" --output-on-failure
@@ -105,6 +111,19 @@ counted separately. Inspect the five installed reference launches with
 `ros2 launch gpu_ros_nvidia_reference <file> --show-args`, and the compatibility
 boundary launch in its own package. Old owners must not supply duplicate launch
 files. A skipped device test is not a PASS.
+
+Source-only implementation checks are not ROS/CUDA acceptance. Without the
+selected SDK, run the method index's CPU checks, standalone core plus installed
+consumer, and syntax checks; record the native C++ build and GPU behavior tests
+as pending. Deployment and GPU verification require a separately authorized
+runtime stage. Historical pre-separation captures do not establish that the new
+native component has passed.
+
+After a clean SDK build, exercise an installed consumer linking only the native
+component/session targets. Require actual CUDA Buffer inference, direct and
+dynamic-fallback Add payloads, and output readback after node/session destruction,
+not only a successful include/link step. Run both original-model native and
+Managed proof-of-life/capture paths before copy acceptance.
 
 ## Non-interactive runtime payloads
 
@@ -179,12 +198,31 @@ Use `run_nvidia_transport_audit.sh` separately for each model with
 must match the corresponding baseline. Keep provider activity, pointer/lifetime
 binding reports, CUDA traces, copy and detection reports, and lifecycle logs.
 
-The native transport token is `tensor_list`; the managed lane remains
-`managed`. Both CUDA lanes bind formal model outputs directly to native
-Buffer allocations. Managed outputs retain a typed envelope attachment so the
-egress bridge can reuse the original TensorList. Validate ORT, native writer
-and Managed pointer identity within the allocating process; mapped addresses
-in another process need not be equal.
+The native transport token is `tensor_list`; its independent
+`gpu_ros::onnx_inference::NativeOnnxInferenceNode` uses `output_contracts`.
+The `managed` lane retains `OnnxInferenceNode` and `managed_output_contracts`.
+Both executors share the pure ORT session/output policy, but the native component
+does not instantiate the Managed core or link the aggregate compatibility target.
+Both CUDA lanes bind formal model outputs directly to native Buffer allocations.
+Managed outputs retain a typed envelope attachment so the egress bridge can
+reuse the original TensorList. Validate ORT/native pointer identity for C and
+ORT/native/Managed pointer identity for the Managed lane within the allocating
+process; mapped addresses in another process need not be equal.
+
+For the native C captures, retain the recursive ELF dependency/symbol evidence,
+compile include dependencies, and the actual component-container maps while the
+model is loaded and frames are playing. They must exclude project Managed
+core/CUDA/HIP/ROS/TensorBundle libraries, the old inference core/node, and the
+aggregate compatibility library. Package-level discovery of Managed dependencies
+is not the runtime test; do not reject unrelated system libraries merely because
+their names contain `managed`.
+
+Binding reports retain schema 1: the native ROS `output_contracts` parameter is
+serialized under historical `managed_output_contracts`. Native reports use
+`managed_io_contract=compat`, empty `managed_input_contracts`, and zero historical
+pool-capacity/wait fields because there is no Managed pool. Direct outputs retain
+the native writer/synchronization lifetime claim; dynamic outputs explicitly
+report their D2D copy and `pointer_identity=false`.
 
 The original NVIDIA Synthetica asset uses a postprocessor TopK of 300 despite
 dynamic ONNX output dimensions. Its batch-one output contracts are
@@ -199,9 +237,12 @@ hexadecimal strings); equal placeholders such as `unknown` are not identity
 evidence. An explicitly incomplete profiler capture or a caller-identified
 payload-risk kernel keeps the audit INCONCLUSIVE even with valid binding reports.
 
-Immutable native-message republishing disables intra-process optimization on
-that publisher to avoid the deep copy performed by `publish(const T&)`.
-Record the selected RMW/Buffer backend and its actual transport behavior.
+Immutable native-message republishing disables intra-process optimization and
+uses `publish(*const_message)` without an intermediate message copy. In the
+selected Lyrical implementation, the disabled-IPC const-reference path directly
+publishes through RMW; the IPC branch clones the message. Check the installed
+publisher implementation and actual consumer/trace behavior rather than
+assuming another SDK overload or an unconditional zero-copy path.
 Unsupported IPC topology may legitimately materialize CPU data; record that
 fallback rather than claiming an unconditional inter-process zero-copy path.
 Generic dynamic models without output contracts and Managed buffers without
@@ -209,11 +250,16 @@ a reusable envelope use explicit copy fallback; they do not satisfy the formal
 C/managed inference-boundary no-copy criterion. Standard TensorBundle
 conversion remains a host boundary.
 
-The adapter CTest now belongs to `gpu_ros_nvidia_tensor_bundle_compat`
-(`test_tensor_list_buffer_adapter`); the ORT CTest remains in
-`gpu_ros_onnx_inference` (`test_onnx_inference_core`). The audit must execute
-both build directories with `--no-tests=error`, not match the old adapter name
-in the ONNX directory and silently run only one test.
+Before each audit's captures, execute the pure `test_tensor_list_native` and
+retained Managed `test_tensor_list_buffer_adapter` in
+`gpu_ros_nvidia_tensor_bundle_compat`, plus pure `test_native_onnx_executor` and
+retained `test_onnx_inference_core` in `gpu_ros_onnx_inference`. The audit invokes
+each exact CTest name separately with `--no-tests=error` and requires one passing
+entry per invocation; a skipped device test cannot satisfy it. The older
+Managed-bridge transport probe does not load or validate the native ORT node.
+Compare new C trace observations with the preserved same-lane baseline as well
+as C versus Managed: a copy added to both paths must not be hidden by their
+difference alone.
 
 Complete copy records and CUDA activity are required. CPU shape/decoder
 bookkeeping is diagnostic rather than a fixed forbidden-node count. A copy

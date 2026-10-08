@@ -2,8 +2,9 @@
 
 ROS 2 detection packages for RT-DETRv2 and YOLOv8, with shared preprocessing
 and decoding utilities, ONNX Runtime integration, and validation tools. The
-collection consumes [`gpu_ros_managed`](../gpu_ros_managed/) from the same
-checkout. It is not an aggregate ROS package.
+collection uses [`gpu_ros_managed`](../gpu_ros_managed/) for its standard/managed
+paths; NVIDIA native inference is a separate component. The collection is not
+an aggregate ROS package.
 The collection is versioned `0.1.0` and remains pre-release. It publishes
 source and runtime recipes, not prebuilt binaries or a supported runtime image.
 
@@ -12,7 +13,7 @@ source and runtime recipes, not prebuilt binaries or a supported runtime image.
 | Package | Responsibility |
 | --- | --- |
 | `gpu_ros_detection_common` | Shared detection utilities and contracts. |
-| `gpu_ros_onnx_inference` | ONNX Runtime integration, provider selection, and standard/managed inference paths. |
+| `gpu_ros_onnx_inference` | Shared ONNX Runtime session/provider policy, standard/managed inference, and an independent NVIDIA native component. |
 | `gpu_ros_rtdetr` | RT-DETR preprocessing, decoding, and vendor-neutral image launches. |
 | `gpu_ros_yolov8` | YOLOv8 preprocessing, decoding, and vendor-neutral image launches. |
 | `gpu_ros_detection_validation` | Fixed-input capture, bag comparison, transport audits, and the AMD benchmark matrix runner. |
@@ -60,14 +61,41 @@ longer accepted. The historical bridge component plugin identifiers remain
 registered, but their implementation uses `isaac_ros_tensor_msgs/TensorList`
 containing `tensor_msgs/ExperimentalTensor` and the native CUDA Buffer backend.
 It does not retain the Isaac ROS 4.5 TensorList wire schema.
+
+Native reference launches use
+`gpu_ros::onnx_inference::NativeOnnxInferenceNode` from the separate
+`onnx_inference_native_node` library, with `transport=tensor_list`,
+`execution_provider=cuda`, and `output_contracts`. The original
+`OnnxInferenceNode` handles only `std`/`managed`; it rejects `tensor_list`.
+There is no alias for the old native `managed_output_contracts` parameter.
+Managed launches continue to use that parameter and the original component.
+
+The exported `gpu_ros::onnx_session` target shares ORT/provider/model metadata
+policy without Managed dependencies. Native execution links the pure
+`gpu_ros::gpu_ros_nvidia_tensor_list_native` façade, not the Managed core or
+aggregate compatibility target. Full packages still discover Managed
+dependencies to build their separate Managed functionality. Runtime acceptance
+must additionally prove the native C process's ELF closure and loaded maps are
+free of project Managed libraries and the old inference core/node libraries.
+
+Binding reports keep schema 1 and its historical JSON keys. Native
+`output_contracts` is recorded as `managed_output_contracts`;
+`managed_io_contract=compat`, empty `managed_input_contracts`, and zero
+`managed_pool_capacity`/`managed_pool_wait_timeout_ms` describe the native path,
+not a Managed pool. Direct native outputs preserve pointer identity; unresolved
+dynamic outputs use an explicit D2D fallback and report `pointer_identity=false`.
+
 ROS-facing targets require Lyrical/C++20.
 Use the selected official Isaac ROS 5.0 Docker image's paired ROS versions and
 set `GPU_ROS_NVIDIA_PROFILE=1` before colcon discovery (`0` for CPU/AMD).
-The target-image build, tests, original-model functional captures, and transport
-copy checks passed. SDK component-library teardown has a diagnosed SIGSEGV and
-is explicitly accepted as a non-blocking experiment exception, not clean
-lifecycle evidence. AMD Lyrical GPU acceptance remains pending. See the
-[current campaign and independent SDK task](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
+The pre-separation target-image build, tests, original-model functional captures,
+and transport copy checks passed. That historical campaign separately accepted
+a diagnosed SDK component-library teardown SIGSEGV, not clean lifecycle
+evidence. It does not validate the new native component or exempt a new lifecycle
+failure. The native separation's local CPU/standalone checks and its deferred
+SDK/GPU acceptance are separate gates; AMD Lyrical GPU acceptance also remains
+pending. See the
+[historical campaign and independent SDK task](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
 
 The NVIDIA dependency recipe installs the image-paired 5.0 test utilities as
 well as the runtime components; tests must not borrow an older Isaac overlay.

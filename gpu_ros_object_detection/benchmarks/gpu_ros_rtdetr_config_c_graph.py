@@ -20,7 +20,7 @@
 
 Isolates the inference-backend cost under native transport: upstream RT-DETR
 pre/post-processing, with only the inference node swapped from TensorRT to
-OnnxInferenceNode(transport=tensor_list). Shares framework + preprocessing
+NativeOnnxInferenceNode(transport=tensor_list). Shares framework + preprocessing
 with the other configs (see rtdetr_common).
 """
 
@@ -52,7 +52,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
         name='OnnxInference',
         namespace=ns,
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
         parameters=[
             {
                 'model_file_path': os.path.join(
@@ -60,7 +60,7 @@ def launch_setup(container_prefix, container_sigterm_timeout):
                 ),
                 'execution_provider': 'cuda',
                 'transport': 'tensor_list',
-                'managed_output_contracts': [
+                'output_contracts': [
                     'labels=int64[1,300]',
                     'boxes=float32[1,300,4]',
                     'scores=float32[1,300]',

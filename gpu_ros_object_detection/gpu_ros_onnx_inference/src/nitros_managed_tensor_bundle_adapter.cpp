@@ -86,22 +86,4 @@ std::unique_ptr<DeviceOutputBatch> NativeDeviceOutputAllocator::Allocate(
     throw;
   }
 }
-gpu_ros_managed::ManagedTensorBundle ToManagedOutput(TensorBundleOutput && output)
-{
-  std::vector<gpu_ros_managed::ManagedTensor> tensors;
-  tensors.reserve(output.tensors.size());
-  for (auto & tensor : output.tensors) {
-    const auto dtype =
-      static_cast<gpu_ros_managed::TensorDataType>(OnnxToBundleDtype(tensor.dtype));
-    if (auto * host = std::get_if<std::vector<uint8_t>>(&tensor.storage)) {
-      auto owner = std::make_shared<std::vector<uint8_t>>(std::move(*host));
-      tensors.push_back(gpu_ros_managed::ManagedTensor::from_host_external(std::move(tensor.name),
-        dtype, std::move(tensor.shape), owner, owner->data(), owner->size()));
-    } else {
-      tensors.emplace_back(std::move(tensor.name), dtype, std::move(tensor.shape),
-        std::get<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(std::move(tensor.storage)));
-    }
-  }
-  return gpu_ros_managed::ManagedTensorBundle(std::move(output.header), std::move(tensors));
-}
 } // namespace gpu_ros::onnx_inference

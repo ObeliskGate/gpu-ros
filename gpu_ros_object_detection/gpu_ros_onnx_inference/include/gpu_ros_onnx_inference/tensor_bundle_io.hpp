@@ -43,7 +43,7 @@ public:
   virtual void Publish(TensorBundleOutput && output) = 0;
 };
 
-// Factory: transport is "std", "tensor_list", or "managed".
+// Factory: transport is "std" or "managed".
 std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
   rclcpp::Node * node, const std::string & transport, bool publish_output = true);
 

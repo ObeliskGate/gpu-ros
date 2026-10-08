@@ -35,6 +35,5 @@ public:
 private:
   gpu_ros::nvidia_tensor_bundle_compat::TensorListTransport & transport_;
 };
-gpu_ros_managed::ManagedTensorBundle ToManagedOutput(TensorBundleOutput && output);
 } // namespace gpu_ros::onnx_inference
 #endif

@@ -13,12 +13,12 @@
 // limitations under the License.
 
 #include "gpu_ros_onnx_inference/onnx_inference_node.hpp"
+#include "model_path.hpp"
 
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
-#include <filesystem>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -30,37 +30,6 @@
 
 namespace gpu_ros::onnx_inference
 {
-
-namespace
-{
-
-std::string ResolveModelProfile(const std::string & requested_profile,
-  const std::string & execution_provider, const std::string & assets_root)
-{
-  const std::string profile =
-    requested_profile == "auto"
-      ? (execution_provider == "cuda" ? "nvidia_synthetica" : "rtdetrv2_r50")
-      : requested_profile;
-  std::filesystem::path relative;
-  if (profile == "nvidia_synthetica") {
-    relative = "models/synthetica_detr_v1.0.0_onnx/sdetr_grasp.onnx";
-  } else if (profile == "rtdetrv2_r50") {
-    relative = "models/rtdetrv2_r50/rtdetrv2_r50.onnx";
-  } else if (profile == "xanylabeling_rtdetrv2_r50") {
-    relative = "models/xanylabeling_rtdetrv2_r50/rtdetrv2_r50vd_6x_coco.onnx";
-  } else {
-    throw std::invalid_argument("model_profile must be auto, nvidia_synthetica, rtdetrv2_r50, or "
-                                "xanylabeling_rtdetrv2_r50");
-  }
-  const auto path = std::filesystem::path(assets_root) / relative;
-  if (!std::filesystem::is_regular_file(path)) {
-    throw std::runtime_error("selected model_profile=" + profile + " is missing at " +
-                             path.string() + "; automatic model fallback is disabled");
-  }
-  return path.string();
-}
-
-} // namespace
 
 OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
     : rclcpp::Node("onnx_inference_node", options)
@@ -85,6 +54,7 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   const int64_t managed_pool_wait_timeout_ms =
     declare_parameter<int64_t>("managed_pool_wait_timeout_ms", 100);
   const ExecutionProvider execution_provider = ParseExecutionProvider(ep_str);
+  io_ = CreateTensorBundleIO(this, transport);
 
   if (!model_profile.empty()) {
     if (!model_file_path.empty()) {
@@ -111,9 +81,6 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
   }
   ort_profile_frames_ = static_cast<size_t>(ort_profile_frames);
 
-  if (transport == "tensor_list" && execution_provider != ExecutionProvider::kCuda) {
-    throw std::invalid_argument("transport=tensor_list requires execution_provider=cuda");
-  }
   if (!managed_io_contract.empty() && managed_io_contract != "hip_managed_strict") {
     throw std::invalid_argument("managed_io_contract must be empty or hip_managed_strict");
   }
@@ -123,7 +90,6 @@ OnnxInferenceNode::OnnxInferenceNode(const rclcpp::NodeOptions & options)
 
   callback_state_ = std::make_shared<CallbackState>();
   callback_state_->node = this;
-  io_ = CreateTensorBundleIO(this, transport);
   io_->Subscribe([state = callback_state_](gpu_ros_managed::ManagedTensorBundleView inputs) {
     OnnxInferenceNode * node = nullptr;
     {

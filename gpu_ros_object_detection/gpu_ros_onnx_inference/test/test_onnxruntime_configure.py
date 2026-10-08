@@ -27,14 +27,12 @@ LIBRARY = 'libonnxruntime.so'
 
 
 def fixture_project(tmp_path):
-    source = (PACKAGE_DIR / 'CMakeLists.txt').read_text(encoding='utf-8')
-    start = source.index('set(ONNXRUNTIME_ROOT "')
-    end = source.index('option(ORT_ENABLE_CUDA', start)
     project = tmp_path / 'project'
     project.mkdir()
     (project / 'CMakeLists.txt').write_text(
         'cmake_minimum_required(VERSION 3.22.1)\n'
-        'project(ort_find_fixture LANGUAGES NONE)\n\n' + source[start:end],
+        'project(ort_find_fixture LANGUAGES NONE)\n\n'
+        f'include("{PACKAGE_DIR / "cmake" / "onnxruntime.cmake"}")\n',
         encoding='utf-8',
     )
     return project
@@ -147,3 +145,26 @@ def test_incomplete_root_cannot_use_other_installation(tmp_path, header, library
     )
     assert result.returncode != 0, result.stdout + result.stderr
     assert 'ONNX Runtime was not found' in result.stderr
+
+
+def test_existing_target_reuses_selected_runtime(tmp_path):
+    project = tmp_path / 'project'
+    project.mkdir()
+    root = installation(tmp_path / 'selected')
+    (project / 'CMakeLists.txt').write_text(
+        'cmake_minimum_required(VERSION 3.22.1)\n'
+        'project(ort_existing_fixture LANGUAGES NONE)\n'
+        'add_library(onnxruntime::onnxruntime SHARED IMPORTED)\n'
+        'set_target_properties(onnxruntime::onnxruntime PROPERTIES\n'
+        f'  IMPORTED_LOCATION "{root / "lib" / LIBRARY}"\n'
+        f'  INTERFACE_INCLUDE_DIRECTORIES "{root / "include"}")\n'
+        f'include("{PACKAGE_DIR / "cmake" / "onnxruntime.cmake"}")\n'
+        'get_target_property(selected onnxruntime::onnxruntime IMPORTED_LOCATION)\n'
+        f'if(NOT selected STREQUAL "{root / "lib" / LIBRARY}")\n'
+        '  message(FATAL_ERROR "Existing ORT selection was replaced")\n'
+        'endif()\n',
+        encoding='utf-8',
+    )
+    result = configure(
+        project, tmp_path / 'build', f'-DONNXRUNTIME_ROOT={tmp_path / "missing"}')
+    assert result.returncode == 0, result.stdout + result.stderr

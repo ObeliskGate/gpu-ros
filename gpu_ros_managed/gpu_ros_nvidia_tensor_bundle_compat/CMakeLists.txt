@@ -10,6 +10,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(isaac_ros_tensor_msgs REQUIRED)
 find_package(tensor_msgs REQUIRED)
 find_package(gpu_ros_tensor_bundle_msgs REQUIRED)
@@ -20,6 +21,17 @@ find_package(gpu_ros_managed_cuda REQUIRED)
 find_package(gpu_ros_managed_ros REQUIRED)
 find_package(gpu_ros_managed_tensor_bundle REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+
+# SDK Buffer ownership is independent of the optional Managed bridge.
+add_library(gpu_ros_nvidia_tensor_list_native SHARED src/native_tensor_list.cpp)
+add_library(gpu_ros::gpu_ros_nvidia_tensor_list_native ALIAS
+  gpu_ros_nvidia_tensor_list_native)
+target_include_directories(gpu_ros_nvidia_tensor_list_native PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+ament_target_dependencies(gpu_ros_nvidia_tensor_list_native PUBLIC
+  rclcpp std_msgs isaac_ros_tensor_msgs tensor_msgs rosidl_buffer cuda_buffer)
+target_link_libraries(gpu_ros_nvidia_tensor_list_native PRIVATE CUDA::cudart)
 
 add_library(gpu_ros_nvidia_tensor_bundle_compat SHARED
   src/tensor_bundle_conversion.cpp
@@ -35,13 +47,14 @@ ament_target_dependencies(gpu_ros_nvidia_tensor_bundle_compat
   rclcpp rclcpp_components isaac_ros_tensor_msgs tensor_msgs
   gpu_ros_tensor_bundle_msgs rosidl_buffer cuda_buffer
   gpu_ros_managed_core gpu_ros_managed_ros gpu_ros_managed_tensor_bundle)
-target_link_libraries(gpu_ros_nvidia_tensor_bundle_compat gpu_ros_managed::cuda CUDA::cudart)
+target_link_libraries(gpu_ros_nvidia_tensor_bundle_compat
+  gpu_ros_nvidia_tensor_list_native gpu_ros_managed::cuda CUDA::cudart)
 
 rclcpp_components_register_nodes(gpu_ros_nvidia_tensor_bundle_compat
   "gpu_ros::nvidia_tensor_bundle_compat::NvidiaTensorListToTensorBundleNode"
   "gpu_ros::nvidia_tensor_bundle_compat::TensorBundleToNvidiaTensorListNode")
 
-install(TARGETS gpu_ros_nvidia_tensor_bundle_compat
+install(TARGETS gpu_ros_nvidia_tensor_bundle_compat gpu_ros_nvidia_tensor_list_native
   EXPORT gpu_ros_nvidia_tensor_bundle_compatTargets
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -55,7 +68,7 @@ install(EXPORT gpu_ros_nvidia_tensor_bundle_compatTargets
 ament_export_targets(gpu_ros_nvidia_tensor_bundle_compatTargets HAS_LIBRARY_TARGET
   NAMESPACE gpu_ros::)
 ament_export_dependencies(
-  CUDAToolkit rclcpp rclcpp_components isaac_ros_tensor_msgs tensor_msgs
+  CUDAToolkit rclcpp rclcpp_components std_msgs isaac_ros_tensor_msgs tensor_msgs
   gpu_ros_tensor_bundle_msgs rosidl_buffer cuda_buffer
   gpu_ros_managed_core gpu_ros_managed_cuda gpu_ros_managed_ros gpu_ros_managed_tensor_bundle)
 
@@ -71,6 +84,13 @@ if(BUILD_TESTING)
   ament_add_gtest(test_tensor_list_buffer_adapter test/test_tensor_list_buffer_adapter.cpp)
   target_link_libraries(test_tensor_list_buffer_adapter
     gpu_ros_nvidia_tensor_bundle_compat gpu_ros_managed::cuda CUDA::cudart)
+  ament_add_gtest(test_tensor_list_native test/test_tensor_list_native.cpp)
+  if(TARGET test_tensor_list_native)
+    target_link_libraries(test_tensor_list_native
+      gpu_ros_nvidia_tensor_list_native CUDA::cudart)
+    set_tests_properties(test_tensor_list_native PROPERTIES
+      SKIP_REGULAR_EXPRESSION "Native TensorList acceptance requires a real CUDA device")
+  endif()
 endif()
 
 ament_package()

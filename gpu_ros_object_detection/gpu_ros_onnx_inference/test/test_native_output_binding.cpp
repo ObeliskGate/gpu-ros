@@ -121,7 +121,7 @@ protected:
     if (!rclcpp::ok()) {
       rclcpp::init(0, nullptr);
     }
-    node = std::make_shared<rclcpp::Node>("native_output_test");
+    node = std::make_shared<rclcpp::Node>("managed_output_test");
     node->declare_parameter<std::string>("execution_provider", "cuda");
     node->declare_parameter<int>("gpu_device_id", 0);
     io = inference::CreateTensorBundleIO(node.get(), GetParam(), false);
@@ -160,6 +160,11 @@ protected:
   std::shared_ptr<rclcpp::Node> node;
   std::unique_ptr<inference::ITensorBundleIO> io;
 };
+TEST_P(NativeOutputTest, LegacyTransportFactoryRejectsTensorList)
+{
+  EXPECT_THROW(inference::CreateTensorBundleIO(node.get(), "tensor_list", false),
+    std::invalid_argument);
+}
 TEST_P(NativeOutputTest, DirectPointersAndPayloadSurviveSessionAndNode)
 {
   Transactions observations;
@@ -187,8 +192,10 @@ TEST_P(NativeOutputTest, DirectPointersAndPayloadSurviveSessionAndNode)
 TEST_P(NativeOutputTest, DynamicFallbackCopiesActualShapeAndContent)
 {
   inference::OnnxInferenceCore core(Config(false));
+  Transactions observations;
+  ObservedAllocator allocator(*io->device_output_allocator(), observations);
   auto outputs = core.RunInference(ManagedTensorBundleView(Input()),
-    inference::OutputPlacement::kDevice, nullptr, io->device_output_allocator());
+    inference::OutputPlacement::kDevice, nullptr, &allocator);
   ASSERT_EQ(outputs.size(), 1U);
   EXPECT_EQ(outputs[0].shape, (std::vector<int64_t>{1, 4}));
   auto buffer = std::get<std::shared_ptr<DeviceBuffer>>(outputs[0].storage);
@@ -198,7 +205,7 @@ TEST_P(NativeOutputTest, DynamicFallbackCopiesActualShapeAndContent)
               cudaMemcpyDeviceToHost),
     cudaSuccess);
   EXPECT_EQ((std::vector<float>(values, values + 4)), (std::vector<float>{3, 5, 7, 9}));
-  EXPECT_NE(core.OutputBindingProbeReport().find("explicitly copied D2D"), std::string::npos);
+  EXPECT_EQ(buffer->get_blocking_ready_lease().data(), observations.pointers.at(0));
 }
 TEST_P(NativeOutputTest, SetupFailureCancelsAndSubmittedFailureRetainsNativeStorage)
 {
@@ -269,5 +276,5 @@ TEST_P(NativeOutputTest, RealYoloUsesFormalDirectOutputContract)
     cudaSuccess);
 }
 INSTANTIATE_TEST_SUITE_P(
-  NativeAndManaged, NativeOutputTest, ::testing::Values("tensor_list", "managed"));
+  ManagedOnly, NativeOutputTest, ::testing::Values("managed"));
 } // namespace

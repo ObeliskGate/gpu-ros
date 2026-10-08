@@ -12,28 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <stdexcept>
+#ifndef GPU_ROS_ONNX_INFERENCE__MODEL_PATH_HPP_
+#define GPU_ROS_ONNX_INFERENCE__MODEL_PATH_HPP_
 #include <string>
-
-#include "gpu_ros_onnx_inference/tensor_bundle_io.hpp"
-
 namespace gpu_ros::onnx_inference
 {
-
-std::unique_ptr<ITensorBundleIO> CreateStdTensorBundleIO(rclcpp::Node * node, bool publish_output);
-std::unique_ptr<ITensorBundleIO> CreateManagedTensorBundleIO(
-  rclcpp::Node * node, bool publish_output);
-
-std::unique_ptr<ITensorBundleIO> CreateTensorBundleIO(
-  rclcpp::Node * node, const std::string & transport, bool publish_output)
-{
-  if (transport == "std") {
-    return CreateStdTensorBundleIO(node, publish_output);
-  }
-  if (transport == "managed") {
-    return CreateManagedTensorBundleIO(node, publish_output);
-  }
-  throw std::invalid_argument("Unknown transport: " + transport);
-}
-
+std::string ResolveModelProfile(const std::string & requested_profile,
+  const std::string & execution_provider, const std::string & assets_root);
 } // namespace gpu_ros::onnx_inference
+#endif // GPU_ROS_ONNX_INFERENCE__MODEL_PATH_HPP_

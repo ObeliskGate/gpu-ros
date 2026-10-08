@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gpu_ros_onnx_inference/managed_io_contract.hpp"
+#include "gpu_ros_onnx_inference/tensor_contract.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -91,7 +91,7 @@ std::vector<int64_t> ParseShape(const std::string & text, const char * parameter
 }
 
 void CheckUniqueNames(
-  const std::vector<ManagedTensorContract> & contracts, const char * parameter_name)
+  const std::vector<TensorContract> & contracts, const char * parameter_name)
 {
   std::unordered_map<std::string, bool> seen;
   for (const auto & contract : contracts) {
@@ -116,7 +116,7 @@ std::vector<std::string> SessionNames(
   return names;
 }
 
-void ValidateOneSide(Ort::Session & session, const std::vector<ManagedTensorContract> & contracts,
+void ValidateOneSide(Ort::Session & session, const std::vector<TensorContract> & contracts,
   bool inputs, const char * parameter_name)
 {
   Ort::AllocatorWithDefaultOptions allocator;
@@ -127,7 +127,7 @@ void ValidateOneSide(Ort::Session & session, const std::vector<ManagedTensorCont
                                 (inputs ? "input" : "output") + " count " +
                                 std::to_string(names.size()));
   }
-  std::unordered_map<std::string, const ManagedTensorContract *> by_name;
+  std::unordered_map<std::string, const TensorContract *> by_name;
   for (const auto & contract : contracts) {
     by_name.emplace(contract.name, &contract);
   }
@@ -161,19 +161,19 @@ void ValidateOneSide(Ort::Session & session, const std::vector<ManagedTensorCont
                                     contract.name + "' at dimension " + std::to_string(dim));
       }
     }
-    static_cast<void>(ManagedTensorByteSize(contract));
+    static_cast<void>(TensorByteSize(contract));
   }
 }
 
 } // namespace
 
-std::vector<ManagedTensorContract> ParseManagedTensorContracts(
+std::vector<TensorContract> ParseTensorContracts(
   const std::vector<std::string> & specifications, const char * parameter_name)
 {
   if (specifications.empty()) {
     throw std::invalid_argument(std::string(parameter_name) + " must not be empty");
   }
-  std::vector<ManagedTensorContract> contracts;
+  std::vector<TensorContract> contracts;
   contracts.reserve(specifications.size());
   for (const auto & specification : specifications) {
     const size_t equals = specification.find('=');
@@ -196,13 +196,13 @@ std::vector<ManagedTensorContract> ParseManagedTensorContracts(
     }
     const auto dtype = ParseDtype(Trim(type_and_shape.substr(0, bracket)), parameter_name);
     const auto shape = ParseShape(type_and_shape.substr(bracket), parameter_name);
-    contracts.push_back(ManagedTensorContract{name, dtype, shape});
+    contracts.push_back(TensorContract{name, dtype, shape});
   }
   CheckUniqueNames(contracts, parameter_name);
   return contracts;
 }
 
-size_t ManagedTensorElementSize(ONNXTensorElementDataType dtype)
+size_t TensorElementSize(ONNXTensorElementDataType dtype)
 {
   switch (dtype) {
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
@@ -211,47 +211,55 @@ size_t ManagedTensorElementSize(ONNXTensorElementDataType dtype)
       return sizeof(int64_t);
     default:
       throw std::invalid_argument(
-        "strict Managed I/O contract supports only float32 and int64 tensors");
+        "Tensor contract supports only float32 and int64 tensors");
   }
 }
 
-size_t ManagedTensorByteSize(const ManagedTensorContract & contract)
+size_t TensorByteSize(const TensorContract & contract)
+{
+  return TensorByteSize(contract.dtype, contract.shape, contract.name);
+}
+
+size_t TensorByteSize(ONNXTensorElementDataType dtype,
+  const std::vector<int64_t> & shape, const std::string & name)
 {
   size_t elements = 1;
-  for (const int64_t dimension : contract.shape) {
+  for (const int64_t dimension : shape) {
     if (dimension <= 0 || static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max()) {
-      throw std::invalid_argument("strict Managed I/O contract has an invalid dimension");
+      throw std::invalid_argument("Tensor contract has an invalid dimension");
     }
     const auto value = static_cast<size_t>(dimension);
     if (elements > std::numeric_limits<size_t>::max() / value) {
       throw std::overflow_error(
-        "strict Managed I/O contract element count overflows size_t for '" + contract.name + "'");
+        "Tensor contract element count overflows size_t for '" + name + "'");
     }
     elements *= value;
   }
-  const size_t element_size = ManagedTensorElementSize(contract.dtype);
+  const size_t element_size = TensorElementSize(dtype);
   if (elements > std::numeric_limits<size_t>::max() / element_size) {
     throw std::overflow_error(
-      "strict Managed I/O contract byte size overflows size_t for '" + contract.name + "'");
+      "Tensor contract byte size overflows size_t for '" + name + "'");
   }
   return elements * element_size;
 }
 
-void ValidateManagedTensorContracts(Ort::Session & session,
-  const std::vector<ManagedTensorContract> & inputs,
-  const std::vector<ManagedTensorContract> & outputs)
+void ValidateTensorContracts(Ort::Session & session,
+  const std::vector<TensorContract> & inputs,
+  const std::vector<TensorContract> & outputs,
+  const char * input_parameter_name, const char * output_parameter_name)
 {
-  CheckUniqueNames(inputs, "managed_input_contracts");
-  CheckUniqueNames(outputs, "managed_output_contracts");
-  ValidateOneSide(session, inputs, true, "managed_input_contracts");
-  ValidateOneSide(session, outputs, false, "managed_output_contracts");
+  CheckUniqueNames(inputs, input_parameter_name);
+  CheckUniqueNames(outputs, output_parameter_name);
+  ValidateOneSide(session, inputs, true, input_parameter_name);
+  ValidateOneSide(session, outputs, false, output_parameter_name);
 }
 
-void ValidateManagedOutputContracts(
-  Ort::Session & session, const std::vector<ManagedTensorContract> & outputs)
+void ValidateOutputContracts(
+  Ort::Session & session, const std::vector<TensorContract> & outputs,
+  const char * parameter_name)
 {
-  CheckUniqueNames(outputs, "managed_output_contracts");
-  ValidateOneSide(session, outputs, false, "managed_output_contracts");
+  CheckUniqueNames(outputs, parameter_name);
+  ValidateOneSide(session, outputs, false, parameter_name);
 }
 
 } // namespace gpu_ros::onnx_inference

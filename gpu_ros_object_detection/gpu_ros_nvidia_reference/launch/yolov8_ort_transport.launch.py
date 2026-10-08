@@ -135,7 +135,7 @@ def launch_setup(context):
             ComposableNode(
                 name='onnx_inference',
                 package='gpu_ros_onnx_inference',
-                plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+                plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
                 parameters=[
                     {
                         'model_file_path': model_file_path,
@@ -144,7 +144,7 @@ def launch_setup(context):
                         'ort_profile_frames': ort_profile_frames,
                         'binding_report_path': binding_report_path,
                         'transport': 'tensor_list',
-                        'managed_output_contracts': ['output0=float32[1,84,8400]'],
+                        'output_contracts': ['output0=float32[1,84,8400]'],
                     }
                 ],
                 remappings=[

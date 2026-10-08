@@ -131,18 +131,18 @@ def generate_rtdetr_pol_description(test_class, transport):
         remappings=[('encoded_tensor', 'reshaped_tensor')],
     )
 
-    # Managed preserves the official native preprocessor/decoder boundaries.
+    # The native node shares the official preprocessor/decoder boundaries.
     onnx_node = ComposableNode(
         name='onnx_inference',
         package='gpu_ros_onnx_inference',
-        plugin='gpu_ros::onnx_inference::OnnxInferenceNode',
+        plugin='gpu_ros::onnx_inference::NativeOnnxInferenceNode',
         namespace=ns,
         parameters=[
             {
                 'model_file_path': MODEL_ONNX_PATH,
                 'execution_provider': 'cuda',
                 'transport': transport,
-                'managed_output_contracts': OUTPUT_CONTRACTS,
+                'output_contracts': OUTPUT_CONTRACTS,
             }
         ],
         remappings=[

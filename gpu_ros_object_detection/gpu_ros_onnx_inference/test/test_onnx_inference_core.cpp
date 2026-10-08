@@ -29,7 +29,7 @@
 #include <gtest/gtest.h>
 
 #include "gpu_ros_onnx_inference/onnx_inference_core.hpp"
-#include "gpu_ros_onnx_inference/managed_io_contract.hpp"
+#include "gpu_ros_onnx_inference/tensor_contract.hpp"
 
 #ifdef GPU_ROS_ORT_CANCELLATION_TEST
 #include "gpu_ros_managed_hip/hip_backend.hpp"
@@ -41,36 +41,48 @@ using gpu_ros::onnx_inference::OnnxInferenceCore;
 using gpu_ros::onnx_inference::OutputPlacement;
 using gpu_ros::onnx_inference::ParseExecutionProvider;
 
-TEST(ManagedIoContractTest, ParsesConcreteFloatAndInt64Contracts)
+TEST(TensorContractTest, ParsesConcreteFloatAndInt64Contracts)
 {
-  const auto contracts = gpu_ros::onnx_inference::ParseManagedTensorContracts(
+  const auto contracts = gpu_ros::onnx_inference::ParseTensorContracts(
     {"images=float32[1,3,640,640]", "orig_target_sizes=int64[1,2]"}, "managed_input_contracts");
   ASSERT_EQ(contracts.size(), 2U);
   EXPECT_EQ(contracts[0].name, "images");
   EXPECT_EQ(contracts[0].dtype, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
   EXPECT_EQ(contracts[0].shape, (std::vector<int64_t>{1, 3, 640, 640}));
-  EXPECT_EQ(gpu_ros::onnx_inference::ManagedTensorByteSize(contracts[1]), 16U);
+  EXPECT_EQ(gpu_ros::onnx_inference::TensorByteSize(contracts[1]), 16U);
 }
 
-TEST(ManagedIoContractTest, RejectsDynamicAndDuplicateSpecifications)
+TEST(TensorContractTest, RejectsDynamicAndDuplicateSpecifications)
 {
-  EXPECT_THROW(gpu_ros::onnx_inference::ParseManagedTensorContracts(
+  EXPECT_THROW(gpu_ros::onnx_inference::ParseTensorContracts(
                  {"images=float32[1,-1,640,640]"}, "managed_input_contracts"),
     std::invalid_argument);
-  EXPECT_THROW(gpu_ros::onnx_inference::ParseManagedTensorContracts(
+  EXPECT_THROW(gpu_ros::onnx_inference::ParseTensorContracts(
                  {"images=float32[1]", "images=int64[1]"}, "managed_input_contracts"),
     std::invalid_argument);
-  EXPECT_THROW(gpu_ros::onnx_inference::ParseManagedTensorContracts(
+  EXPECT_THROW(gpu_ros::onnx_inference::ParseTensorContracts(
                  {"=float32[1]"}, "managed_input_contracts"),
     std::invalid_argument);
 }
 
-TEST(ManagedIoContractTest, RejectsOverflowingByteSizes)
+TEST(TensorContractTest, RejectsOverflowingByteSizes)
 {
-  const auto contracts = gpu_ros::onnx_inference::ParseManagedTensorContracts(
+  const auto contracts = gpu_ros::onnx_inference::ParseTensorContracts(
     {"large=float32[9223372036854775807,2]"}, "managed_output_contracts");
   EXPECT_THROW(
-    gpu_ros::onnx_inference::ManagedTensorByteSize(contracts.front()), std::overflow_error);
+    gpu_ros::onnx_inference::TensorByteSize(contracts.front()), std::overflow_error);
+}
+
+TEST(TensorContractTest, ErrorsUseCallerParameterName)
+{
+  try {
+    static_cast<void>(gpu_ros::onnx_inference::ParseTensorContracts(
+      {"output=float16[1]"}, "output_contracts"));
+    FAIL() << "Unsupported dtype was accepted";
+  } catch (const std::invalid_argument & error) {
+    EXPECT_NE(std::string(error.what()).find("output_contracts"), std::string::npos);
+    EXPECT_EQ(std::string(error.what()).find("managed_output_contracts"), std::string::npos);
+  }
 }
 
 TEST(OnnxInferenceCoreTest, ParseEpCuda)
@@ -153,7 +165,7 @@ TEST(OnnxInferenceCoreTest, CudaIoBindingOutputOwnerKeepsDeviceBufferAlive)
     OnnxInferenceCore core(cfg);
     outputs = core.RunInference(
       gpu_ros_managed::ManagedTensorBundleView(message), OutputPlacement::kDevice);
-  } // The session is deliberately destroyed before the output allocation.
+  } // The core is gone; ORT-owned output storage must retain its session.
   ASSERT_FALSE(outputs.empty());
   auto * device_buffer =
     std::get_if<std::shared_ptr<gpu_ros_managed::DeviceBuffer>>(&outputs.front().storage);

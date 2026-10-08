@@ -133,7 +133,11 @@ run_required_ctest() {
   fi
 }
 
-echo "Running native TensorList adapter and ONNX inference core CTests..."
+echo "Running pure native, Managed adapter and ONNX inference CTests..."
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_nvidia_tensor_bundle_compat" \
+  test_tensor_list_native \
+  "${LOG_ROOT}/ctest_tensor_list_native.log"
 run_required_ctest \
   "${WORKSPACE_ROOT}/build/gpu_ros_nvidia_tensor_bundle_compat" \
   test_tensor_list_buffer_adapter \
@@ -142,6 +146,10 @@ run_required_ctest \
   "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
   test_onnx_inference_core \
   "${LOG_ROOT}/ctest_onnx_inference_core.log"
+run_required_ctest \
+  "${WORKSPACE_ROOT}/build/gpu_ros_onnx_inference" \
+  test_native_onnx_executor \
+  "${LOG_ROOT}/ctest_native_onnx_executor.log"
 
 run_capture() {
   local lane="$1"

@@ -25,22 +25,13 @@
 #include "onnxruntime_cxx_api.h" // NOLINT
 #include "gpu_ros_managed_core/fixed_device_memory_pool.hpp"
 #include "gpu_ros_managed_tensor_bundle/tensor_bundle.hpp"
-#include "gpu_ros_onnx_inference/managed_io_contract.hpp"
+#include "gpu_ros_onnx_inference/onnx_session.hpp"
+#include "gpu_ros_onnx_inference/tensor_contract.hpp"
+#include "gpu_ros_onnx_inference/binding_report.hpp"
 #include "gpu_ros_onnx_inference/tensor_types.hpp"
 
 namespace gpu_ros::onnx_inference
 {
-
-/// Supported execution providers.
-enum class ExecutionProvider
-{
-  kCuda,
-  kRocm,
-  kMigraphx,
-  kCpu
-};
-
-ExecutionProvider ParseExecutionProvider(const std::string & ep_str);
 
 /// Core inference wrapper around Ort::Session.
 /// Thread-compatible (not thread-safe): create one per node.
@@ -92,17 +83,6 @@ public:
 private:
   friend class OnnxInferenceCancellationTestPeer;
 
-  struct BindingTensorReport
-  {
-    std::string name;
-    size_t bytes{0};
-    std::string storage;
-    std::string pointer;
-    std::string ort_pointer;
-    bool pointer_identity{false};
-    std::string lifetime_path;
-  };
-
   struct OutputBindingProbe
   {
     std::string name;
@@ -110,32 +90,27 @@ private:
     std::string decision;
   };
 
-  Ort::Env env_;
-  Ort::SessionOptions session_options_;
-  std::unique_ptr<Ort::Session> session_;
-  Ort::AllocatorWithDefaultOptions allocator_;
-  bool profiling_enabled_{false};
+  std::shared_ptr<OnnxSession> session_;
   ExecutionProvider execution_provider_;
   int gpu_device_id_;
 
-  std::vector<std::string> input_names_;
-  std::vector<std::string> output_names_;
   std::vector<OutputBindingProbe> output_binding_probes_;
+  std::vector<DeviceOutputSpec> cuda_output_specs_;
+  bool cuda_output_plan_initialized_{false};
   gpu_ros_managed::DeviceStream hip_output_stream_;
-  std::string binding_report_path_;
-  std::string transport_;
-  bool binding_report_written_{false};
+  BindingReportContext binding_report_context_;
+  BindingReportWriter binding_report_writer_;
   bool strict_managed_{false};
   bool strict_healthy_{true};
   size_t pool_exhaustion_drops_{0};
   size_t managed_pool_capacity_{16};
   std::chrono::milliseconds managed_pool_wait_timeout_{100};
-  std::vector<ManagedTensorContract> managed_input_contracts_;
-  std::vector<ManagedTensorContract> managed_output_contracts_;
+  std::vector<TensorContract> managed_input_contracts_;
+  std::vector<TensorContract> managed_output_contracts_;
   std::vector<std::unique_ptr<gpu_ros_managed::FixedDeviceMemoryPool>> managed_output_pools_;
 
-  void WriteBindingReport(const std::vector<BindingTensorReport> & inputs,
-    const std::vector<BindingTensorReport> & outputs, OutputPlacement output_placement);
+  void WriteBindingReport(const std::vector<TensorBindingRecord> & inputs,
+    const std::vector<TensorBindingRecord> & outputs, OutputPlacement output_placement);
   std::vector<OutputTensor> RunStrictManagedInference(
     gpu_ros_managed::ManagedTensorBundleView inputs);
 };

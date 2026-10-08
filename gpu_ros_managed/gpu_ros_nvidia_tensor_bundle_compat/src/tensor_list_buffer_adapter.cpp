@@ -2,199 +2,134 @@
 // Licensed under the Apache License, Version 2.0.
 #include "gpu_ros_nvidia_tensor_bundle_compat/tensor_list_buffer_adapter.hpp"
 #include "tensor_list_buffer_adapter_detail.hpp"
-#include "tensor_metadata.hpp"
-#include <condition_variable>
-#include <mutex>
+#include "native_tensor_list_internal.hpp"
 
 #include <optional>
 #include <stdexcept>
 #include <utility>
-#include "cuda_buffer/cuda_buffer_api.hpp"
 #include "gpu_ros_managed_cuda/cuda_backend.hpp"
-#include "isaac_ros_tensor_msgs/msg/tensor_list.hpp"
 
 namespace gpu_ros::nvidia_tensor_bundle_compat
 {
 namespace
 {
-using Message = isaac_ros_tensor_msgs::msg::TensorList;
 using namespace gpu_ros_managed;
-void Check(cudaError_t status)
+struct ScalarMapping
 {
-  if (status != cudaSuccess) {
-    throw std::runtime_error(cudaGetErrorString(status));
+  TensorDataType dtype;
+  uint8_t code;
+  uint8_t bits;
+};
+constexpr ScalarMapping kScalarMappings[]{
+  {TensorDataType::kInt8, 0, 8}, {TensorDataType::kUInt8, 1, 8},
+  {TensorDataType::kInt16, 0, 16}, {TensorDataType::kUInt16, 1, 16},
+  {TensorDataType::kInt32, 0, 32}, {TensorDataType::kUInt32, 1, 32},
+  {TensorDataType::kInt64, 0, 64}, {TensorDataType::kUInt64, 1, 64},
+  {TensorDataType::kFloat32, 2, 32}, {TensorDataType::kFloat64, 2, 64}};
+TensorDataType ManagedType(const native::TensorSpec & spec)
+{
+  for (const auto & mapping : kScalarMappings) {
+    if (spec.dtype_lanes == 1 && spec.dtype_code == mapping.code && spec.dtype_bits == mapping.bits) {
+      return mapping.dtype;
+    }
   }
+  throw std::invalid_argument("TensorList has unsupported scalar dtype");
 }
-class DeviceScope
+native::TensorSpec NativeSpec(const NativeTensorSpec & spec)
 {
-public:
-  explicit DeviceScope(int device)
-  {
-    Check(cudaGetDevice(&previous_));
-    Check(cudaSetDevice(device));
+  for (const auto & mapping : kScalarMappings) {
+    if (spec.dtype == mapping.dtype) {
+      return {spec.name, mapping.code, mapping.bits, 1, spec.shape};
+    }
   }
-  ~DeviceScope() { static_cast<void>(cudaSetDevice(previous_)); }
-
-private:
-  int previous_;
-};
-struct NativeTensorListEnvelope
-{
-  explicit NativeTensorListEnvelope(int ordinal)
-      : device(ordinal), stream(cuda::make_stream(ordinal))
-  {
-  }
-  ~NativeTensorListEnvelope()
-  {
-    int previous = device;
-    static_cast<void>(cudaGetDevice(&previous));
-    static_cast<void>(cudaSetDevice(device));
-    writers.clear();
-    readers.clear();
-    static_cast<void>(cudaSetDevice(previous));
-  }
-  int device;
-  cuda::CudaStream stream;
-  Message::ConstSharedPtr message;
-  std::optional<ManagedTensorBundle> copy_source;
-  std::shared_ptr<const void> input_owner;
-  std::vector<cuda_buffer_backend::ReadHandle> readers;
-  std::vector<cuda_buffer_backend::WriteHandle> writers;
-};
+  throw std::invalid_argument("TensorList has unsupported project dtype");
+}
 struct NativeAttachment final : DeviceBufferAttachment
 {
-  NativeAttachment(
-    std::shared_ptr<NativeTensorListEnvelope> value, size_t tensor_index, const void * data)
-      : envelope(std::move(value)), index(tensor_index), device(envelope->device), pointer(data)
-  {
-  }
-  const std::shared_ptr<NativeTensorListEnvelope> envelope;
+  NativeAttachment(native::TensorList value, size_t tensor_index, const void * data)
+      : message(std::move(value)), index(tensor_index), device(message.device_id()), pointer(data) {}
+  const native::TensorList message;
   const size_t index;
   const int device;
   const void * const pointer;
 };
-NativeTensorSpec Spec(const Message & message, size_t index)
+std::optional<native::TensorList> Reusable(const ManagedTensorBundle & bundle, int device)
 {
-  const auto & tensor = message.tensors[index];
-  return {message.names[index], detail::ValidateTensor(tensor), tensor.shape};
-}
-std::shared_ptr<NativeTensorListEnvelope> Reusable(const ManagedTensorBundle & bundle, int device)
-{
-  std::shared_ptr<NativeTensorListEnvelope> envelope;
+  std::optional<native::TensorList> message;
   for (size_t i = 0; i < bundle.tensors().size(); ++i) {
     const auto & tensor = bundle.tensors()[i];
     const auto * buffer = std::get_if<std::shared_ptr<DeviceBuffer>>(&tensor.storage());
-    if (!buffer || !*buffer) {
-      return {};
-    }
+    if (!buffer || !*buffer) { return {}; }
     const auto attachment =
       std::dynamic_pointer_cast<const NativeAttachment>((*buffer)->attachment());
     if (!attachment || attachment->index != i || attachment->device != device ||
         (*buffer)->device_id().backend != BackendKind::kCuda ||
-        (*buffer)->device_id().ordinal != device)
-    {
+        (*buffer)->device_id().ordinal != device) {
       return {};
     }
-    if (!envelope) {
-      envelope = attachment->envelope;
-    }
-    if (envelope != attachment->envelope || envelope->message->header != bundle.header() ||
-        envelope->message->tensors.size() != bundle.tensors().size() ||
-        envelope->message->names.size() != bundle.tensors().size())
-    {
+    if (!message) { message = attachment->message; }
+    if (!message->same_message(attachment->message) || message->header() != bundle.header() ||
+        message->tensors().size() != bundle.tensors().size()) {
       return {};
     }
-    const auto spec = Spec(*envelope->message, i);
-    if (spec.name != tensor.name() || spec.dtype != tensor.data_type() ||
-        spec.shape != tensor.shape() ||
-        tensor.strides() != contiguous_strides(spec.shape, spec.dtype))
-    {
+    const auto & spec = message->tensors().at(i);
+    const auto dtype = ManagedType(spec);
+    if (spec.name != tensor.name() || dtype != tensor.data_type() || spec.shape != tensor.shape() ||
+        tensor.strides() != contiguous_strides(spec.shape, dtype)) {
       return {};
     }
     const auto lease = (*buffer)->get_blocking_ready_lease();
-    if (lease.data() != attachment->pointer ||
-        lease.size() != envelope->message->tensors[i].data.size())
-    {
+    if (lease.data() != attachment->pointer || lease.data() != message->data(i) ||
+        lease.size() != tensor_byte_size(spec.shape, dtype)) {
       return {};
     }
   }
-  return envelope;
+  return message;
+}
+ManagedTensorBundle Import(native::TensorList message)
+{
+  std::vector<ManagedTensor> tensors;
+  tensors.reserve(message.tensors().size());
+  for (size_t i = 0; i < message.tensors().size(); ++i) {
+    const auto & spec = message.tensors()[i];
+    const auto dtype = ManagedType(spec);
+    auto attachment = std::make_shared<NativeAttachment>(message, i, message.data(i));
+    auto buffer = cuda::adopt_synchronized_external(const_cast<uint8_t *>(message.data(i)),
+      tensor_byte_size(spec.shape, dtype), message.device_id(),
+      std::const_pointer_cast<void>(message.owner()), std::move(attachment));
+    tensors.emplace_back(spec.name, dtype, spec.shape, std::move(buffer));
+  }
+  return ManagedTensorBundle(message.header(), std::move(tensors));
 }
 } // namespace
 namespace detail
 {
-Message::ConstSharedPtr ReusableTensorList(const ManagedTensorBundle & bundle, int device)
+isaac_ros_tensor_msgs::msg::TensorList::ConstSharedPtr ReusableTensorList(
+  const ManagedTensorBundle & bundle, int device)
 {
-  auto envelope = Reusable(bundle, device);
-  return envelope ? envelope->message : Message::ConstSharedPtr{};
+  auto message = Reusable(bundle, device);
+  return message ? native::detail::RawMessage(*message) : nullptr;
 }
-ManagedTensorBundle ImportTensorList(Message::ConstSharedPtr message, int device)
+ManagedTensorBundle ImportTensorList(
+  isaac_ros_tensor_msgs::msg::TensorList::ConstSharedPtr message, int device)
 {
-  detail::ValidateNames(*message);
-  DeviceScope scope(device);
-  auto envelope = std::make_shared<NativeTensorListEnvelope>(device);
-  envelope->message = std::move(message);
-  envelope->readers.reserve(envelope->message->tensors.size());
-  std::vector<NativeTensorSpec> specs;
-  specs.reserve(envelope->message->tensors.size());
-  for (size_t i = 0; i < envelope->message->tensors.size(); ++i) {
-    specs.push_back(Spec(*envelope->message, i));
-  }
-  const auto retain_uncertain_owner = [&] {
-    // No payload allocation: use Managed's orphan protocol for the message,
-    // including any CPU sources of partially submitted promotion copies.
-    auto orphan = cuda::adopt_external(nullptr, 0, device, envelope);
-    orphan->get_synchronized_write_handle().fail();
-  };
-  try {
-    for (const auto & tensor : envelope->message->tensors) {
-      envelope->readers.push_back(
-        cuda_buffer_backend::from_input_buffer(tensor.data, envelope->stream.get()));
-    }
-  } catch (...) {
-    if (cudaStreamSynchronize(envelope->stream.get()) != cudaSuccess) {
-      retain_uncertain_owner();
-    }
-    throw;
-  }
-  const auto status = cudaStreamSynchronize(envelope->stream.get());
-  if (status != cudaSuccess) {
-    retain_uncertain_owner();
-  }
-  Check(status);
-  std::vector<ManagedTensor> tensors;
-  tensors.reserve(specs.size());
-  for (size_t i = 0; i < specs.size(); ++i) {
-    cudaPointerAttributes attributes{};
-    Check(cudaPointerGetAttributes(&attributes, envelope->readers[i].get_ptr()));
-    if (attributes.device != device || attributes.type != cudaMemoryTypeDevice) {
-      throw std::invalid_argument("TensorList storage is on the wrong CUDA device");
-    }
-    auto attachment =
-      std::make_shared<NativeAttachment>(envelope, i, envelope->readers[i].get_ptr());
-    auto buffer =
-      cuda::adopt_synchronized_external(const_cast<uint8_t *>(envelope->readers[i].get_ptr()),
-        envelope->message->tensors[i].data.size(), device, envelope, std::move(attachment));
-    tensors.emplace_back(
-      std::move(specs[i].name), specs[i].dtype, std::move(specs[i].shape), std::move(buffer));
-  }
-  return ManagedTensorBundle(envelope->message->header, std::move(tensors));
+  auto stream = std::make_shared<cuda::CudaStream>(cuda::make_stream(device));
+  return Import(native::detail::ImportTensorList(std::move(message), device, stream->get(), stream));
 }
 } // namespace detail
 
 struct NativeOutputBatch::Impl
 {
-  std::shared_ptr<NativeTensorListEnvelope> envelope;
+  explicit Impl(native::OutputBatch value) : batch(std::move(value)) {}
+  native::OutputBatch batch;
   std::vector<std::shared_ptr<DeviceBuffer>> buffers;
   std::vector<SynchronizedWriteHandle> writers;
-  std::vector<void *> pointers;
   bool finished{false};
   ~Impl()
   {
     if (!finished) {
-      for (auto & writer : writers) {
-        writer.fail();
-      }
+      batch.FailAfterSubmit();
+      for (auto & writer : writers) { writer.fail(); }
     }
   }
 };
@@ -206,237 +141,136 @@ const std::vector<std::shared_ptr<DeviceBuffer>> & NativeOutputBatch::buffers() 
 {
   return impl_->buffers;
 }
-void * NativeOutputBatch::pointer(size_t index) const
-{
-  return impl_->pointers.at(index);
-}
+void * NativeOutputBatch::pointer(size_t index) const { return impl_->batch.data(index); }
 void NativeOutputBatch::RetainOwner(std::shared_ptr<const void> owner)
 {
-  if (impl_->finished) {
-    throw std::logic_error("native batch already completed");
-  }
-  impl_->envelope->input_owner = std::move(owner);
+  if (impl_->finished) { throw std::logic_error("native batch already completed"); }
+  impl_->batch.RetainOwner(std::move(owner));
 }
 void NativeOutputBatch::CompleteAfterSync()
 {
-  if (impl_->finished) {
-    throw std::logic_error("native batch already completed");
-  }
-  DeviceScope scope(impl_->envelope->device);
-  impl_->envelope->writers.clear();
-  Check(cudaStreamSynchronize(impl_->envelope->stream.get()));
-  for (auto & writer : impl_->writers) {
-    writer.finalize_synchronously();
-  }
-  impl_->envelope->input_owner.reset();
+  if (impl_->finished) { throw std::logic_error("native batch already completed"); }
+  impl_->batch.CompleteAfterSync();
+  for (auto & writer : impl_->writers) { writer.finalize_synchronously(); }
   impl_->finished = true;
 }
 void NativeOutputBatch::CancelBeforeSubmit() noexcept
 {
-  if (!impl_ || impl_->finished) {
-    return;
-  }
+  if (!impl_ || impl_->finished) { return; }
+  impl_->batch.CancelBeforeSubmit();
   for (auto & writer : impl_->writers) {
-    try {
-      writer.cancel();
-    } catch (...) {
-      writer.fail();
-    }
+    try { writer.cancel(); }
+    catch (...) { writer.fail(); }
   }
-  impl_->envelope->writers.clear();
-  impl_->envelope->copy_source.reset();
-  impl_->envelope->input_owner.reset();
   impl_->finished = true;
 }
 void NativeOutputBatch::FailAfterSubmit() noexcept
 {
-  if (!impl_ || impl_->finished) {
-    return;
-  }
-  // Failed Managed writers orphan their state, retaining the typed attachment,
-  // native writer, message and stream. Unknown GPU completion is never guessed.
-  for (auto & writer : impl_->writers) {
-    writer.fail();
-  }
+  if (!impl_ || impl_->finished) { return; }
+  impl_->batch.FailAfterSubmit();
+  for (auto & writer : impl_->writers) { writer.fail(); }
   impl_->finished = true;
 }
 void NativeOutputBatch::CopyFrom(const ManagedTensorBundle & source)
 {
-  if (source.tensors().size() != impl_->buffers.size()) {
-    CancelBeforeSubmit();
-    throw std::invalid_argument("native copy tensor count mismatch");
-  }
-  DeviceScope scope(impl_->envelope->device);
-  bool submitted = false;
-  try {
-    impl_->envelope->copy_source = source;
+  if (impl_->finished) { throw std::logic_error("native batch already completed"); }
+  // Leases (not merely DeviceBuffer references) exclude reuse until copying ends.
+  struct CopyOwner
+  {
+    explicit CopyOwner(const ManagedTensorBundle & value) : bundle(value) {}
+    ManagedTensorBundle bundle;
     std::vector<BlockingReadyLease> leases;
-    leases.reserve(source.tensors().size());
+  };
+  bool copying = false;
+  try {
+    if (source.tensors().size() != impl_->buffers.size()) {
+      throw std::invalid_argument("native copy tensor count mismatch");
+    }
+    auto owner = std::make_shared<CopyOwner>(source);
+    owner->leases.reserve(source.tensors().size());
+    std::vector<native::CopySource> sources;
+    sources.reserve(source.tensors().size());
+    const auto message = impl_->batch.message();
     for (size_t i = 0; i < source.tensors().size(); ++i) {
       const auto & tensor = source.tensors()[i];
-      const auto spec = Spec(*impl_->envelope->message, i);
-      if (tensor.name() != spec.name || tensor.data_type() != spec.dtype ||
-          tensor.shape() != spec.shape)
-      {
+      const auto & spec = impl_->batch.tensors()[i];
+      if (tensor.name() != spec.name || tensor.data_type() != ManagedType(spec) ||
+          tensor.shape() != spec.shape) {
         throw std::invalid_argument("native copy metadata mismatch");
       }
-      const void * pointer;
-      cudaMemcpyKind kind;
       if (const auto * host = std::get_if<HostBuffer>(&tensor.storage())) {
-        pointer = host->data();
-        kind = cudaMemcpyHostToDevice;
+        sources.push_back({host->data(), tensor.byte_size(), false});
       } else {
         const auto & buffer = std::get<std::shared_ptr<DeviceBuffer>>(tensor.storage());
         if (!buffer || buffer->device_id().backend != BackendKind::kCuda ||
-            buffer->device_id().ordinal != impl_->envelope->device)
-        {
+            buffer->device_id().ordinal != message.device_id()) {
           throw std::invalid_argument("native copy requires a host or matching CUDA tensor");
         }
-        leases.push_back(buffer->get_blocking_ready_lease());
-        pointer = leases.back().data();
-        kind = cudaMemcpyDeviceToDevice;
+        owner->leases.push_back(buffer->get_blocking_ready_lease());
+        sources.push_back({owner->leases.back().data(), tensor.byte_size(), true});
       }
-      submitted = true;
-      cuda_buffer_backend::to_buffer(pointer, tensor.byte_size(), impl_->envelope->writers[i],
-        impl_->envelope->stream.get(), kind);
     }
-    Check(cudaStreamSynchronize(impl_->envelope->stream.get()));
-    CompleteAfterSync();
-    impl_->envelope->copy_source.reset();
+    copying = true;
+    impl_->batch.CopyFrom(sources, owner);
+    for (auto & writer : impl_->writers) { writer.finalize_synchronously(); }
+    impl_->finished = true;
   } catch (...) {
-    if (submitted) {
-      // A blocking synchronization retains source owners until every submitted
-      // copy is done. If CUDA cannot establish completion, retain the source too.
-      static_cast<void>(cudaStreamSynchronize(impl_->envelope->stream.get()));
-      FailAfterSubmit();
-    } else {
-      CancelBeforeSubmit();
-    }
+    if (copying) { FailAfterSubmit(); }
+    else { CancelBeforeSubmit(); }
     throw;
   }
 }
-
 struct TensorListTransport::Impl
 {
-  rclcpp::Node * node;
+  Impl(rclcpp::Node * node, int device, const std::string & topic, bool publish)
+      : transport(node, device, topic, publish), device(device) {}
+  native::TensorListTransport transport;
   int device;
-  rclcpp::Publisher<Message>::SharedPtr publisher;
-  rclcpp::Subscription<Message>::SharedPtr subscription;
-  std::mutex callback_mutex;
-  std::condition_variable callback_cv;
-  size_t active_callbacks{0};
-  bool stopping{false};
 };
 TensorListTransport::TensorListTransport(
   rclcpp::Node * node, int device_id, const std::string & output_topic, bool publish_output)
-    : impl_(std::make_shared<Impl>())
-{
-  impl_->node = node;
-  impl_->device = device_id;
-  if (publish_output) {
-    rclcpp::PublisherOptions options;
-    // Publishing a shared immutable envelope through intra-process const&
-    // publishing clones GPU Buffer fields. Use the RMW Buffer backend instead.
-    options.use_intra_process_comm = rclcpp::IntraProcessSetting::Disable;
-    impl_->publisher = node->create_publisher<Message>(output_topic, rclcpp::QoS(10), options);
-  }
-}
-TensorListTransport::~TensorListTransport()
-{
-  Unsubscribe();
-}
-void TensorListTransport::Unsubscribe()
-{
-  {
-    std::unique_lock<std::mutex> lock(impl_->callback_mutex);
-    impl_->stopping = true;
-    impl_->callback_cv.wait(lock, [this] { return impl_->active_callbacks == 0; });
-  }
-  impl_->subscription.reset();
-}
+    : impl_(std::make_shared<Impl>(node, device_id, output_topic, publish_output)) {}
+TensorListTransport::~TensorListTransport() { Unsubscribe(); }
+void TensorListTransport::Unsubscribe() { impl_->transport.Unsubscribe(); }
 void TensorListTransport::Subscribe(Callback callback, const std::string & input_topic)
 {
-  Unsubscribe();
-  {
-    std::lock_guard<std::mutex> lock(impl_->callback_mutex);
-    impl_->stopping = false;
-  }
-  const int device = impl_->device;
-  impl_->subscription = impl_->node->create_subscription<Message>(input_topic, rclcpp::QoS(10),
-    [weak = std::weak_ptr<Impl>(impl_), device, logger = impl_->node->get_logger(),
-      callback = std::move(callback)](Message::ConstSharedPtr message) {
-      auto state = weak.lock();
-      if (!state) {
-        return;
-      }
-      {
-        std::lock_guard<std::mutex> lock(state->callback_mutex);
-        if (state->stopping) {
-          return;
-        }
-        ++state->active_callbacks;
-      }
-      struct Guard
-      {
-        std::shared_ptr<Impl> state;
-        ~Guard()
-        {
-          std::lock_guard<std::mutex> lock(state->callback_mutex);
-          --state->active_callbacks;
-          state->callback_cv.notify_all();
-        }
-      } guard{state};
-      try {
-        auto bundle = std::make_shared<ManagedTensorBundle>(
-          detail::ImportTensorList(std::move(message), device));
-        callback(ManagedTensorBundleView(std::move(bundle)));
-      } catch (const std::exception & error) {
-        RCLCPP_ERROR(logger, "Dropping native TensorList frame: %s", error.what());
-      }
-    });
+  impl_->transport.Subscribe([callback = std::move(callback)](native::TensorList message) {
+    auto bundle = std::make_shared<ManagedTensorBundle>(Import(std::move(message)));
+    callback(ManagedTensorBundleView(std::move(bundle)));
+  }, input_topic);
 }
 NativeOutputBatch TensorListTransport::Allocate(
   const std_msgs::msg::Header & header, const std::vector<NativeTensorSpec> & specs)
 {
-  DeviceScope scope(impl_->device);
-  auto state = std::make_unique<NativeOutputBatch::Impl>();
-  state->envelope = std::make_shared<NativeTensorListEnvelope>(impl_->device);
-  // CudaBufferImpl remembers the output stream for later host materialization.
-  // A ROS consumer may retain the message after all Managed views are gone.
-  // Retain only the stream in its deleter, not the envelope (which owns the message).
-  auto message =
-    std::shared_ptr<Message>(new Message, [stream = state->envelope->stream](Message * value) {
-      static_cast<void>(stream);
-      delete value;
-    });
-  message->header = header;
-  message->names.reserve(specs.size());
-  message->tensors.reserve(specs.size());
-  state->envelope->message = message;
-  state->envelope->writers.reserve(specs.size());
-  state->buffers.reserve(specs.size());
-  state->writers.reserve(specs.size());
-  state->pointers.reserve(specs.size());
+  std::vector<native::TensorSpec> native_specs;
+  native_specs.reserve(specs.size());
+  for (const auto & spec : specs) { native_specs.push_back(NativeSpec(spec)); }
+  auto native_batch = impl_->transport.Allocate(header, native_specs);
+  // Reserve downstream control storage before handing out any Managed writer.
+  std::unique_ptr<NativeOutputBatch::Impl> state;
+  try {
+    state = std::make_unique<NativeOutputBatch::Impl>(std::move(native_batch));
+    state->buffers.reserve(specs.size());
+    state->writers.reserve(specs.size());
+  } catch (...) {
+    if (state) { state->batch.CancelBeforeSubmit(); state->finished = true; }
+    else { native_batch.CancelBeforeSubmit(); }
+    throw;
+  }
   NativeOutputBatch batch(std::move(state));
   try {
+    auto & output = batch.impl_->batch;
+    const auto message = output.message();
     for (size_t i = 0; i < specs.size(); ++i) {
-      const auto & spec = specs[i];
-      auto & tensor = message->tensors.emplace_back();
-      const auto bytes = detail::SetTensorMetadata(tensor, spec.dtype, spec.shape);
-      message->names.push_back(spec.name);
-      tensor.data = cuda_buffer_backend::allocate_buffer(bytes);
-      auto & envelope = batch.impl_->envelope;
-      envelope->writers.push_back(
-        cuda_buffer_backend::from_output_buffer(tensor.data, envelope->stream.get()));
-      auto * pointer = envelope->writers.back().get_ptr();
-      auto buffer = cuda::adopt_external(pointer, bytes, impl_->device, envelope,
-        std::make_shared<NativeAttachment>(envelope, i, pointer));
+      auto * pointer = output.data(i);
+      auto buffer = cuda::adopt_external(pointer, tensor_byte_size(specs[i].shape, specs[i].dtype),
+        impl_->device, std::const_pointer_cast<void>(output.owner()),
+        std::make_shared<NativeAttachment>(message, i, pointer));
       batch.impl_->writers.push_back(buffer->get_synchronized_write_handle());
       if (batch.impl_->writers.back().data() != pointer) {
         throw std::runtime_error("native and Managed output pointers differ");
       }
       batch.impl_->buffers.push_back(std::move(buffer));
-      batch.impl_->pointers.push_back(pointer);
     }
   } catch (...) {
     batch.CancelBeforeSubmit();
@@ -446,11 +280,8 @@ NativeOutputBatch TensorListTransport::Allocate(
 }
 void TensorListTransport::Publish(const ManagedTensorBundle & bundle)
 {
-  if (!impl_->publisher) {
-    throw std::logic_error("native publisher disabled");
-  }
-  if (auto envelope = Reusable(bundle, impl_->device)) {
-    impl_->publisher->publish(*envelope->message);
+  if (auto message = Reusable(bundle, impl_->device)) {
+    impl_->transport.Publish(*message);
     return;
   }
   std::vector<NativeTensorSpec> specs;
@@ -460,6 +291,6 @@ void TensorListTransport::Publish(const ManagedTensorBundle & bundle)
   }
   auto batch = Allocate(bundle.header(), specs);
   batch.CopyFrom(bundle);
-  impl_->publisher->publish(*batch.impl_->envelope->message);
+  impl_->transport.Publish(batch.impl_->batch.message());
 }
 } // namespace gpu_ros::nvidia_tensor_bundle_compat

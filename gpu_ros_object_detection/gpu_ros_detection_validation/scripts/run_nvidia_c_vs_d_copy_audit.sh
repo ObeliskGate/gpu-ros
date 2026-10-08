@@ -116,7 +116,9 @@ mkdir -p "${ORT_ROOT}" "${NSYS_ROOT}" "${BAG_ROOT}" "${BINDING_ROOT}" \
 
 echo "Running pointer-identity, lifetime and CUDA I/O Binding tests..."
 for ctest_case in \
+  gpu_ros_nvidia_tensor_bundle_compat:test_tensor_list_native \
   gpu_ros_nvidia_tensor_bundle_compat:test_tensor_list_buffer_adapter \
+  gpu_ros_onnx_inference:test_native_onnx_executor \
   gpu_ros_onnx_inference:test_onnx_inference_core; do
   package="${ctest_case%%:*}"
   test_name="${ctest_case#*:}"

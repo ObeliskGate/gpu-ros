@@ -89,12 +89,21 @@ The installed NVIDIA compatibility package exports its `CUDAToolkit`
 dependency, including `CUDA::cudart`. Consumers linking its exported CMake
 target do not need to discover CUDA separately before finding the package.
 
+The separate `gpu_ros::gpu_ros_nvidia_tensor_list_native` target provides the
+opaque native TensorList/CUDA Buffer façade. Its public
+`native_tensor_list.hpp` and library do not depend on Managed, project
+TensorBundle messages, or ORT. The existing Managed-facing adapter links this
+target downstream, retaining attachment provenance and explicit copy fallback;
+the native target never links the aggregate compatibility library.
+
 ROS-facing packages target ROS 2 Lyrical and require C++20; the standalone
 core and CUDA/HIP backends retain C++17. NVIDIA ROS dependencies must match the
 selected official Isaac ROS 5.0 Docker image, not an independently chosen
-upstream commit. The target-image build, native CUDA Buffer adapter tests, and
-installed CMake consumer passed; the functional/copy campaign records a separate
-SDK shutdown exception in the [result index](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
+upstream commit. The pre-separation target-image build, CUDA Buffer adapter tests,
+and installed CMake consumer passed; the historical functional/copy campaign
+records a separate SDK shutdown exception in the [result index](../docs/results/README.md#isaac-ros-50-migration-campaign-2026-10-05).
+The independent native façade/executor still requires its own SDK build and GPU
+acceptance; source-only and standalone-core checks do not establish that result.
 AMD Lyrical GPU validation remains pending; historical Jazzy results do not
 establish that combination.
 This repository does not ship prebuilt binaries.
@@ -262,6 +271,13 @@ positive dimensions, contiguous element strides (or empty inferred strides),
 and zero byte offset. Tensor names and tensor counts must match. Unsupported
 types, strided views, offsets, and invalid sizes fail before allocation or
 promotion; they are not silently copied into a different layout.
+
+Native input handles retain the original message through consumer completion.
+Native output transactions become readable/publishable only after producer
+synchronization and backend writer completion. Completed messages retain their
+CUDA stream independently of the transport or inference node. Unknown GPU
+completion retains the owners and stops further submissions; it is not reported
+as successful cancellation.
 
 The CUDA Buffer transport plugin is a runtime requirement, built separately
 against the image's installed SDK. Successful RMW data access alone does not

@@ -21,6 +21,38 @@ namespace gpu_ros::nvidia_tensor_bundle_compat
 {
 namespace
 {
+using WireTensor = gpu_ros_tensor_bundle_msgs::msg::Tensor;
+struct WireScalar
+{
+  uint8_t wire;
+  uint8_t code;
+  uint8_t bits;
+};
+constexpr WireScalar kWireScalars[]{
+  {WireTensor::INT8, 0, 8}, {WireTensor::UINT8, 1, 8},
+  {WireTensor::INT16, 0, 16}, {WireTensor::UINT16, 1, 16},
+  {WireTensor::INT32, 0, 32}, {WireTensor::UINT32, 1, 32},
+  {WireTensor::INT64, 0, 64}, {WireTensor::UINT64, 1, 64},
+  {WireTensor::FLOAT32, 2, 32}, {WireTensor::FLOAT64, 2, 64}};
+uint8_t WireType(const NvidiaTensor & tensor)
+{
+  for (const auto & scalar : kWireScalars) {
+    if (scalar.code == tensor.dtype_code && scalar.bits == tensor.dtype_bits) {
+      return scalar.wire;
+    }
+  }
+  throw std::invalid_argument("TensorList has unsupported scalar dtype");
+}
+size_t SetWireMetadata(NvidiaTensor & output, const WireTensor & input)
+{
+  for (const auto & scalar : kWireScalars) {
+    if (scalar.wire == input.data_type) {
+      return detail::SetTensorMetadata(output, scalar.code, scalar.bits, 1, input.shape);
+    }
+  }
+  throw std::invalid_argument("TensorBundle has unsupported scalar dtype");
+}
+
 // Standard TensorBundle conversion is an explicit host boundary. Never clone
 // a non-CPU Buffer: materialize its payload and move the resulting CPU vector.
 void CopyHostPayload(const rosidl::Buffer<uint8_t> & source, rosidl::Buffer<uint8_t> & output)
@@ -42,10 +74,10 @@ TensorBundle ToTensorBundle(const NvidiaTensorList & source)
   output.tensors.reserve(source.tensors.size());
   for (size_t i = 0; i < source.tensors.size(); ++i) {
     const auto & source_tensor = source.tensors[i];
-    const auto dtype = detail::ValidateTensor(source_tensor);
+    detail::ValidateTensor(source_tensor);
     auto & tensor = output.tensors.emplace_back();
     tensor.name = source.names[i];
-    tensor.data_type = static_cast<uint8_t>(dtype);
+    tensor.data_type = WireType(source_tensor);
     tensor.shape = source_tensor.shape;
     CopyHostPayload(source_tensor.data, tensor.data);
   }
@@ -60,8 +92,7 @@ NvidiaTensorList ToNvidiaTensorList(const TensorBundle & source)
   output.tensors.reserve(source.tensors.size());
   for (const auto & source_tensor : source.tensors) {
     auto & tensor = output.tensors.emplace_back();
-    const auto expected_bytes = detail::SetTensorMetadata(tensor,
-      static_cast<gpu_ros_managed::TensorDataType>(source_tensor.data_type), source_tensor.shape);
+    const auto expected_bytes = SetWireMetadata(tensor, source_tensor);
     if (source_tensor.data.size() != expected_bytes) {
       throw std::invalid_argument("TensorBundle compatibility: tensor '" + source_tensor.name +
                                   "' payload size does not match shape and dtype");

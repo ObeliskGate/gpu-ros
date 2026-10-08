@@ -19,78 +19,7 @@ find_package(gpu_ros_managed_ros REQUIRED)
 find_package(gpu_ros_managed_tensor_bundle REQUIRED)
 find_package(rosidl_buffer REQUIRED)
 
-# ── ONNX Runtime ──────────────────────────────────────────────────────────────
-set(ONNXRUNTIME_ROOT "" CACHE PATH "ONNX Runtime installation root")
-
-# Empty cache entries (including those left by older configurations) prevent
-# find_path/find_library from searching. Preserve nonempty explicit paths.
-if(DEFINED CACHE{ONNXRUNTIME_INCLUDE_DIR} AND "$CACHE{ONNXRUNTIME_INCLUDE_DIR}" STREQUAL "")
-  unset(ONNXRUNTIME_INCLUDE_DIR CACHE)
-endif()
-if(DEFINED CACHE{ONNXRUNTIME_LIBRARY} AND "$CACHE{ONNXRUNTIME_LIBRARY}" STREQUAL "")
-  unset(ONNXRUNTIME_LIBRARY CACHE)
-endif()
-
-if(NOT ONNXRUNTIME_ROOT AND DEFINED ENV{ONNXRUNTIME_ROOT})
-  set(ONNXRUNTIME_ROOT "$ENV{ONNXRUNTIME_ROOT}")
-endif()
-if(NOT ONNXRUNTIME_INCLUDE_DIR AND DEFINED ENV{ONNXRUNTIME_INCLUDE_DIR}
-    AND NOT "$ENV{ONNXRUNTIME_INCLUDE_DIR}" STREQUAL "")
-  set(ONNXRUNTIME_INCLUDE_DIR "$ENV{ONNXRUNTIME_INCLUDE_DIR}")
-endif()
-if(NOT ONNXRUNTIME_LIBRARY AND DEFINED ENV{ONNXRUNTIME_LIBRARY}
-    AND NOT "$ENV{ONNXRUNTIME_LIBRARY}" STREQUAL "")
-  set(ONNXRUNTIME_LIBRARY "$ENV{ONNXRUNTIME_LIBRARY}")
-endif()
-
-# A selected installation is authoritative for unresolved components; only
-# individually specified include/library paths may come from elsewhere.
-if(ONNXRUNTIME_ROOT)
-  find_path(ONNXRUNTIME_INCLUDE_DIR
-    NAMES onnxruntime_cxx_api.h
-    HINTS "${ONNXRUNTIME_ROOT}"
-    PATH_SUFFIXES include include/onnxruntime include/onnxruntime/core/session
-    NO_DEFAULT_PATH)
-  find_library(ONNXRUNTIME_LIBRARY
-    NAMES onnxruntime
-    HINTS "${ONNXRUNTIME_ROOT}"
-    PATH_SUFFIXES lib lib64
-    NO_DEFAULT_PATH)
-endif()
-
-if(NOT ONNXRUNTIME_ROOT)
-  if(NOT ONNXRUNTIME_INCLUDE_DIR)
-    find_path(ONNXRUNTIME_INCLUDE_DIR
-      NAMES onnxruntime_cxx_api.h
-      PATH_SUFFIXES include include/onnxruntime include/onnxruntime/core/session)
-  endif()
-  if(NOT ONNXRUNTIME_LIBRARY)
-    find_library(ONNXRUNTIME_LIBRARY NAMES onnxruntime)
-  endif()
-endif()
-
-if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIBRARY)
-  message(FATAL_ERROR
-    "ONNX Runtime was not found. Set ONNXRUNTIME_ROOT, or set "
-    "ONNXRUNTIME_INCLUDE_DIR and ONNXRUNTIME_LIBRARY explicitly.")
-endif()
-if(NOT EXISTS "${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_cxx_api.h")
-  message(FATAL_ERROR
-    "ONNXRUNTIME_INCLUDE_DIR does not contain onnxruntime_cxx_api.h: "
-    "${ONNXRUNTIME_INCLUDE_DIR}")
-endif()
-if(NOT EXISTS "${ONNXRUNTIME_LIBRARY}")
-  message(FATAL_ERROR
-    "ONNXRUNTIME_LIBRARY does not exist: ${ONNXRUNTIME_LIBRARY}")
-endif()
-
-add_library(onnxruntime::onnxruntime SHARED IMPORTED)
-set_target_properties(onnxruntime::onnxruntime PROPERTIES
-  IMPORTED_LOCATION "${ONNXRUNTIME_LIBRARY}"
-  INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
-)
-message(STATUS "ONNX Runtime include dir: ${ONNXRUNTIME_INCLUDE_DIR}")
-message(STATUS "ONNX Runtime library: ${ONNXRUNTIME_LIBRARY}")
+include(cmake/onnxruntime.cmake)
 
 # Provider availability is explicit. Requesting a provider that was not enabled
 # at build time throws at runtime instead of silently falling back to CPU.
@@ -119,12 +48,28 @@ if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
   find_package(CUDAToolkit REQUIRED)
 endif()
 
+# Pure ORT policy is shared without importing the package's Managed dependencies.
+add_library(onnx_session SHARED
+  src/onnx_session.cpp
+  src/tensor_contract.cpp
+  src/binding_report.cpp
+  src/onnx_binding.cpp)
+add_library(gpu_ros::onnx_session ALIAS onnx_session)
+target_include_directories(onnx_session PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+target_link_libraries(onnx_session PUBLIC onnxruntime::onnxruntime)
+target_compile_definitions(onnx_session PRIVATE
+  $<$<BOOL:${ORT_ENABLE_CUDA}>:ORT_CUDA_AVAILABLE>
+  $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
+  $<$<BOOL:${ORT_ENABLE_MIGRAPHX}>:ORT_MIGRAPHX_AVAILABLE>)
+
+add_library(onnx_model_path OBJECT src/model_path.cpp)
+set_target_properties(onnx_model_path PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # ── Inference core library ────────────────────────────────────────────────────
-ament_auto_add_library(onnx_inference_core SHARED
-  src/onnx_inference_core.cpp
-  src/managed_io_contract.cpp
-)
-target_link_libraries(onnx_inference_core onnxruntime::onnxruntime)
+ament_auto_add_library(onnx_inference_core SHARED src/onnx_inference_core.cpp)
+target_link_libraries(onnx_inference_core onnx_session)
 target_compile_definitions(onnx_inference_core PRIVATE
   $<$<BOOL:${ORT_ENABLE_CUDA}>:ORT_CUDA_AVAILABLE>
   $<$<BOOL:${ORT_ENABLE_ROCM}>:ORT_ROCM_AVAILABLE>
@@ -159,13 +104,13 @@ if(BUILD_MANAGED_HIP_TRANSPORT)
 endif()
 if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
   list(APPEND node_sources
-    src/nitros_tensor_bundle_io.cpp
     src/nitros_managed_tensor_bundle_adapter.cpp
     src/nitros_managed_tensor_bundle_nodes.cpp
     src/tensor_bundle_bridge_node.cpp)
 endif()
 
 ament_auto_add_library(onnx_inference_node SHARED ${node_sources})
+target_sources(onnx_inference_node PRIVATE $<TARGET_OBJECTS:onnx_model_path>)
 target_link_libraries(onnx_inference_node onnx_inference_core)
 rclcpp_components_register_nodes(onnx_inference_node
   "gpu_ros::onnx_inference::OnnxInferenceNode")
@@ -193,6 +138,28 @@ if(BUILD_NATIVE_TENSOR_LIST_TRANSPORT)
     "gpu_ros::onnx_inference::TensorBundleBridgeNode"
     "gpu_ros::onnx_inference::NitrosToManagedTensorBundleNode"
     "gpu_ros::onnx_inference::ManagedToNitrosTensorBundleNode")
+
+  add_library(onnx_native_executor STATIC src/native_onnx_executor.cpp)
+  set_target_properties(onnx_native_executor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(onnx_native_executor PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+  target_link_libraries(onnx_native_executor PUBLIC
+    onnx_session gpu_ros::gpu_ros_nvidia_tensor_list_native CUDA::cudart)
+
+  add_library(onnx_inference_native_node SHARED src/native_onnx_inference_node.cpp)
+  target_sources(onnx_inference_native_node PRIVATE $<TARGET_OBJECTS:onnx_model_path>)
+  target_include_directories(onnx_inference_native_node PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+  ament_target_dependencies(onnx_inference_native_node PUBLIC rclcpp rclcpp_components std_msgs)
+  target_link_libraries(onnx_inference_native_node
+    PUBLIC gpu_ros::gpu_ros_nvidia_tensor_list_native
+    PRIVATE onnx_native_executor)
+  rclcpp_components_register_nodes(onnx_inference_native_node
+    "gpu_ros::onnx_inference::NativeOnnxInferenceNode")
+  install(TARGETS onnx_inference_native_node EXPORT nativeInferenceTargets
+    ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+  ament_export_targets(nativeInferenceTargets HAS_LIBRARY_TARGET NAMESPACE gpu_ros::)
 endif()
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
@@ -220,14 +187,13 @@ if(BUILD_TESTING)
       VERBATIM)
     add_custom_target(onnx_cancellation_test_model DEPENDS "${cancellation_test_model}")
     add_dependencies(test_onnx_inference_core onnx_cancellation_test_model)
-    target_sources(test_onnx_inference_core PRIVATE
-      src/onnx_inference_core.cpp src/managed_io_contract.cpp)
+    target_sources(test_onnx_inference_core PRIVATE src/onnx_inference_core.cpp)
     target_include_directories(test_onnx_inference_core PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/include"
       "${CMAKE_CURRENT_SOURCE_DIR}/test")
     ament_target_dependencies(test_onnx_inference_core gpu_ros_managed_tensor_bundle)
     target_link_libraries(test_onnx_inference_core
-      onnxruntime::onnxruntime gpu_ros_managed::hip)
+      onnx_session gpu_ros_managed::hip)
     target_compile_definitions(test_onnx_inference_core PRIVATE
       GPU_ROS_MANAGED_HIP GPU_ROS_ORT_CANCELLATION_TEST
       TEST_HIP_CANCELLATION_MODEL_PATH="${cancellation_test_model}")
@@ -296,6 +262,28 @@ if(BUILD_TESTING)
     target_sources(test_onnx_inference_core PRIVATE test/test_native_output_binding.cpp)
     target_compile_definitions(test_onnx_inference_core PRIVATE
       TEST_DYNAMIC_OUTPUT_MODEL_PATH="${dynamic_output_test_model}")
+
+    # Compile the real pure implementation with private failure injection.
+    ament_add_gtest(test_native_onnx_executor
+      test/test_native_onnx_executor.cpp
+      src/native_onnx_executor.cpp
+      src/native_onnx_inference_node.cpp
+      TIMEOUT 900)
+    if(TARGET test_native_onnx_executor)
+      target_sources(test_native_onnx_executor PRIVATE $<TARGET_OBJECTS:onnx_model_path>)
+      target_include_directories(test_native_onnx_executor PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test")
+      ament_target_dependencies(test_native_onnx_executor rclcpp rclcpp_components std_msgs)
+      target_link_libraries(test_native_onnx_executor
+        onnx_session gpu_ros::gpu_ros_nvidia_tensor_list_native CUDA::cudart)
+      target_compile_definitions(test_native_onnx_executor PRIVATE
+        GPU_ROS_NATIVE_EXECUTOR_TEST
+        TEST_DYNAMIC_OUTPUT_MODEL_PATH="${dynamic_output_test_model}"
+        TEST_CUDA_IO_BINDING_MODEL_PATH="${CUDA_IO_BINDING_TEST_MODEL}")
+      add_dependencies(test_native_onnx_executor native_dynamic_output_test_model)
+    endif()
     add_launch_test(test/gpu_ros_onnx_rtdetr_pol_test.py TIMEOUT "600")
     add_launch_test(test/gpu_ros_onnx_rtdetr_managed_pol_test.py TIMEOUT "600")
   endif()
@@ -306,4 +294,9 @@ if(BUILD_TESTING)
   endif()
 endif()
 
-ament_auto_package(INSTALL_TO_SHARE launch USE_SCOPED_HEADER_INSTALL_DIR)
+install(TARGETS onnx_session EXPORT onnxSessionTargets
+  ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+ament_export_targets(onnxSessionTargets HAS_LIBRARY_TARGET NAMESPACE gpu_ros::)
+ament_auto_package(
+  CONFIG_EXTRAS cmake/onnxruntime.cmake
+  INSTALL_TO_SHARE launch USE_SCOPED_HEADER_INSTALL_DIR)
